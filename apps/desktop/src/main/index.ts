@@ -56,6 +56,7 @@ import {
 import { ProjectActionConfirmationProvider } from './project-action-confirmation-provider'
 import { registerWithStableWindowClaims } from './desktop-provider-registration'
 import { ApplicationQuitOrchestrator } from './application-quit-orchestrator'
+import { AppImageUpdater } from './appimage-updater'
 import { performExitCleanup as performApplicationExitCleanup } from './application-exit-cleanup'
 import {
   NativeApplicationMenu,
@@ -3585,14 +3586,16 @@ async function start(): Promise<void> {
   } catch {
     console.warn('Desktop update feeds are invalid; updates are disabled')
   }
-  const { autoUpdater } = electronUpdater
+  const packageType = detectNativeUpdatePackageType(process.platform, {
+    resourcesPath: process.resourcesPath,
+    ...(process.env.APPIMAGE === undefined ? {} : { appImagePath: process.env.APPIMAGE })
+  })
+  const autoUpdater =
+    packageType === 'appimage' ? new AppImageUpdater() : electronUpdater.autoUpdater
   updateController = new UpdateController({
     feeds,
     isPackaged: app.isPackaged,
-    packageType: detectNativeUpdatePackageType(process.platform, {
-      resourcesPath: process.resourcesPath,
-      ...(process.env.APPIMAGE === undefined ? {} : { appImagePath: process.env.APPIMAGE })
-    }),
+    packageType,
     platform: process.platform,
     updater: autoUpdater,
     // Updater-owned quit emits before-quit, where the normal quit orchestrator performs the
