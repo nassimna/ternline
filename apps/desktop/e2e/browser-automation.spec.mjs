@@ -847,7 +847,9 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
   test.setTimeout(180_000)
   const profileDirectory = await mkdtemp(join(tmpdir(), 'ternline-round2-'))
   const evidenceDirectory = join(evidenceRoot, 'round2')
+  const dialogTrace = join(evidenceDirectory, 'approval-trace.jsonl')
   await mkdir(evidenceDirectory, { recursive: true })
+  await writeFile(dialogTrace, '')
   await writeFile(join(profileDirectory, '.zshrc'), '# Task-owned round 2 shell.\n')
   const target = await createBrowserAutomationTestServer()
   let application
@@ -858,14 +860,17 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
     sessionFile = join(profileDirectory, 'runtime', 'node-cli-session.json')
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
-    application = await electron.launch({
+    const launchOptions = {
       args: [dialogHarnessEntry, `--user-data-dir=${profileDirectory}`, '--disable-gpu'],
       cwd: desktopDirectory,
       executablePath: harness.executablePath,
       env: {
         ...environment,
         ...harness.electronEnvironment,
-        AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: JSON.stringify({ messageResponses: [0, 1] }),
+        AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: JSON.stringify({
+          messageResponses: [0, 1, 2, 0],
+          tracePath: dialogTrace
+        }),
         ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
         HOME: profileDirectory,
         TMPDIR: harness.runtimeDirectory,
@@ -873,12 +878,15 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
         ZDOTDIR: profileDirectory
       },
       timeout: 20_000
-    })
+    }
+    application = await electron.launch(launchOptions)
     const renderer = await application.firstWindow()
     await expect(renderer.locator('.terminal-pane')).toHaveAttribute('data-process-id', /^\d+$/, {
       timeout: 20_000
     })
     await waitForAutomationCapability(sessionFile)
+    const initialWorkspaceId = (await cli(sessionFile, ['state', 'snapshot'])).snapshot
+      .selectedWorkspaceId
     for (const path of ['/', '/push', '/replace', '/redirect']) {
       const opened = await cli(sessionFile, ['browser', 'open', '--url', `${target.origin}${path}`])
       expect(opened.operation.state).toBe('succeeded')
@@ -897,6 +905,16 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
       text: 'M5 hostile automation target'
     })
     expect(query).not.toHaveProperty('session')
+    expect((await browser('query', '--selector', '#typed')).matches[0]).toMatchObject({
+      tag: 'input',
+      role: 'textbox'
+    })
+    await browser('eval', '--expression', 'document.querySelector("#typed").type = "checkbox"')
+    expect((await browser('query', '--selector', '#typed')).matches[0]).toMatchObject({
+      tag: 'input',
+      role: 'checkbox'
+    })
+    await browser('eval', '--expression', 'document.querySelector("#typed").type = "text"')
     expect(await browser('eval', '--verbose', '--expression', 'Promise.resolve(42)')).toMatchObject(
       {
         session: { automationSessionId: sessionId },
@@ -1003,6 +1021,8 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
         (item) => item.id === workspace.workspaceId
       )
     ).toBeUndefined()
+    await renderer.locator(`[data-workspace-id="${initialWorkspaceId}"] .workspace-row`).click()
+    await expect(renderer.locator('.terminal-pane')).toHaveAttribute('data-process-id', /^\d+$/)
 
     await createBrowserSplit(renderer)
     await navigateBrowser(renderer, `${target.origin}/push`)
@@ -1107,6 +1127,58 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
       path: join(evidenceDirectory, 'attached-browser.png'),
       contentType: 'image/png'
     })
+
+    await destroySessionFully(sessionFile, attached.session)
+    sessions.pop()
+    const reusable = await cli(sessionFile, attachArgs)
+    await destroySessionFully(sessionFile, reusable.session)
+    await navigateBrowser(renderer, target.origin)
+    const reattached = await cli(sessionFile, attachArgs)
+    await destroySessionFully(sessionFile, reattached.session)
+    const approvalTrace = (await readFile(dialogTrace, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.kind === 'message' && entry.title === 'Allow browser automation?')
+    expect(approvalTrace.map((entry) => entry.result.response)).toEqual([0, 1, 2])
+
+    const otherWorkspace = await cli(sessionFile, [
+      'workspace',
+      'create',
+      '--name',
+      'Separate approval',
+      '--working-directory',
+      profileDirectory
+    ])
+    await renderer
+      .locator(`[data-workspace-id="${otherWorkspace.workspaceId}"] .workspace-row`)
+      .click()
+    await expect(renderer.locator('.browser-pane')).toHaveCount(0)
+    await createBrowserSplit(renderer)
+    await navigateBrowser(renderer, target.origin)
+    const otherTabId = await renderer.evaluate(async () => {
+      const { snapshot } = await globalThis.desktopBridge.listWorkspaces()
+      const workspace = snapshot.workspaces.find(({ id }) => id === snapshot.selectedWorkspaceId)
+      return workspace.panes.find(({ id }) => id === workspace.selectedPaneId).selectedTabId
+    })
+    expect(otherTabId).not.toBe(tabId)
+    await expectCliFailure(
+      sessionFile,
+      ['browser', 'attach', '--tab-id', otherTabId],
+      'approval_denied'
+    )
+    await cli(sessionFile, ['workspace', 'close', '--workspace-id', otherWorkspace.workspaceId])
+    await renderer.locator(`[data-workspace-id="${initialWorkspaceId}"] .workspace-row`).click()
+
+    for (const session of sessions.splice(0)) await destroySessionFully(sessionFile, session)
+    await application.close()
+    application = await electron.launch(launchOptions)
+    const restartedRenderer = await application.firstWindow()
+    await expect(restartedRenderer.locator('.browser-pane').first()).toBeVisible({
+      timeout: 20_000
+    })
+    await waitForAutomationCapability(sessionFile)
+    await expectCliFailure(sessionFile, attachArgs, 'approval_denied')
   } finally {
     for (const session of sessions) {
       if (sessionFile)
@@ -1482,11 +1554,17 @@ async function createEphemeralSessionEventually(sessionFile, options = {}) {
 }
 
 async function destroySessionFully(sessionFile, session) {
-  await cli(sessionFile, sessionCommand('session-destroy', session)).catch(() => undefined)
+  const params = JSON.stringify({
+    automationSessionId: session.automationSessionId,
+    generation: session.generation
+  })
+  await cli(sessionFile, ['browser-automation', 'destroy', '--params-json', params]).catch(
+    () => undefined
+  )
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
     try {
-      const fetched = await cli(sessionFile, sessionCommand('session-get', session))
+      const fetched = await cli(sessionFile, ['browser-automation', 'get', '--params-json', params])
       if (['destroyed', 'failed', 'expired'].includes(fetched.session.state)) return
     } catch {
       return

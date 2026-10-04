@@ -148,6 +148,7 @@ let desktopProvider: ActiveDesktopProvider | undefined
 let desktopActionProvider: DesktopActionProvider | undefined
 let browserAutomationProvider: BrowserAutomationProvider | undefined
 let browserAutomationManager: BrowserAutomationManager | undefined
+const browserAutomationApprovedTabs = new Set<string>()
 let projectActionConfirmationProvider: ProjectActionConfirmationProvider | undefined
 let desktopProviderClient: ControlClient | undefined
 let desktopProviderIdentity: DesktopProviderIdentityParams | undefined
@@ -1514,18 +1515,39 @@ function createBrowserAutomationManager(approvedProfileKey: string): BrowserAuto
       if (signal.aborted) return false
       const entry = requireEntry(target)
       if (!entry) return false
+      const approvalKey = JSON.stringify([
+        approvedProfileKey,
+        target.window.windowId,
+        target.window.windowGeneration,
+        target.tabId,
+        target.browserSessionId
+      ])
+      const currentTarget = entry.binding.browserViews.resolveAutomationTarget(
+        target.tabId,
+        target.window
+      )
+      if (currentTarget?.browserSessionId !== target.browserSessionId) return false
+      if (browserAutomationApprovedTabs.has(approvalKey)) return true
       const result = await dialog.showMessageBox(entry.window, {
         type: 'warning',
-        buttons: ['Deny', 'Allow once'],
+        buttons: ['Deny', 'Allow once', 'Allow this tab until restart'],
         defaultId: 0,
         cancelId: 0,
         noLink: true,
         title: 'Allow browser automation?',
         message: 'Allow automation to control the selected browser tab?',
-        detail: 'This one-time approval applies only to the exact current tab and window.',
+        detail:
+          "Automation can read, type, click, and run code using this tab's current logins. Allow until restart applies only to this tab in this window and is cleared when Ternline exits.",
         signal
       })
-      return !signal.aborted && requireEntry(target) === entry && result.response === 1
+      if (signal.aborted || (result.response !== 1 && result.response !== 2)) return false
+      const approvedTarget = requireEntry(target)?.binding.browserViews.resolveAutomationTarget(
+        target.tabId,
+        target.window
+      )
+      if (approvedTarget?.browserSessionId !== target.browserSessionId) return false
+      if (result.response === 2) browserAutomationApprovedTabs.add(approvalKey)
+      return true
     },
     now: Date.now,
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),

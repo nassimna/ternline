@@ -77,7 +77,10 @@ are reported immediately. Evaluation failures include `evaluation_failed`, the p
 and its stack when available. Evaluation retains the script value when it changes the URL and
 includes a separate `navigation` field. Query results use the real HTML `tag` and a separate `role`.
 Attachment waits up to five seconds for a new tab; approval denial and the 60-second approval
-deadline return `approval_denied` and `approval_timeout`. Console/error follow mode emits compact diagnostic results unless
+deadline return `approval_denied` and `approval_timeout`. The dialog defaults to Deny and offers
+Allow once or Allow this tab until restart. Reusable approval covers only that tab in the same
+window and browser profile; other tabs still prompt, and exiting Ternline clears the approval.
+Console/error follow mode emits compact diagnostic results unless
 `--verbose` is supplied. Screenshot and recording output retain the saved `output` path; artifact
 bytes are verified and the handle is released after saving. Stopped WebM recordings include duration
 and seek metadata.
