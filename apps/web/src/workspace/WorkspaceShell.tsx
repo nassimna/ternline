@@ -156,7 +156,12 @@ import {
   DialogTitle
 } from '../ui/dialog'
 import { useProjectionStore, type WorkspaceCardSlotsV2Projection } from './projection-store'
-import { ConfigurationSettings, type ConfigurationSettingsSection } from './ConfigurationSettings'
+import {
+  ConfigurationSettings,
+  type ConfigurationSettingsHandle,
+  type ConfigurationSettingsSection
+} from './ConfigurationSettings'
+import { useConfigurationStore } from '../configuration-store'
 import { RemoteSessionsSettings, type RemoteWorkspaceContext } from './RemoteSessionsSettings'
 import { WorkspaceCardSlots } from './WorkspaceCardSlots'
 import { WorkspaceCardSlotsV2 } from './WorkspaceCardSlotsV2'
@@ -4580,8 +4585,8 @@ export function SettingsDialog({
 }): React.JSX.Element {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(initialSection)
   const [settingsQuery, setSettingsQuery] = useState('')
-  const [configurationDirty, setConfigurationDirty] = useState(false)
-  const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const configurationRef = useRef<ConfigurationSettingsHandle>(null)
+  const [shortcutStatus, setShortcutStatus] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(shortcuts.map((item) => [item.commandId, item.effectiveShortcut ?? '']))
   )
@@ -4595,16 +4600,47 @@ export function SettingsDialog({
       conflict.commandIds.map((commandId) => [commandId, conflict.commandIds] as const)
     )
   )
-  const save = async (setting: ShortcutSetting): Promise<void> => {
-    const value = drafts[setting.commandId]?.trim() ?? ''
-    if (value && !parseShortcut(value).valid) return
-    if (conflictByCommand.has(setting.commandId as CommandId)) return
-    if ((value || null) === setting.effectiveShortcut) return
-    await onMutation(
-      window.desktopBridge.updateSettings({
-        shortcutOverrides: [{ commandId: setting.commandId, shortcut: value || null }]
-      })
+  const shortcutTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const shortcutPending = useRef<Promise<boolean>>(Promise.resolve(true))
+  const savedShortcuts = useRef(
+    Object.fromEntries(shortcuts.map((setting) => [setting.commandId, setting.effectiveShortcut]))
+  )
+  useEffect(() => () => clearTimeout(shortcutTimer.current), [])
+
+  const save = (
+    setting: ShortcutSetting,
+    draft = drafts[setting.commandId] ?? ''
+  ): Promise<boolean> => {
+    const value = draft.trim() || null
+    const nextConflicts = findShortcutConflicts(
+      DEFAULT_COMMANDS,
+      shortcutDraftOverrides({ ...drafts, [setting.commandId]: draft }),
+      platform
     )
+    if (
+      (value && !parseShortcut(value).valid) ||
+      nextConflicts.some((conflict) => conflict.commandIds.includes(setting.commandId as CommandId))
+    ) {
+      setShortcutStatus(messages.settings.invalidShortcut)
+      return Promise.resolve(false)
+    }
+    const operation = shortcutPending.current.then(async () => {
+      if (value === savedShortcuts.current[setting.commandId]) return true
+      setShortcutStatus(messages.settings.saving)
+      const saved = await onMutation(
+        window.desktopBridge.updateSettings({
+          shortcutOverrides: [{ commandId: setting.commandId, shortcut: value }]
+        })
+      )
+      if (saved) {
+        savedShortcuts.current[setting.commandId] = value
+        await useConfigurationStore.getState().refresh()
+      }
+      setShortcutStatus(saved ? messages.settings.saved : messages.settings.saveFailed)
+      return saved
+    })
+    shortcutPending.current = operation
+    return operation
   }
   const availableSettingsSections = SETTINGS_SECTIONS.filter(
     ({ id }) => id !== 'remote' || remoteSessionsEnabled
@@ -4613,33 +4649,44 @@ export function SettingsDialog({
     const query = settingsQuery.trim().toLocaleLowerCase()
     return !query || `${label} ${keywords}`.toLocaleLowerCase().includes(query)
   })
-  const shortcutsDirty = shortcuts.some(
-    (setting) => (drafts[setting.commandId]?.trim() || null) !== setting.effectiveShortcut
-  )
-  const hasUnsavedChanges = configurationDirty || shortcutsDirty
   const configurationSection =
     activeSection === 'remote' || activeSection === 'shortcuts' ? 'appearance' : activeSection
   const configurationVisible =
     visibleSettingsSections.length > 0 &&
     activeSection !== 'remote' &&
     activeSection !== 'shortcuts'
-  const requestOpenChange = (next: boolean): void => {
-    if (!next && hasUnsavedChanges) {
-      setConfirmDiscard(true)
-      return
+  const flushShortcuts = async (): Promise<boolean> => {
+    clearTimeout(shortcutTimer.current)
+    for (const setting of shortcuts) {
+      if (!(await save(setting))) return false
+    }
+    return true
+  }
+  const requestOpenChange = async (next: boolean): Promise<void> => {
+    if (!next) {
+      if (!(await flushShortcuts())) {
+        setSettingsQuery('')
+        setActiveSection('shortcuts')
+        return
+      }
+      if (configurationRef.current && !(await configurationRef.current.flush())) {
+        setSettingsQuery('')
+        setActiveSection(configurationSection)
+        return
+      }
     }
     onOpenChange(next)
   }
   return (
-    <Dialog onOpenChange={requestOpenChange} open={open}>
+    <Dialog onOpenChange={(next) => void requestOpenChange(next)} open={open}>
       <DialogContent className="settings-dialog" showClose={false}>
         <aside className="settings-navigation">
-          <DialogHeader>
+          <DialogHeader className="settings-navigation-heading">
+            <span aria-hidden="true" className="settings-mark">
+              <Settings size={17} />
+            </span>
             <DialogTitle>{messages.workspaceShell.settingsShortcuts.title}</DialogTitle>
             <DialogDescription>{messages.settings.description}</DialogDescription>
-            {hasUnsavedChanges ? (
-              <small className="settings-unsaved">{messages.settings.unsaved}</small>
-            ) : null}
           </DialogHeader>
           <label className="settings-search">
             <Search aria-hidden="true" size={14} />
@@ -4667,16 +4714,20 @@ export function SettingsDialog({
                 type="button"
               >
                 <SettingsSectionIcon section={section.id} />
-                {section.label}
+                <span>{section.label}</span>
+                <ChevronRight aria-hidden="true" className="settings-nav-chevron" size={12} />
               </button>
             ))}
           </nav>
+          {!configurationReadOnly && (
+            <p className="settings-navigation-footer">{messages.settings.autoSave}</p>
+          )}
         </aside>
         <div className="settings-content">
           <IconButton
             aria-label={messages.ui.closeDialog}
             className="settings-close"
-            onClick={() => requestOpenChange(false)}
+            onClick={() => void requestOpenChange(false)}
             tooltip={messages.ui.closeDialog}
           >
             <X size={16} />
@@ -4698,6 +4749,21 @@ export function SettingsDialog({
                 <h2>{messages.workspaceShell.settingsShortcuts.sectionTitle}</h2>
                 <p>{messages.settings.description}</p>
               </div>
+              <p
+                className="configuration-status"
+                data-error={
+                  shortcutStatus === messages.settings.saveFailed ||
+                  shortcutStatus === messages.settings.invalidShortcut
+                }
+                role="status"
+              >
+                {shortcutStatus ?? messages.settings.autoSave}
+                {shortcutStatus === messages.settings.saveFailed && (
+                  <Button onClick={() => void flushShortcuts()} size="small" variant="ghost">
+                    {messages.settings.retry}
+                  </Button>
+                )}
+              </p>
               <div className="shortcut-list">
                 {shortcuts.map((setting) => {
                   const draft = drafts[setting.commandId] ?? ''
@@ -4730,44 +4796,37 @@ export function SettingsDialog({
                         aria-label={messages.workspaceShell.settingsShortcuts.inputLabel(
                           commandTitle(setting.commandId)
                         )}
-                        onChange={(event) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [setting.commandId]: event.target.value
-                          }))
-                        }
+                        onChange={(event) => {
+                          const value = event.currentTarget.value
+                          setDrafts((current) => ({ ...current, [setting.commandId]: value }))
+                          setShortcutStatus(null)
+                          clearTimeout(shortcutTimer.current)
+                          shortcutTimer.current = setTimeout(() => void save(setting, value), 350)
+                        }}
+                        onBlur={(event) => {
+                          clearTimeout(shortcutTimer.current)
+                          void save(setting, event.currentTarget.value)
+                        }}
                         onKeyDown={(event) => {
                           const recorded = shortcutFromKeyboardEvent(event.nativeEvent, platform)
                           if (!recorded) return
+                          clearTimeout(shortcutTimer.current)
                           event.preventDefault()
                           setDrafts((current) => ({
                             ...current,
                             [setting.commandId]: recorded
                           }))
+                          void save(setting, recorded)
                         }}
                         placeholder="Press shortcut"
                         value={draft}
                       />
                       <Button
-                        disabled={
-                          !valid ||
-                          Boolean(conflictMessage) ||
-                          (draft.trim() || null) === setting.effectiveShortcut
-                        }
-                        onClick={() => void save(setting)}
-                        size="small"
-                      >
-                        {messages.workspaceShell.settingsShortcuts.save}
-                      </Button>
-                      <Button
                         disabled={setting.effectiveShortcut === null}
                         onClick={() => {
                           setDrafts((current) => ({ ...current, [setting.commandId]: '' }))
-                          void onMutation(
-                            window.desktopBridge.updateSettings({
-                              shortcutOverrides: [{ commandId: setting.commandId, shortcut: null }]
-                            })
-                          )
+                          clearTimeout(shortcutTimer.current)
+                          void save(setting, '')
                         }}
                         size="small"
                         variant="ghost"
@@ -4783,9 +4842,20 @@ export function SettingsDialog({
                             ...current,
                             [setting.commandId]: setting.defaultShortcut
                           }))
-                          void onMutation(
-                            window.desktopBridge.resetSettingKey({ commandId: setting.commandId })
-                          )
+                          clearTimeout(shortcutTimer.current)
+                          shortcutPending.current = shortcutPending.current.then(async () => {
+                            const saved = await onMutation(
+                              window.desktopBridge.resetSettingKey({ commandId: setting.commandId })
+                            )
+                            if (saved) {
+                              savedShortcuts.current[setting.commandId] = setting.defaultShortcut
+                              await useConfigurationStore.getState().refresh()
+                            }
+                            setShortcutStatus(
+                              saved ? messages.settings.saved : messages.settings.saveFailed
+                            )
+                            return saved
+                          })
                         }}
                         size="icon"
                         variant="ghost"
@@ -4806,41 +4876,23 @@ export function SettingsDialog({
           <div hidden={!configurationVisible}>
             <div className="settings-content-heading">
               <h2>{SETTINGS_SECTIONS.find(({ id }) => id === configurationSection)?.label}</h2>
-              <p>{messages.settings.description}</p>
+              <p>
+                {configurationSection === 'appearance'
+                  ? messages.settings.appearanceDescription
+                  : messages.settings.description}
+              </p>
             </div>
             <ConfigurationSettings
               activeSection={configurationSection}
               configurationV2={configurationV2}
               nodePreview={nodePreview ?? false}
-              onDirtyChange={setConfigurationDirty}
+              ref={configurationRef}
               readOnly={configurationReadOnly ?? false}
               open={open}
             />
           </div>
         </div>
       </DialogContent>
-      <Dialog onOpenChange={setConfirmDiscard} open={confirmDiscard}>
-        <DialogContent showClose={false}>
-          <DialogHeader>
-            <DialogTitle>{messages.settings.discardTitle}</DialogTitle>
-            <DialogDescription>{messages.settings.discardDescription}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button onClick={() => setConfirmDiscard(false)} variant="ghost">
-              {messages.settings.keepEditing}
-            </Button>
-            <Button
-              onClick={() => {
-                setConfirmDiscard(false)
-                onOpenChange(false)
-              }}
-              variant="destructive"
-            >
-              {messages.settings.discard}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Dialog>
   )
 }

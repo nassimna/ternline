@@ -32,7 +32,7 @@
   --aw-color-terminal-canvas: #17181b;
   --aw-color-browser-content: #fff;
 
-  --aw-font-ui: system-ui, 'Segoe UI', 'Cantarell', 'Ubuntu', sans-serif;
+  --aw-font-ui: 'Geist', system-ui, sans-serif;
   --aw-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
   --aw-font-size-2xs: 9px;
   --aw-font-size-2xs-plus: 9.5px;

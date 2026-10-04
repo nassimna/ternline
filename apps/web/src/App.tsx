@@ -257,7 +257,14 @@ function useApplyAppearanceConfiguration(
     if (!appearance) return
     const root = document.documentElement
     root.dataset.density = appearance.density
-    root.style.setProperty('--aw-font-ui', appearance.fontFamily)
+    const fontFamily =
+      appearance.fontFamily === "system-ui, 'Segoe UI', 'Cantarell', 'Ubuntu', sans-serif"
+        ? 'Geist'
+        : appearance.fontFamily
+    root.style.setProperty(
+      '--aw-font-ui',
+      fontFamily === 'Geist' ? "'Geist', sans-serif" : `${fontFamily}, 'Geist', sans-serif`
+    )
     let removeSystemThemeListener: (() => void) | undefined
     if (appearance.theme !== 'system') {
       root.dataset.theme = appearance.theme

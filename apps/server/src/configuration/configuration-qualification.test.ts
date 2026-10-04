@@ -100,6 +100,7 @@ describe('configuration qualification', () => {
       channel: 'stable',
       automatic: false
     })
+    expect((await service.inspect()).config.appearance.fontFamily).toBe('Geist')
     await service.update({
       expectedRevision: 7,
       update: { updates: { channel: 'beta', automatic: true } }

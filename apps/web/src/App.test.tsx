@@ -1359,6 +1359,7 @@ describe('App', () => {
 
   it('blocks physical shortcut conflicts while preserving set, clear, and reset mutations', async () => {
     const bridge = createBridge()
+    vi.mocked(bridge.updateSettings).mockRejectedValueOnce(new Error('Settings write failed'))
     window.desktopBridge = bridge
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
@@ -1370,18 +1371,19 @@ describe('App', () => {
     const rowQueries = within(row as HTMLElement)
     fireEvent.change(input, { target: { value: 'Primary+D' } })
     expect(rowQueries.getByRole('status')).toHaveTextContent('Conflicts with Split right.')
-    expect(rowQueries.getByRole('button', { name: 'Save' })).toBeDisabled()
+    expect(rowQueries.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
     expect(bridge.updateSettings).not.toHaveBeenCalled()
 
     fireEvent.change(input, { target: { value: 'Primary+G' } })
-    fireEvent.click(rowQueries.getByRole('button', { name: 'Save' }))
-    await waitFor(() => expect(bridge.updateSettings).toHaveBeenCalledTimes(1))
+    fireEvent.blur(input)
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(bridge.updateSettings).toHaveBeenCalledTimes(2))
     expect(bridge.updateSettings).toHaveBeenLastCalledWith({
       shortcutOverrides: [{ commandId: 'workspace.new', shortcut: 'Primary+G' }]
     })
 
     fireEvent.click(rowQueries.getByRole('button', { name: 'Clear' }))
-    await waitFor(() => expect(bridge.updateSettings).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(bridge.updateSettings).toHaveBeenCalledTimes(3))
     expect(bridge.updateSettings).toHaveBeenLastCalledWith({
       shortcutOverrides: [{ commandId: 'workspace.new', shortcut: null }]
     })
@@ -1446,11 +1448,6 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     const includeBody = await screen.findByRole('checkbox', { name: /Include notification body/ })
     fireEvent.click(includeBody)
-    fireEvent.click(
-      within(includeBody.closest('.configuration-section') as HTMLElement).getByRole('button', {
-        name: 'Save section'
-      })
-    )
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenCalledWith({
         expectedRevision: 4,
@@ -1876,7 +1873,87 @@ describe('App', () => {
     expect(await screen.findByText('Database export cancelled.')).toBeVisible()
   })
 
-  it('loads protocol settings and saves only the edited section with CAS revision', async () => {
+  it('uses the bundled interface font for existing default font settings', async () => {
+    const bridge = createBridge()
+    bridge.getConfiguration = vi.fn().mockResolvedValue({
+      config: {
+        ...configurationFixture,
+        appearance: {
+          ...configurationFixture.appearance,
+          fontFamily: "system-ui, 'Segoe UI', 'Cantarell', 'Ubuntu', sans-serif"
+        }
+      }
+    })
+    window.desktopBridge = bridge
+    render(<App />)
+    await screen.findByRole('button', { name: 'Open settings' })
+    expect(document.documentElement.style.getPropertyValue('--aw-font-ui')).toBe(
+      "'Geist', sans-serif"
+    )
+    expect(bridge.updateConfiguration).not.toHaveBeenCalled()
+  })
+
+  it('refreshes the configuration revision after a shortcut save before flushing on close', async () => {
+    const bridge = createBridge()
+    const latest = {
+      ...configurationFixture,
+      revision: 5,
+      keyboardShortcuts: { overrides: { 'workspace.new': 'Primary+G' } }
+    }
+    bridge.getConfiguration = vi
+      .fn()
+      .mockResolvedValueOnce({ config: configurationFixture })
+      .mockResolvedValue({ config: latest })
+    bridge.updateConfiguration = vi.fn().mockResolvedValue({
+      config: { ...latest, revision: 6, terminal: { ...latest.terminal, fontSize: 16 } }
+    })
+    window.desktopBridge = bridge
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }))
+    const shortcut = await screen.findByRole('textbox', { name: 'Open folder shortcut' })
+    fireEvent.change(shortcut, { target: { value: 'Primary+G' } })
+    fireEvent.blur(shortcut)
+    await waitFor(() => expect(bridge.updateSettings).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+    fireEvent.change(await screen.findByRole('spinbutton', { name: 'Font size' }), {
+      target: { value: '16' }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await waitFor(() =>
+      expect(bridge.updateConfiguration).toHaveBeenCalledWith({
+        expectedRevision: 5,
+        update: { terminal: { ...latest.terminal, fontSize: 16 } }
+      })
+    )
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument()
+    )
+  })
+
+  it('keeps an invalid numeric edit visible and prevents closing until it can auto-save', async () => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+    const size = await screen.findByRole('spinbutton', { name: 'Font size' })
+    fireEvent.change(size, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    expect(await screen.findByText(messages.settings.invalidValues)).toBeVisible()
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+    expect(bridge.updateConfiguration).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
+    fireEvent.change(size, { target: { value: '16' } })
+    await waitFor(() => expect(bridge.updateConfiguration).toHaveBeenCalledOnce())
+    expect(bridge.updateConfiguration).toHaveBeenCalledWith({
+      expectedRevision: 4,
+      update: { terminal: { ...configurationFixture.terminal, fontSize: 16 } }
+    })
+  })
+
+  it('auto-saves only edited settings sections with CAS revision', async () => {
     const bridge = createBridge()
     bridge.getConfiguration = vi.fn().mockResolvedValue({ config: configurationFixture })
     bridge.updateConfiguration = vi.fn().mockResolvedValue({
@@ -1890,14 +1967,13 @@ describe('App', () => {
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
 
-    const theme = await screen.findByRole('combobox', { name: 'Theme' })
-    fireEvent.change(theme, { target: { value: 'dark' } })
+    const theme = await screen.findByRole('button', { name: 'Dark' })
+    fireEvent.click(theme)
     fireEvent.change(screen.getByRole('combobox', { name: 'Density' }), {
       target: { value: 'expanded' }
     })
     const appearance = theme.closest('.configuration-section')
     expect(appearance).not.toBeNull()
-    fireEvent.click(within(appearance as HTMLElement).getByRole('button', { name: 'Save section' }))
 
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenCalledWith({
@@ -1932,14 +2008,15 @@ describe('App', () => {
     expect(screen.getByRole('combobox', { name: 'Update channel' })).toBeEnabled()
   })
 
-  it('keeps unsaved terminal edits when another settings section is saved', async () => {
+  it('coalesces edits across settings sections into one auto-save', async () => {
     const bridge = createBridge()
     bridge.getConfiguration = vi.fn().mockResolvedValue({ config: configurationFixture })
     bridge.updateConfiguration = vi.fn().mockResolvedValue({
       config: {
         ...configurationFixture,
         revision: 5,
-        appearance: { ...configurationFixture.appearance, theme: 'light' }
+        appearance: { ...configurationFixture.appearance, theme: 'light' },
+        terminal: { ...configurationFixture.terminal, shellPath: '/bin/zsh' }
       }
     })
     window.desktopBridge = bridge
@@ -1952,32 +2029,33 @@ describe('App', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }))
     fireEvent.click(screen.getByRole('button', { name: 'Appearance' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Theme' }), {
-      target: { value: 'light' }
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Save section' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Light' }))
     await waitFor(() => expect(bridge.updateConfiguration).toHaveBeenCalledOnce())
 
     fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
     expect(screen.getByRole('textbox', { name: 'Shell path' })).toHaveValue('/bin/zsh')
-    expect(screen.getByText('Unsaved changes')).toBeVisible()
+    expect(bridge.updateConfiguration).toHaveBeenCalledWith({
+      expectedRevision: 4,
+      update: {
+        appearance: { ...configurationFixture.appearance, theme: 'light' },
+        terminal: { ...configurationFixture.terminal, shellPath: '/bin/zsh' }
+      }
+    })
   })
 
-  it('asks before closing settings with unsaved edits', async () => {
-    window.desktopBridge = createBridge()
+  it('flushes pending configuration before closing settings', async () => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
-    fireEvent.change(await screen.findByRole('combobox', { name: 'Theme' }), {
-      target: { value: 'light' }
-    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Light' }))
     fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
-
-    expect(await screen.findByRole('dialog', { name: 'Discard unsaved changes?' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
-    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeVisible()
-    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull())
+    expect(bridge.updateConfiguration).toHaveBeenCalledOnce()
+    expect(bridge.updateConfiguration).toHaveBeenCalledWith({
+      expectedRevision: 4,
+      update: { appearance: { ...configurationFixture.appearance, theme: 'light' } }
+    })
   })
 
   it('keeps configuration readable but disables its controls in the isolated Node demo', async () => {
@@ -1995,8 +2073,8 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
 
     expect(await screen.findByText(messages.settings.configurationReadOnly)).toBeVisible()
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Save section' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Dark' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Save section' })).not.toBeInTheDocument()
     expect(bridge.getConfiguration).toHaveBeenCalled()
     expect(bridge.updateConfiguration).not.toHaveBeenCalled()
   })
@@ -2015,11 +2093,11 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
 
     expect(screen.queryByText(messages.settings.configurationReadOnly)).not.toBeInTheDocument()
-    expect(await screen.findByRole('combobox', { name: 'Theme' })).toBeEnabled()
+    expect(await screen.findByRole('button', { name: 'Dark' })).toBeEnabled()
     fireEvent.click(screen.getByRole('button', { name: 'Terminal' }))
     expect(screen.getByRole('textbox', { name: 'Shell path' })).toBeEnabled()
     expect(screen.getByText(messages.settings.shellBehavior)).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Save section' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Save section' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
     expect(screen.getByRole('combobox', { name: 'Log level' })).toBeEnabled()
     expect(screen.getByText(messages.settings.loggingBehavior)).toBeVisible()
@@ -2040,39 +2118,42 @@ describe('App', () => {
     expect(screen.queryByRole('option', { name: 'Expanded' })).not.toBeInTheDocument()
   })
 
-  it('saves the native select value when a packaged selection precedes the React commit', async () => {
+  it('keeps rapid edits while an auto-save is in flight and uses the next revision', async () => {
     const bridge = createBridge()
-    bridge.getConfiguration = vi.fn().mockResolvedValue({ config: configurationFixture })
-    bridge.updateConfiguration = vi.fn().mockResolvedValue({
-      config: {
-        ...configurationFixture,
-        revision: 5,
-        appearance: { ...configurationFixture.appearance, theme: 'light' }
-      }
+    let resolveSave!: (result: { config: ConfigurationSnapshot }) => void
+    const firstSave = new Promise<{ config: ConfigurationSnapshot }>((resolve) => {
+      resolveSave = resolve
     })
+    bridge.updateConfiguration = vi
+      .fn()
+      .mockReturnValueOnce(firstSave)
+      .mockImplementationOnce(
+        ({ update }: Parameters<NonNullable<DesktopBridge['updateConfiguration']>>[0]) =>
+          Promise.resolve({ config: { ...configurationFixture, ...update, revision: 6 } })
+      )
     window.desktopBridge = bridge
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
-
-    const theme = await screen.findByRole<HTMLSelectElement>('combobox', { name: 'Theme' })
-    theme.value = 'light'
-    const appearance = theme.closest('.configuration-section')
-    expect(appearance).not.toBeNull()
-    fireEvent.click(within(appearance as HTMLElement).getByRole('button', { name: 'Save section' }))
-
-    await waitFor(() =>
-      expect(bridge.updateConfiguration).toHaveBeenCalledWith({
-        expectedRevision: 4,
-        update: {
-          appearance: {
-            density: configurationFixture.appearance.density,
-            fontFamily: configurationFixture.appearance.fontFamily,
-            theme: 'light'
-          }
-        }
-      })
-    )
-    expect(await screen.findByText('Setting saved.')).toBeVisible()
+    fireEvent.click(await screen.findByRole('button', { name: 'Dark' }))
+    await waitFor(() => expect(bridge.updateConfiguration).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByRole('combobox', { name: 'Density' }), {
+      target: { value: 'compact' }
+    })
+    resolveSave({
+      config: {
+        ...configurationFixture,
+        revision: 5,
+        appearance: { ...configurationFixture.appearance, theme: 'dark' }
+      }
+    })
+    await waitFor(() => expect(bridge.updateConfiguration).toHaveBeenCalledTimes(2))
+    expect(bridge.updateConfiguration).toHaveBeenLastCalledWith({
+      expectedRevision: 5,
+      update: {
+        appearance: { ...configurationFixture.appearance, theme: 'dark', density: 'compact' }
+      }
+    })
+    expect(screen.getByRole('combobox', { name: 'Density' })).toHaveValue('compact')
   })
 
   it('saves and clears the configured shell with the authoritative terminal section', async () => {
@@ -2101,9 +2182,6 @@ describe('App', () => {
     const terminalSection = shellPath.closest('.configuration-section')
     expect(terminalSection).not.toBeNull()
     fireEvent.change(shellPath, { target: { value: '/bin/false' } })
-    fireEvent.click(
-      within(terminalSection as HTMLElement).getByRole('button', { name: 'Save section' })
-    )
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenNthCalledWith(1, {
         expectedRevision: 4,
@@ -2115,9 +2193,6 @@ describe('App', () => {
     await waitFor(() => expect(shellPath).toHaveValue('/bin/false'))
 
     fireEvent.change(shellPath, { target: { value: '' } })
-    fireEvent.click(
-      within(terminalSection as HTMLElement).getByRole('button', { name: 'Save section' })
-    )
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenNthCalledWith(2, {
         expectedRevision: 5,
@@ -2145,9 +2220,6 @@ describe('App', () => {
     const loggingSection = logLevel.closest('.configuration-section')
     expect(loggingSection).not.toBeNull()
     fireEvent.change(logLevel, { target: { value: 'debug' } })
-    fireEvent.click(
-      within(loggingSection as HTMLElement).getByRole('button', { name: 'Save section' })
-    )
 
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenCalledWith({
@@ -2191,11 +2263,6 @@ describe('App', () => {
     fireEvent.click(automatic)
     fireEvent.change(channel, { target: { value: 'alpha' } })
     expect(channel).toHaveValue('alpha')
-    fireEvent.click(
-      within(channel.closest('.configuration-section') as HTMLElement).getByRole('button', {
-        name: 'Save section'
-      })
-    )
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenCalledWith({
         expectedRevision: 4,
@@ -2216,7 +2283,7 @@ describe('App', () => {
     expect(bridge.installUpdate).toHaveBeenCalledOnce()
   })
 
-  it('reloads authoritative configuration after a CAS conflict and retains legacy controls', async () => {
+  it('keeps edits after a CAS conflict and retries against the current revision', async () => {
     const bridge = createBridge()
     const latest = {
       ...configurationFixture,
@@ -2232,21 +2299,23 @@ describe('App', () => {
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
 
-    const theme = await screen.findByRole('combobox', { name: 'Theme' })
-    fireEvent.change(theme, { target: { value: 'dark' } })
-    fireEvent.click(
-      within(theme.closest('.configuration-section') as HTMLElement).getByRole('button', {
-        name: 'Save section'
+    const theme = await screen.findByRole('button', { name: 'Dark' })
+    fireEvent.click(theme)
+
+    expect(await screen.findByText(messages.settings.conflict)).toBeVisible()
+    await waitFor(() => expect(theme).toHaveAttribute('aria-pressed', 'true'))
+    expect(bridge.getConfiguration).toHaveBeenCalledTimes(2)
+    vi.mocked(bridge.updateConfiguration).mockResolvedValueOnce({
+      config: { ...latest, revision: 9, appearance: { ...latest.appearance, theme: 'dark' } }
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() =>
+      expect(bridge.updateConfiguration).toHaveBeenLastCalledWith({
+        expectedRevision: 8,
+        update: { appearance: { ...configurationFixture.appearance, theme: 'dark' } }
       })
     )
-
-    expect(
-      await screen.findByText(
-        'Settings changed elsewhere. The latest configuration has been reloaded.'
-      )
-    ).toBeVisible()
-    await waitFor(() => expect(theme).toHaveValue('light'))
-    expect(bridge.getConfiguration).toHaveBeenCalledTimes(2)
+    expect(await screen.findByText(messages.settings.saved)).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
     expect(screen.getByRole('checkbox', { name: /Include notification body/ })).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }))

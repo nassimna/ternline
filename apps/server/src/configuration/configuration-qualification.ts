@@ -43,7 +43,7 @@ const DEFAULTS: Snapshot = {
   appearance: {
     theme: 'system',
     density: 'comfortable',
-    fontFamily: "system-ui, 'Segoe UI', 'Cantarell', 'Ubuntu', sans-serif"
+    fontFamily: 'Geist'
   },
   terminal: {
     shellPath: null,
