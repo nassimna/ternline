@@ -405,15 +405,16 @@ async function setTheme(page, theme, options = {}) {
   await page.getByRole('button', { name: 'Open settings' }).click()
   const settings = page.getByRole('dialog', { name: 'Settings' })
   await expect(settings).toBeVisible()
-  const themeSelect = settings.getByLabel('Theme')
-  await expect(themeSelect).toBeVisible()
-  await themeSelect.selectOption(theme)
-  const appearanceSection = themeSelect.locator(
-    'xpath=ancestor::*[contains(@class, "configuration-section")]'
-  )
-  await appearanceSection.getByRole('button', { name: 'Save section' }).click()
+  const themeButton = settings.getByRole('button', {
+    name: theme[0].toUpperCase() + theme.slice(1),
+    exact: true
+  })
+  await expect(themeButton).toBeVisible()
+  if ((await themeButton.getAttribute('aria-pressed')) !== 'true') {
+    await themeButton.click()
+    await expect(settings.getByText('Setting saved.', { exact: true })).toBeVisible()
+  }
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-  await expect(settings.getByText('Setting saved.', { exact: true })).toBeVisible()
   if (!options.keepSettingsOpen) await page.keyboard.press('Escape')
 }
 
