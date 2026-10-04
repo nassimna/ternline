@@ -1510,22 +1510,13 @@ function createBrowserAutomationManager(approvedProfileKey: string): BrowserAuto
         return undefined
       return entry.binding.browserViews.resolveAutomationTarget(tabId, target)
     },
-    confirmAttachment: async (target, signal) => {
-      if (signal.aborted) return false
-      const entry = requireEntry(target)
-      if (!entry) return false
-      const result = await dialog.showMessageBox(entry.window, {
-        type: 'warning',
-        buttons: ['Deny', 'Allow once'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-        title: 'Allow browser automation?',
-        message: 'Allow automation to control the selected browser tab?',
-        detail: 'This one-time approval applies only to the exact current tab and window.',
-        signal
-      })
-      return !signal.aborted && requireEntry(target) === entry && result.response === 1
+    confirmAttachment: (target, signal) => {
+      if (signal.aborted) return Promise.resolve(false)
+      const currentTarget = requireEntry(target)?.binding.browserViews.resolveAutomationTarget(
+        target.tabId,
+        target.window
+      )
+      return Promise.resolve(currentTarget?.browserSessionId === target.browserSessionId)
     },
     now: Date.now,
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),

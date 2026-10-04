@@ -76,8 +76,11 @@ races with execution, it refreshes the session and retries `stale_navigation` on
 are reported immediately. Evaluation failures include `evaluation_failed`, the page error message,
 and its stack when available. Evaluation retains the script value when it changes the URL and
 includes a separate `navigation` field. Query results use the real HTML `tag` and a separate `role`.
-Attachment waits up to five seconds for a new tab; approval denial and the 60-second approval
-deadline return `approval_denied` and `approval_timeout`. Console/error follow mode emits compact diagnostic results unless
+Attachment waits up to five seconds for a new tab. Authenticated local agents attach without a
+confirmation dialog on macOS, Linux, and Windows, including after restarting Ternline. Access
+uses the private local CLI session and remains limited to the configured browser profile and
+the exact live tab and window generation.
+Console/error follow mode emits compact diagnostic results unless
 `--verbose` is supplied. Screenshot and recording output retain the saved `output` path; artifact
 bytes are verified and the handle is released after saving. Stopped WebM recordings include duration
 and seek metadata.

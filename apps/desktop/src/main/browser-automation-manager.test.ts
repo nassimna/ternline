@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events'
+import { runInNewContext } from 'node:vm'
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -576,6 +577,116 @@ describe('BrowserAutomationManager', () => {
 })
 
 describe('createElectronAutomationPage', () => {
+  it.each(['selector', 'text', 'role'] as const)(
+    'reports Chromium roles for %s queries and removes temporary markers on success or failure',
+    async (target) => {
+      const attributes = new Map([
+        ['id', 'updates'],
+        ['type', 'checkbox']
+      ])
+      const element = {
+        tagName: 'INPUT',
+        innerText: 'Receive updates',
+        textContent: 'Receive updates',
+        children: [],
+        value: 'on',
+        getBoundingClientRect: () => ({ width: 20, height: 20 }),
+        hasAttribute: (name: string) => attributes.has(name),
+        getAttribute: (name: string) => attributes.get(name) ?? null,
+        setAttribute: (name: string, value: string) => attributes.set(name, value),
+        removeAttribute: (name: string) => attributes.delete(name)
+      }
+      const context = {
+        document: {
+          querySelectorAll: (selector: string) =>
+            selector.startsWith('[data-ternline-') && !attributes.has(selector.slice(1, -1))
+              ? []
+              : [element]
+        },
+        getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+        TextDecoder,
+        Uint8Array,
+        atob
+      }
+      let failDescription = false
+      const debuggerApi = Object.assign(new EventEmitter(), {
+        isAttached: () => false,
+        attach: vi.fn(),
+        detach: vi.fn(),
+        sendCommand: vi.fn((method: string, params?: Record<string, unknown>) => {
+          switch (method) {
+            case 'Accessibility.getFullAXTree':
+              return Promise.resolve({
+                nodes: [
+                  { ignored: true, backendDOMNodeId: 2, role: { value: 'none' } },
+                  {
+                    backendDOMNodeId: 2,
+                    role: { value: 'checkbox' },
+                    name: { value: 'Receive updates' }
+                  }
+                ]
+              })
+            case 'DOM.getDocument':
+              return Promise.resolve({ root: { nodeId: 1 } })
+            case 'DOM.querySelectorAll':
+              return Promise.resolve({ nodeIds: [2] })
+            case 'DOM.describeNode':
+              if (failDescription) return Promise.reject(new Error('query role lookup failed'))
+              return Promise.resolve({
+                node: { backendNodeId: 2, attributes: Array.from(attributes).flat() }
+              })
+            case 'DOM.resolveNode':
+              return Promise.resolve({ object: { objectId: 'updates' } })
+            case 'Runtime.callFunctionOn': {
+              const callback = runInNewContext(`(${String(params!.functionDeclaration)})`) as (
+                attribute: string
+              ) => void
+              callback.call(element, (params!.arguments as Array<{ value: string }>)[0]!.value)
+              return Promise.resolve({})
+            }
+            default:
+              return Promise.resolve({})
+          }
+        })
+      })
+      const contents = Object.assign(new EventEmitter(), {
+        debugger: debuggerApi,
+        isDestroyed: () => false,
+        executeJavaScript: vi.fn((source: string) =>
+          Promise.resolve(runInNewContext(source, context) as unknown)
+        )
+      })
+      const page = createElectronAutomationPage({
+        contents: contents as unknown as Electron.WebContents,
+        owned: true,
+        target: targetBinding(),
+        revalidate: () => true
+      })
+      const input = {
+        limit: 1,
+        ...(target === 'selector'
+          ? { selector: '#updates' }
+          : target === 'text'
+            ? { locator: { text: 'Receive updates' } }
+            : { locator: { role: 'checkbox', name: 'Receive updates' } })
+      }
+      try {
+        await page.initialize()
+        expect(await page.executeClosedScript('query', input)).toMatchObject([
+          { tag: 'input', role: 'checkbox', attributes: { id: 'updates', type: 'checkbox' } }
+        ])
+        expect(Array.from(attributes.keys())).toEqual(['id', 'type'])
+
+        failDescription = true
+        await expect(page.executeClosedScript('query', input)).rejects.toThrow(
+          'query role lookup failed'
+        )
+        expect(Array.from(attributes.keys())).toEqual(['id', 'type'])
+      } finally {
+        page.dispose()
+      }
+    }
+  )
   it('ignores same-document and subframe navigation while reporting page evaluation errors', async () => {
     const debuggerApi = Object.assign(new EventEmitter(), {
       isAttached: () => false,

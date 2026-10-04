@@ -982,15 +982,12 @@ const CLOSED_SCRIPTS: Readonly<Record<BrowserAutomationClosedScript, string>> = 
   })`,
   query: `(input => (${findTargetsSource})(input).slice(0, input.limit).map((element, index) => {
     const name = element.tagName.toLowerCase()
-    const role = element.getAttribute('role') || (/^h[1-6]$/.test(name) ? 'heading' :
-      name === 'a' ? 'link' : name === 'img' ? 'image' :
-      ['button','input','textarea','select','form','dialog'].includes(name) ? name : 'generic')
+    element.setAttribute(input.queryAttribute, String(index))
     const style = getComputedStyle(element)
     const rect = element.getBoundingClientRect()
     return {
       index,
       tag: name,
-      role,
       visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
       enabled: !('disabled' in element) || element.disabled !== true,
       focused: document.activeElement === element,
@@ -1132,19 +1129,23 @@ export function createElectronAutomationPage(options: {
     },
     executeClosedScript: async (script, input) => {
       const attribute = 'data-ternline-' + randomUUID()
+      const queryAttribute = attribute + '-query'
       const objects: string[] = []
       let target = input
       try {
+        const tree =
+          script === 'query' || input.locator?.role
+            ? await devtools.command<{
+                nodes: Array<{
+                  ignored?: boolean
+                  role?: { value: string }
+                  name?: { value: string }
+                  backendDOMNodeId?: number
+                }>
+              }>('Accessibility.getFullAXTree', {})
+            : undefined
         if (input.locator?.role) {
-          const tree = await devtools.command<{
-            nodes: Array<{
-              ignored?: boolean
-              role?: { value: string }
-              name?: { value: string }
-              backendDOMNodeId?: number
-            }>
-          }>('Accessibility.getFullAXTree', {})
-          const matches = tree.nodes.filter(
+          const matches = tree!.nodes.filter(
             (node) =>
               !node.ignored &&
               node.backendDOMNodeId &&
@@ -1167,9 +1168,40 @@ export function createElectronAutomationPage(options: {
           }
           target = { ...input, selector: `[${attribute}]` }
         }
-        const encoded = Buffer.from(JSON.stringify(target), 'utf8').toString('base64')
+        const encoded = Buffer.from(
+          JSON.stringify(script === 'query' ? { ...target, queryAttribute } : target),
+          'utf8'
+        ).toString('base64')
         const source = `${CLOSED_SCRIPTS[script]}((encoded => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(encoded), character => character.charCodeAt(0)))))('${encoded}'))`
         const result: unknown = await options.contents.executeJavaScript(source, true)
+        if (script === 'query') {
+          const matches = parseElementSummaries(result, input.limit ?? 100)
+          const { root } = await devtools.command<{ root: { nodeId: number } }>('DOM.getDocument', {
+            depth: 0
+          })
+          const { nodeIds } = await devtools.command<{ nodeIds: number[] }>(
+            'DOM.querySelectorAll',
+            {
+              nodeId: root.nodeId,
+              selector: `[${queryAttribute}]`
+            }
+          )
+          const roles = new Map(
+            tree!.nodes
+              .filter((node) => !node.ignored && node.backendDOMNodeId)
+              .map((node) => [node.backendDOMNodeId, node.role?.value])
+          )
+          for (const nodeId of nodeIds.slice(0, 100)) {
+            const { node } = await devtools.command<{
+              node: { backendNodeId: number; attributes?: string[] }
+            }>('DOM.describeNode', { nodeId })
+            const attributeIndex = node.attributes?.indexOf(queryAttribute) ?? -1
+            const match = matches[Number(node.attributes?.[attributeIndex + 1])]
+            const role = roles.get(node.backendNodeId)
+            if (attributeIndex >= 0 && match && role !== undefined) match.role = role
+          }
+          return matches
+        }
         if (script === 'click') {
           const point = result as { x: number; y: number }
           options.contents.sendInputEvent({ type: 'mouseMove', x: point.x, y: point.y })
@@ -1191,6 +1223,14 @@ export function createElectronAutomationPage(options: {
         if (script === 'click') await new Promise((resolve) => setTimeout(resolve, 50))
         return result
       } finally {
+        if (script === 'query') {
+          await options.contents
+            .executeJavaScript(
+              `document.querySelectorAll(${JSON.stringify(`[${queryAttribute}]`)}).forEach(element => element.removeAttribute(${JSON.stringify(queryAttribute)}))`,
+              true
+            )
+            .catch(() => undefined)
+        }
         for (const objectId of objects) {
           await devtools
             .command('Runtime.callFunctionOn', {
