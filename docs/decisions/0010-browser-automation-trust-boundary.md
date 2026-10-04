@@ -27,9 +27,12 @@ partition ownership. Raw Electron `webContents` IDs and caller-selected partitio
 the public contract. Main revalidates the complete binding against a fresh authoritative snapshot
 before every native dispatch and acknowledgement.
 
-Attachment to an existing user browser session requires an explicit exact target and trusted
-desktop confirmation. Otherwise automation creates a unique, automation-owned, nonpersistent
-partition with a fixed namespace. It never shares cookies, cache, permissions, storage, or download
+Attachment to an existing user browser session requires an explicit exact target and the
+authenticated local CLI session. Its owner-only credential authorizes attachment without a desktop
+confirmation prompt, including after restart. Main still checks the configured profile, live browser
+lifecycle, window generation, and cancellation before attaching. Otherwise automation creates a
+unique, automation-owned, nonpersistent partition with a fixed namespace. It never shares cookies,
+cache, permissions, storage, or download
 state with another browser or profile. Session destruction clears grants and ephemeral storage to
 the extent Electron supports, then destroys the owned view.
 
@@ -129,7 +132,7 @@ terminal outcome and reject duplicate or late acknowledgements.
 
 Rust DTOs are canonical and generated TypeScript/Zod rejects unknown fields, `null` ambiguity,
 invalid IDs/epochs, unsafe URLs, unbounded selectors/text/results/images, and unsupported operations.
-CLI adds versioned `browser automation` JSON commands but cannot bypass desktop confirmation or
+CLI adds versioned `browser automation` JSON commands but cannot bypass session authentication or
 target authorization. Older services remain usable with automation commands/UI absent.
 
 ## Consequences

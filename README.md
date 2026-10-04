@@ -81,9 +81,9 @@ settle (strict limit below 1%). Cold/warm launch and resize passed their informa
 
 ## Browser automation for agents
 
-The CLI controls an isolated browser session or attaches to an existing browser tab after
-its owner approves. Every operation uses `--session-id`; `browser open` without one creates
-an isolated session and returns its ID. For example:
+The authenticated local CLI controls an isolated browser session or attaches to an existing browser
+tab without a confirmation prompt. Every operation uses `--session-id`; `browser open` without one
+creates an isolated session and returns its ID. For example:
 
 ```sh
 ternline-cli browser open --url http://localhost:3000

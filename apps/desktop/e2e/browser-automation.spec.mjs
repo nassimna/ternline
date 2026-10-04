@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, URL } from 'node:url'
 
 import { _electron as electron, expect, test } from '@playwright/test'
 
@@ -151,7 +151,7 @@ test('Linux automation mode uses a separate profile without keyring access', asy
 })
 
 // eslint-disable-next-line no-empty-pattern
-test('attach mode requires trusted approval for the exact live target', async ({}, testInfo) => {
+test('authenticated local agents attach without a prompt to the exact live target', async ({}, testInfo) => {
   test.setTimeout(60_000)
   const profileDirectory = await mkdtemp(join(tmpdir(), 'agent-workspace-m5-attach-'))
   const evidenceDirectory = join(evidenceRoot, testInfo.testId.replaceAll(/[^A-Za-z0-9._-]/gu, '_'))
@@ -167,15 +167,21 @@ test('attach mode requires trusted approval for the exact live target', async ({
   try {
     const harness = await createPackagedElectronHarness(profileDirectory)
     sessionFile = join(profileDirectory, 'runtime', 'node-cli-session.json')
+    const environment = { ...process.env }
+    delete environment.ELECTRON_RUN_AS_NODE
     application = await electron.launch({
-      args: [dialogHarnessEntry, `--user-data-dir=${profileDirectory}`, '--disable-gpu'],
+      args: [
+        dialogHarnessEntry,
+        `--user-data-dir=${profileDirectory}`,
+        '--disable-gpu',
+        '--mute-audio'
+      ],
       cwd: desktopDirectory,
       executablePath: harness.executablePath,
       env: {
-        ...process.env,
+        ...environment,
         ...harness.electronEnvironment,
         AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: JSON.stringify({
-          messageResponses: [0, 1, 1],
           tracePath: dialogTrace
         }),
         ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
@@ -192,71 +198,61 @@ test('attach mode requires trusted approval for the exact live target', async ({
       timeout: 20_000
     })
     await waitForAutomationCapability(sessionFile)
-    await installBrowserMountTrace(application)
     await createBrowserSplit(renderer)
     await navigateBrowser(renderer, `${target.origin}/`)
-    const exactTarget = await selectedBrowserTarget(renderer, application)
+    await expect.poll(() => webContentsCounts(application)).toMatchObject({ remotePages: 1 })
+    const tabId = await renderer.evaluate(async () => {
+      const { snapshot } = await globalThis.desktopBridge.listWorkspaces()
+      const workspace = snapshot.workspaces.find(({ id }) => id === snapshot.selectedWorkspaceId)
+      return workspace.panes.find(({ id }) => id === workspace.selectedPaneId).selectedTabId
+    })
     const baseline = await webContentsCounts(application)
-
-    const attachArgs = (browserLifecycleId) => [
-      'browser',
-      'automation',
-      'session-create',
-      '--mode',
-      'attach',
-      '--profile-key',
-      'default',
-      '--workspace-id',
-      exactTarget.workspaceId,
-      '--pane-id',
-      exactTarget.paneId,
-      '--tab-id',
-      exactTarget.tabId,
-      '--browser-session-id',
-      exactTarget.browserSessionId,
-      '--browser-lifecycle-id',
-      browserLifecycleId,
-      '--target-window-id',
-      exactTarget.windowId,
-      '--target-window-generation',
-      String(exactTarget.windowGeneration),
-      '--idempotency-epoch',
-      exactTarget.idempotencyEpoch
-    ]
-
-    await expectCliFailure(
-      sessionFile,
-      attachArgs(exactTarget.browserLifecycleId),
-      'approval_denied'
-    )
-    const approved = await cli(sessionFile, attachArgs(exactTarget.browserLifecycleId))
-    attachedSession = approved.session
+    attachedSession = (await cli(sessionFile, ['browser', 'attach', '--tab-id', tabId])).session
     expect(attachedSession).toMatchObject({ mode: 'attach', state: 'ready' })
+    const exactTarget = attachedSession.target
     expect(await webContentsCounts(application)).toEqual(baseline)
-    await cli(sessionFile, sessionCommand('session-destroy', attachedSession))
+    await destroySessionFully(sessionFile, attachedSession)
     attachedSession = undefined
     expect(await webContentsCounts(application)).toEqual(baseline)
     await expect(renderer.locator('.browser-pane')).toBeVisible()
 
-    await expectCliFailure(sessionFile, attachArgs(randomUUID()), 'target_not_found')
+    const attachArgs = (targetBinding, profileKey = 'default') => [
+      'browser-automation',
+      'create',
+      '--params-json',
+      JSON.stringify({ mode: 'attach', profileKey, target: targetBinding })
+    ]
+    await expectCliFailure(
+      sessionFile,
+      attachArgs({ ...exactTarget, browserLifecycleId: randomUUID() }),
+      'target_not_found'
+    )
+    await expectCliFailure(
+      sessionFile,
+      attachArgs(exactTarget, 'other-profile'),
+      'profile_unavailable'
+    )
+    const { baseUrl } = JSON.parse(await readFile(sessionFile, 'utf8'))
+    const unauthenticated = await globalThis.fetch(
+      new URL('/v1/browser-automation/sessions', baseUrl),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'attach', profileKey: 'default', target: exactTarget })
+      }
+    )
+    expect(unauthenticated.status).toBe(401)
     const trace = await readFileUtf8(dialogTrace)
     const entries = trace
       .trim()
       .split('\n')
+      .filter(Boolean)
       .map((line) => JSON.parse(line))
-      .filter(({ kind }) => kind === 'message')
-    expect(entries).toHaveLength(3)
-    expect(entries.map(({ kind, result }) => [kind, result.response])).toEqual([
-      ['message', 0],
-      ['message', 1],
-      ['message', 1]
-    ])
-    expect(entries.every(({ title }) => title === 'Allow browser automation?')).toBe(true)
+      .filter(({ kind, title }) => kind === 'message' && title === 'Allow browser automation?')
+    expect(entries).toHaveLength(0)
   } finally {
     if (attachedSession && sessionFile) {
-      await cli(sessionFile, sessionCommand('session-destroy', attachedSession)).catch(
-        () => undefined
-      )
+      await destroySessionFully(sessionFile, attachedSession).catch(() => undefined)
     }
     await application?.close().catch(() => undefined)
     await target.close().catch(() => undefined)
@@ -861,14 +857,18 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
     const launchOptions = {
-      args: [dialogHarnessEntry, `--user-data-dir=${profileDirectory}`, '--disable-gpu'],
+      args: [
+        dialogHarnessEntry,
+        `--user-data-dir=${profileDirectory}`,
+        '--disable-gpu',
+        '--mute-audio'
+      ],
       cwd: desktopDirectory,
       executablePath: harness.executablePath,
       env: {
         ...environment,
         ...harness.electronEnvironment,
         AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: JSON.stringify({
-          messageResponses: [0, 1, 2, 0],
           tracePath: dialogTrace
         }),
         ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
@@ -1032,7 +1032,6 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
       return workspace.panes.find(({ id }) => id === workspace.selectedPaneId).selectedTabId
     })
     const attachArgs = ['browser', 'attach', '--tab-id', tabId]
-    await expectCliFailure(sessionFile, attachArgs, 'approval_denied')
     const attached = await cli(sessionFile, attachArgs)
     sessions.push(attached.session)
     const attachedId = attached.session.automationSessionId
@@ -1123,30 +1122,23 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
       output: join(evidenceDirectory, 'flow.webm')
     })
     expect((await readFile(recording.output)).byteLength).toBeGreaterThan(1000)
-    await testInfo.attach('Approved browser attachment (1000x700 isolated Electron fixture)', {
+    await testInfo.attach('Agent browser attachment (1000x700 isolated Electron fixture)', {
       path: join(evidenceDirectory, 'attached-browser.png'),
       contentType: 'image/png'
     })
 
     await destroySessionFully(sessionFile, attached.session)
     sessions.pop()
-    const reusable = await cli(sessionFile, attachArgs)
-    await destroySessionFully(sessionFile, reusable.session)
+    const repeated = await cli(sessionFile, attachArgs)
+    await destroySessionFully(sessionFile, repeated.session)
     await navigateBrowser(renderer, target.origin)
     const reattached = await cli(sessionFile, attachArgs)
     await destroySessionFully(sessionFile, reattached.session)
-    const approvalTrace = (await readFile(dialogTrace, 'utf8'))
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line))
-      .filter((entry) => entry.kind === 'message' && entry.title === 'Allow browser automation?')
-    expect(approvalTrace.map((entry) => entry.result.response)).toEqual([0, 1, 2])
-
     const otherWorkspace = await cli(sessionFile, [
       'workspace',
       'create',
       '--name',
-      'Separate approval',
+      'Another agent tab',
       '--working-directory',
       profileDirectory
     ])
@@ -1162,11 +1154,9 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
       return workspace.panes.find(({ id }) => id === workspace.selectedPaneId).selectedTabId
     })
     expect(otherTabId).not.toBe(tabId)
-    await expectCliFailure(
-      sessionFile,
-      ['browser', 'attach', '--tab-id', otherTabId],
-      'approval_denied'
-    )
+    const otherAttached = await cli(sessionFile, ['browser', 'attach', '--tab-id', otherTabId])
+    expect(otherAttached.session).toMatchObject({ mode: 'attach', state: 'ready' })
+    await destroySessionFully(sessionFile, otherAttached.session)
     await cli(sessionFile, ['workspace', 'close', '--workspace-id', otherWorkspace.workspaceId])
     await renderer.locator(`[data-workspace-id="${initialWorkspaceId}"] .workspace-row`).click()
 
@@ -1178,7 +1168,16 @@ test('round 2 CLI feedback survives SPA startup and autonomous navigation', asyn
       timeout: 20_000
     })
     await waitForAutomationCapability(sessionFile)
-    await expectCliFailure(sessionFile, attachArgs, 'approval_denied')
+    const restarted = await cli(sessionFile, attachArgs)
+    expect(restarted.session).toMatchObject({ mode: 'attach', state: 'ready' })
+    await destroySessionFully(sessionFile, restarted.session)
+    const approvalTrace = (await readFile(dialogTrace, 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((entry) => entry.kind === 'message' && entry.title === 'Allow browser automation?')
+    expect(approvalTrace).toHaveLength(0)
   } finally {
     for (const session of sessions) {
       if (sessionFile)
