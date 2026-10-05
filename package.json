@@ -1,6 +1,6 @@
 {
   "name": "agent-workspace",
-  "version": "0.2.1-alpha.4",
+  "version": "0.2.1-alpha.5",
   "private": true,
   "description": "Independent cross-platform workspace for agent-driven development",
   "license": "GPL-3.0-or-later",
