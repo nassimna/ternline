@@ -66,8 +66,10 @@ The updater reads platform metadata from GitHub Releases and rejects equal or lo
 Existing installations must select Alpha if their saved channel is Beta or Stable. An alpha
 release on a higher base version can update an earlier beta without allowing downgrades. Deleting
 old GitHub releases does not change installed preferences or remove their tags.
-Unsigned macOS builds require manual installation;
-[macOS auto-installation requires signing](https://www.electron.build/docs/features/auto-update/).
+Unsigned macOS alpha builds containing the dedicated alpha installer can update in place in a
+writable installation directory. Earlier clients need a one-time manual installation of the
+first fixed release. Signed macOS builds keep the native Squirrel.Mac updater. See
+[Desktop updates](UPDATES.md#unsigned-macos-alpha-builds) for the alpha trust model.
 
 ## Signing and qualification limits
 
@@ -114,7 +116,11 @@ The exact eight-hour Node soak remains unrun; this release does not claim stable
 GitHub Pages must use GitHub Actions as its build source. **Deploy website** builds with the repo
 base path `/ternline/` and only publishes after the versioned GitHub release assets
 exist. Its manual dispatch supports subsequent website-only updates after verifying that release.
-The site derives the version from the root manifest; every platform link addresses that exact tag.
+The site builds with verified links for the release version. On each page load it resolves the
+newest complete published GitHub release, including prereleases, and updates platform links,
+checksums, and the displayed version together. If GitHub is unavailable, the verified build-time
+links remain usable. Successful release workflows automatically redeploy the website; manual
+website dispatches also select the newest complete published release.
 
 ## Rollback
 

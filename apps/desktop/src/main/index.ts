@@ -1,4 +1,4 @@
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -56,6 +56,9 @@ import {
 import { ProjectActionConfirmationProvider } from './project-action-confirmation-provider'
 import { registerWithStableWindowClaims } from './desktop-provider-registration'
 import { ApplicationQuitOrchestrator } from './application-quit-orchestrator'
+import { AppImageUpdater } from './appimage-updater'
+import { isUnsignedMacAlpha } from './mac-alpha-installer'
+import { MacAlphaUpdater } from './mac-alpha-updater'
 import { performExitCleanup as performApplicationExitCleanup } from './application-exit-cleanup'
 import {
   NativeApplicationMenu,
@@ -3585,14 +3588,21 @@ async function start(): Promise<void> {
   } catch {
     console.warn('Desktop update feeds are invalid; updates are disabled')
   }
-  const { autoUpdater } = electronUpdater
+  const packageType = detectNativeUpdatePackageType(process.platform, {
+    resourcesPath: process.resourcesPath,
+    ...(process.env.APPIMAGE === undefined ? {} : { appImagePath: process.env.APPIMAGE })
+  })
+  const macBundle = resolve(process.resourcesPath, '../..')
+  const autoUpdater =
+    packageType === 'appimage'
+      ? new AppImageUpdater()
+      : packageType === 'mac' && app.isPackaged && isUnsignedMacAlpha(macBundle, app.getVersion())
+        ? new MacAlphaUpdater(macBundle)
+        : electronUpdater.autoUpdater
   updateController = new UpdateController({
     feeds,
     isPackaged: app.isPackaged,
-    packageType: detectNativeUpdatePackageType(process.platform, {
-      resourcesPath: process.resourcesPath,
-      ...(process.env.APPIMAGE === undefined ? {} : { appImagePath: process.env.APPIMAGE })
-    }),
+    packageType,
     platform: process.platform,
     updater: autoUpdater,
     // Updater-owned quit emits before-quit, where the normal quit orchestrator performs the

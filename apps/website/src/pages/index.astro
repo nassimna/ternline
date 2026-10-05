@@ -3,11 +3,12 @@ import Icon from '../components/Icon.astro'
 import workspace from '../assets/workspace.png'
 import '../styles/global.css'
 import rootPackage from '../../../../package.json'
+import { releaseDownloads } from '../lib/downloads'
 
 const repository = 'https://github.com/nassimna/ternline'
-const version = rootPackage.version
+const version = import.meta.env.WEBSITE_RELEASE_VERSION ?? rootPackage.version
 const release = `${repository}/releases/tag/v${version}`
-const releaseFiles = `${repository}/releases/download/v${version}`
+const downloads = releaseDownloads(version)
 const documentation = `${repository}/blob/main`
 const favicon = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/favicon.svg`
 const description =
@@ -277,8 +278,13 @@ const sessions = [
               </h2>
             </div>
             <div class="text-[13px] leading-relaxed text-muted">
-              <a href={release} class="text-accent underline underline-offset-4">
-                v{version} · Pre-release
+              <a
+                id="download-release"
+                data-version={version}
+                href={release}
+                class="text-accent underline underline-offset-4"
+              >
+                v{version} · {version.includes('-') ? 'Pre-release' : 'Release'}
               </a>
               <p id="download-suggestion" aria-live="polite">
                 Choose your operating system below.
@@ -297,14 +303,14 @@ const sessions = [
               <div class="flex flex-col gap-3 text-[13px]">
                 <a
                   data-download="mac-arm64"
-                  href={`${releaseFiles}/agent-workspace-${version}-macos-arm64.dmg`}
+                  href={downloads['mac-arm64']}
                   class="inline-flex items-center justify-between gap-2 rounded border border-line px-3 py-3 hover:border-accent"
                 >
                   Apple Silicon · DMG <Icon name="download" class="size-4 shrink-0" />
                 </a>
                 <a
                   data-download="mac-x64"
-                  href={`${releaseFiles}/agent-workspace-${version}-macos-x64.dmg`}
+                  href={downloads['mac-x64']}
                   class="inline-flex items-center justify-between gap-2 rounded border border-line px-3 py-3 hover:border-accent"
                 >
                   Intel · DMG <Icon name="download" class="size-4 shrink-0" />
@@ -321,7 +327,7 @@ const sessions = [
               </p>
               <a
                 data-download="windows-x64"
-                href={`${releaseFiles}/agent-workspace-${version}-windows-x64-setup.exe`}
+                href={downloads['windows-x64']}
                 class="inline-flex w-full items-center justify-between gap-2 rounded border border-line px-3 py-3 text-[13px] hover:border-accent"
               >
                 Windows x64 · EXE <Icon name="download" class="size-4 shrink-0" />
@@ -337,20 +343,22 @@ const sessions = [
               </p>
               <a
                 data-download="linux-x64"
-                href={`${releaseFiles}/agent-workspace-${version}-x86_64.AppImage`}
+                href={downloads['linux-x64']}
                 class="inline-flex w-full items-center justify-between gap-2 rounded border border-line px-3 py-3 text-[13px] hover:border-accent"
               >
                 Linux x64 · AppImage <Icon name="download" class="size-4 shrink-0" />
               </a>
               <div class="mt-4 flex flex-wrap gap-5 text-xs text-muted">
                 <a
-                  href={`${releaseFiles}/agent-workspace-${version}-x86_64.deb`}
+                  data-download="linux-deb"
+                  href={downloads['linux-deb']}
                   class="underline underline-offset-4 hover:text-ink"
                 >
                   Debian / Ubuntu
                 </a>
                 <a
-                  href={`${releaseFiles}/agent-workspace-${version}-x86_64.rpm`}
+                  data-download="linux-rpm"
+                  href={downloads['linux-rpm']}
                   class="underline underline-offset-4 hover:text-ink"
                 >
                   Fedora / RHEL
@@ -370,7 +378,8 @@ const sessions = [
             </p>
             <div class="flex gap-5">
               <a
-                href={`${releaseFiles}/SHA256SUMS`}
+                data-download="checksums"
+                href={downloads.checksums}
                 class="underline underline-offset-4 hover:text-ink"
               >
                 Checksums
@@ -518,7 +527,7 @@ const sessions = [
     </dialog>
 
     <script>
-      import { recommendedDownload } from '../lib/downloads'
+      import { latestPublishedRelease, recommendedDownload, releasesApi } from '../lib/downloads'
 
       const dialog = document.querySelector<HTMLDialogElement>('#workspace-screenshot')!
       const openButton = document.querySelector<HTMLButtonElement>('#open-screenshot')!
@@ -543,6 +552,7 @@ const sessions = [
         userAgent: navigator.userAgent,
         maxTouchPoints: navigator.maxTouchPoints
       }
+      let cpu: { architecture?: string; bitness?: string } = {}
       function suggestDownload(architecture?: string, bitness?: string) {
         const recommendation = recommendedDownload({ ...browser, architecture, bitness })
         if (!recommendation) return
@@ -562,9 +572,36 @@ const sessions = [
       if (hints) {
         void hints
           .getHighEntropyValues(['architecture', 'bitness'])
-          .then(({ architecture, bitness }) => suggestDownload(architecture, bitness))
+          .then((values) => {
+            cpu = values
+            suggestDownload(cpu.architecture, cpu.bitness)
+          })
           .catch(() => {})
       }
+
+      async function refreshDownloads() {
+        try {
+          const response = await fetch(releasesApi, {
+            headers: { Accept: 'application/vnd.github+json' },
+            cache: 'no-store',
+            signal: AbortSignal.timeout(8000)
+          })
+          if (!response.ok) return
+          const release = document.querySelector<HTMLAnchorElement>('#download-release')!
+          const latest = latestPublishedRelease(await response.json(), release.dataset['version'])
+          if (!latest) return
+          for (const [asset, href] of Object.entries(latest.downloads)) {
+            const link = document.querySelector<HTMLAnchorElement>(`[data-download="${asset}"]`)
+            if (link) link.href = href
+          }
+          release.href = latest.url
+          release.textContent = `v${latest.version} · ${latest.prerelease ? 'Pre-release' : 'Release'}`
+          suggestDownload(cpu.architecture, cpu.bitness)
+        } catch {
+          // The verified build-time downloads remain available when GitHub cannot be reached.
+        }
+      }
+      void refreshDownloads()
     </script>
   </body>
 </html>

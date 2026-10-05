@@ -23,3 +23,5 @@ Open an architecture or protocol RFC before proposing a decision that changes a 
 - [0012: SSH and remote tmux trust boundary](0012-ssh-remote-session-trust.md)
 - [0013: Sidebar, content, indexing, Vault, and task boundaries](0013-sidebar-content-indexing-and-task-boundaries.md)
 - [0014: Node service migration with full feature parity](0014-node-service-migration.md)
+
+- [0015: Unsigned macOS alpha updates](0015-unsigned-macos-alpha-updates.md)
