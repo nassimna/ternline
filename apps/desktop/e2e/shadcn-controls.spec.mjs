@@ -64,6 +64,26 @@ test('shared surfaces, palette, and alpha settings work through the real desktop
     await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42')
     await expect(card.locator('.workspace-activity')).toHaveAttribute('data-slot', 'badge')
 
+    const layouts = page.getByRole('region', { name: 'Saved layouts', exact: true })
+    const layoutActions = layouts.getByRole('button', { name: 'Saved layout actions' })
+    await layoutActions.focus()
+    await page.keyboard.press('Enter')
+    await page.getByRole('menuitem', { name: 'Save selection' }).click()
+    const saveLayout = page.getByRole('dialog', { name: 'Save selected workspaces as a layout' })
+    await saveLayout.getByRole('textbox').fill('Sidebar layout verification')
+    await saveLayout.getByRole('button', { name: 'Continue' }).click()
+    await layouts.getByRole('button', { name: /^Saved layouts/ }).click()
+    await expect(layouts.getByText('Sidebar layout verification', { exact: true })).toBeVisible()
+    await expect(layouts.getByRole('button', { name: 'Apply', exact: true })).toBeVisible()
+    await layouts
+      .getByRole('button', { name: 'Actions for saved layout Sidebar layout verification' })
+      .click()
+    await expect(page.getByRole('menuitem', { name: 'Export', exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('menuitem', { name: 'Delete saved layout Sidebar layout verification' })
+    ).toBeVisible()
+    await page.keyboard.press('Escape')
+
     for (const viewport of [
       { width: 1280, height: 800 },
       { width: 960, height: 640 }
@@ -75,6 +95,30 @@ test('shared surfaces, palette, and alpha settings work through the real desktop
       await expect
         .poll(() => page.evaluate(() => [globalThis.innerWidth, globalThis.innerHeight]))
         .toEqual([viewport.width, viewport.height])
+      for (const theme of ['light', 'dark']) {
+        await page.getByRole('button', { name: 'Open settings', exact: true }).click()
+        const appearanceSettings = page.getByRole('dialog', { name: 'Settings', exact: true })
+        await appearanceSettings.getByRole('button', { name: 'Appearance', exact: true }).click()
+        await appearanceSettings
+          .getByRole('button', { name: theme === 'light' ? 'Light' : 'Dark', exact: true })
+          .click()
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        await page.keyboard.press('Escape')
+        const sidebar = page.getByRole('complementary', { name: 'Workspaces', exact: true })
+        const detailsGap = await card.evaluate(
+          (element) =>
+            element.querySelector('.workspace-directory').getBoundingClientRect().top -
+            element.querySelector('.workspace-row').getBoundingClientRect().bottom
+        )
+        expect(detailsGap).toBeGreaterThanOrEqual(4)
+        expect(
+          await sidebar.evaluate((element) => element.scrollWidth <= element.clientWidth)
+        ).toBe(true)
+        await page.screenshot({
+          animations: 'disabled',
+          path: join(evidenceDirectory, `sidebar-a-${theme}-${viewport.width}.png`)
+        })
+      }
       await page.getByRole('button', { name: 'Open update settings' }).click()
       const settings = page.getByRole('dialog', { name: 'Settings', exact: true })
       const channel = settings.getByRole('combobox', { name: 'Update channel' })

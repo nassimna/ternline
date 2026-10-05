@@ -1375,6 +1375,86 @@ describe('App', () => {
     )
   })
 
+  it('saves and imports layouts from the sidebar menu while keeping Apply visible', async () => {
+    const bridge = createSavedLayoutsBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const actions = await screen.findByRole('button', { name: 'Saved layout actions' })
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Save selection' }))
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Save selected workspaces as a layout'
+    })
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'My setup' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
+    await waitFor(() =>
+      expect(bridge.saveLayout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'My setup',
+          workspaceIds: [projectionFixture.selectedWorkspaceId],
+          expectedRevision: 9
+        })
+      )
+    )
+
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import layout' }))
+    await waitFor(() =>
+      expect(bridge.importSavedLayoutFromFile).toHaveBeenCalledWith(
+        expect.objectContaining({ expectedRevision: 9 })
+      )
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^Saved layouts/ }))
+    const panel = screen.getByRole('region', { name: 'Saved layouts' })
+    expect(within(panel).getByRole('button', { name: 'Apply' })).toBeVisible()
+    fireEvent.pointerDown(
+      within(panel).getByRole('button', { name: 'Actions for saved layout Daily development' }),
+      { button: 0, ctrlKey: false }
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export' }))
+    await waitFor(() =>
+      expect(bridge.exportSavedLayoutToFile).toHaveBeenCalledWith({
+        layoutId: '10000000-0000-4000-8000-000000000010'
+      })
+    )
+  })
+
+  it('explains unavailable layout saving when no workspace is selected', async () => {
+    const bridge = createSavedLayoutsBridge()
+    bridge.identify = vi.fn().mockResolvedValue({
+      application: 'agent-workspace',
+      version: '0.1.0',
+      protocolVersion: 1,
+      capabilities: ['configuration-v2', 'saved-layouts-v1', 'workspace-groups-v1']
+    })
+    bridge.getWorkspaceOrganization = vi.fn().mockResolvedValue({
+      organization: {
+        revision: 9,
+        selection: [],
+        focusedWorkspaceId: projectionFixture.selectedWorkspaceId,
+        pins: [],
+        groups: [],
+        assignments: []
+      }
+    })
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const actions = await screen.findByRole('button', { name: 'Saved layout actions' })
+    fireEvent.click(screen.getByRole('button', { name: /^Saved layouts/ }))
+    expect(
+      screen.getByText('Select between 1 and 32 workspaces to enable Save selection.')
+    ).toBeVisible()
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    expect(await screen.findByRole('menuitem', { name: 'Save selection' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+    expect(bridge.saveLayout).not.toHaveBeenCalled()
+  })
+
   it('blocks physical shortcut conflicts while preserving set, clear, and reset mutations', async () => {
     const bridge = createBridge()
     vi.mocked(bridge.updateSettings).mockRejectedValueOnce(new Error('Settings write failed'))
@@ -2478,6 +2558,38 @@ function createBridge(
     onDomainResyncRequired: vi.fn(() => () => undefined),
     onServiceEvent: vi.fn(() => () => undefined)
   }
+}
+
+function createSavedLayoutsBridge(
+  snapshot: ApplicationSnapshot = projectionFixture
+): DesktopBridge {
+  const bridge = createBridge(
+    vi.fn().mockResolvedValue({
+      application: 'agent-workspace',
+      version: '0.1.0',
+      protocolVersion: 1,
+      capabilities: ['configuration-v2', 'saved-layouts-v1']
+    }),
+    snapshot
+  )
+  bridge.listSavedLayouts = vi.fn().mockResolvedValue({
+    revision: 9,
+    layouts: [
+      {
+        id: '10000000-0000-4000-8000-000000000010',
+        name: 'Daily development',
+        formatVersion: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        workspaceCount: 1
+      }
+    ]
+  })
+  bridge.saveLayout = vi.fn().mockResolvedValue({})
+  bridge.importSavedLayoutFromFile = vi.fn().mockResolvedValue(true)
+  bridge.exportSavedLayoutToFile = vi.fn().mockResolvedValue(true)
+  bridge.deleteLayout = vi.fn().mockResolvedValue({})
+  return bridge
 }
 
 function projectionWithSecondWorkspace(): ApplicationSnapshot {

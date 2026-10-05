@@ -40,6 +40,7 @@ import {
   Globe2,
   GripVertical,
   Layers,
+  LayoutPanelLeft,
   Keyboard,
   MoreHorizontal,
   Pencil,
@@ -139,6 +140,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
@@ -1671,7 +1673,9 @@ function WorkspaceSidebar({
   return (
     <aside className="workspace-sidebar" aria-label={messages.workspaceShell.sidebar.label}>
       <div className="sidebar-heading">
-        <span>{messages.workspaceShell.sidebar.label}</span>
+        <span className="text-small font-semibold text-text-secondary">
+          {messages.workspaceShell.sidebar.label}
+        </span>
         {organizationEnabled ? (
           <Button
             size="small"
@@ -1683,35 +1687,39 @@ function WorkspaceSidebar({
             onClick={() => setCreateGroupOpen(true)}
             type="button"
           >
-            <Layers aria-hidden="true" size={13} />
+            <Layers aria-hidden="true" size={14} />
             <span>New group</span>
           </Button>
         ) : null}
       </div>
-      <Button
-        aria-label={messages.workspaceShell.sidebar.createWorkspace}
-        className="sidebar-open-folder"
-        disabled={!!organization?.legacyOverLimit}
-        onClick={onCreate}
-        title={
-          organization?.legacyOverLimit
-            ? 'Close workspaces, panes, or tabs until the legacy counts are within limits.'
-            : undefined
-        }
-      >
-        <FolderOpen size={14} />
-        <span>{messages.workspaceShell.sidebar.openFolder}</span>
-        {shortcutLabel ? <Kbd>{shortcutLabel}</Kbd> : null}
-      </Button>
-      <Button
-        aria-label="Create SSH workspace"
-        className="sidebar-open-folder sidebar-open-ssh"
-        disabled={!!organization?.legacyOverLimit}
-        onClick={onCreateSsh}
-      >
-        <TerminalSquare size={14} />
-        <span>SSH workspace</span>
-      </Button>
+      <div className="sidebar-create-actions">
+        <Button
+          variant="ghost"
+          aria-label={messages.workspaceShell.sidebar.createWorkspace}
+          className="sidebar-open-folder"
+          disabled={!!organization?.legacyOverLimit}
+          onClick={onCreate}
+          title={
+            organization?.legacyOverLimit
+              ? 'Close workspaces, panes, or tabs until the legacy counts are within limits.'
+              : undefined
+          }
+        >
+          <FolderOpen aria-hidden="true" size={16} />
+          <span>{messages.workspaceShell.sidebar.openFolder}</span>
+          {shortcutLabel ? <Kbd className="ml-auto">{shortcutLabel}</Kbd> : null}
+        </Button>
+        <Button
+          aria-label="Create SSH workspace"
+          variant="ghost"
+          className="sidebar-open-folder"
+          disabled={!!organization?.legacyOverLimit}
+          onClick={onCreateSsh}
+        >
+          <TerminalSquare aria-hidden="true" size={16} />
+          <span>SSH workspace</span>
+        </Button>
+      </div>
       {organization?.legacyOverLimit ? (
         <LegacyOverLimitNotice
           legacy={organization.legacyOverLimit}
@@ -1931,15 +1939,15 @@ function SavedLayoutsPanel({
   selectedWorkspaceId: string | null
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const workspaceIds = organization?.selection ?? (selectedWorkspaceId ? [selectedWorkspaceId] : [])
+  const validSelection = workspaceIds.length >= 1 && workspaceIds.length <= 32
   const mutationBase = (): { expectedRevision: number; idempotencyKey: string } => ({
     expectedRevision: savedLayouts.revision,
     idempotencyKey: globalThis.crypto.randomUUID()
   })
   const save = async (): Promise<void> => {
     if (!window.desktopBridge.saveLayout) return
-    const workspaceIds =
-      organization?.selection ?? (selectedWorkspaceId ? [selectedWorkspaceId] : [])
-    if (workspaceIds.length < 1 || workspaceIds.length > 32) {
+    if (!validSelection) {
       void showMessage('Select between 1 and 32 workspaces to save a layout.')
       return
     }
@@ -1982,40 +1990,48 @@ function SavedLayoutsPanel({
           onClick={() => setExpanded((value) => !value)}
           type="button"
         >
-          <ChevronDown aria-hidden="true" data-collapsed={expanded ? 'false' : 'true'} size={12} />
+          <ChevronDown aria-hidden="true" data-collapsed={expanded ? 'false' : 'true'} size={14} />
           <strong>Saved layouts</strong>
+          <span className="text-metadata text-text-muted">{savedLayouts.layouts.length}</span>
         </Button>
-        {expanded ? (
-          <>
-            <Button
-              size="small"
-              variant="ghost"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="iconSmall" variant="ghost" aria-label="Saved layout actions">
+              <MoreHorizontal aria-hidden="true" size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Saved layouts</DropdownMenuLabel>
+            <DropdownMenuItem
               data-workspace-action={workspaceCardActionRegistry.resolve('layoutSave').actionId}
-              onClick={() => void save()}
-              type="button"
+              disabled={!validSelection || !window.desktopBridge.saveLayout}
+              onSelect={() => void save()}
             >
               Save selection
-            </Button>
-            <Button
-              size="small"
-              variant="ghost"
+            </DropdownMenuItem>
+            <DropdownMenuItem
               data-workspace-action={workspaceCardActionRegistry.resolve('layoutImport').actionId}
-              disabled={legacyOverLimit}
-              onClick={importLayout}
-              type="button"
+              disabled={legacyOverLimit || !window.desktopBridge.importSavedLayoutFromFile}
+              onSelect={importLayout}
             >
-              Import
-            </Button>
-          </>
-        ) : (
-          <span className="workspace-group-count">{savedLayouts.layouts.length}</span>
-        )}
+              Import layout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {!expanded ? null : savedLayouts.layouts.length > 0 ? (
         <ul>
           {savedLayouts.layouts.map((layout) => (
             <li key={layout.id}>
-              <span title={`${String(layout.workspaceCount)} workspaces`}>{layout.name}</span>
+              <LayoutPanelLeft aria-hidden="true" size={14} />
+              <div className="saved-layout-copy">
+                <span className="text-ui text-text-primary" title={layout.name}>
+                  {layout.name}
+                </span>
+                <span className="text-metadata text-text-muted">
+                  {messages.workspaceShell.sidebar.workspaceCount(layout.workspaceCount)}
+                </span>
+              </div>
               <Button
                 size="small"
                 variant="ghost"
@@ -2039,48 +2055,72 @@ function SavedLayoutsPanel({
               >
                 Apply
               </Button>
-              <Button
-                size="small"
-                variant="ghost"
-                data-workspace-action={workspaceCardActionRegistry.resolve('layoutExport').actionId}
-                onClick={() => {
-                  if (window.desktopBridge.exportSavedLayoutToFile) {
-                    onLayoutMutation(
-                      window.desktopBridge.exportSavedLayoutToFile({ layoutId: layout.id })
-                    )
-                  }
-                }}
-                type="button"
-              >
-                Export
-              </Button>
-              <Button
-                size="small"
-                variant="ghost"
-                aria-label={`Delete saved layout ${layout.name}`}
-                data-workspace-action={workspaceCardActionRegistry.resolve('layoutDelete').actionId}
-                onClick={() => {
-                  void (async () => {
-                    if (
-                      !window.desktopBridge.deleteLayout ||
-                      !(await confirmAction(`Delete “${layout.name}”?`))
-                    )
-                      return
-                    onLayoutMutation(
-                      window.desktopBridge.deleteLayout({ layoutId: layout.id, ...mutationBase() })
-                    )
-                  })()
-                }}
-                type="button"
-              >
-                Delete
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="iconSmall"
+                    variant="ghost"
+                    aria-label={`Actions for saved layout ${layout.name}`}
+                  >
+                    <MoreHorizontal aria-hidden="true" size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    data-workspace-action={
+                      workspaceCardActionRegistry.resolve('layoutExport').actionId
+                    }
+                    disabled={!window.desktopBridge.exportSavedLayoutToFile}
+                    onSelect={() => {
+                      if (window.desktopBridge.exportSavedLayoutToFile) {
+                        onLayoutMutation(
+                          window.desktopBridge.exportSavedLayoutToFile({ layoutId: layout.id })
+                        )
+                      }
+                    }}
+                  >
+                    Export
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    destructive
+                    aria-label={`Delete saved layout ${layout.name}`}
+                    data-workspace-action={
+                      workspaceCardActionRegistry.resolve('layoutDelete').actionId
+                    }
+                    disabled={!window.desktopBridge.deleteLayout}
+                    onSelect={() => {
+                      void (async () => {
+                        if (
+                          !window.desktopBridge.deleteLayout ||
+                          !(await confirmAction(`Delete “${layout.name}”?`))
+                        )
+                          return
+                        onLayoutMutation(
+                          window.desktopBridge.deleteLayout({
+                            layoutId: layout.id,
+                            ...mutationBase()
+                          })
+                        )
+                      })()
+                    }}
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
         </ul>
       ) : (
-        <small>No saved layouts</small>
+        <p className="saved-layouts-empty text-small text-text-muted">
+          No saved layouts. Save a workspace selection to return to it later.
+        </p>
       )}
+      {expanded && !validSelection ? (
+        <p className="saved-layouts-hint text-metadata text-text-muted">
+          Select between 1 and 32 workspaces to enable Save selection.
+        </p>
+      ) : null}
     </section>
   )
 }

@@ -63,6 +63,9 @@ retain their platform behavior.
   Preserve the existing IDs, focus restoration, and server mutation ordering.
 - The command palette keeps application ranking and capability filtering, while
   cmdk owns selection, disabled options, keyboard navigation, and ARIA IDs.
+- Workspace creation uses visible ghost action rows with trailing keyboard hints.
+  Saved layouts keep Apply visible; save/import and per-layout export/delete use
+  shared menus so controls remain usable in a narrow sidebar.
 
 ## Adding UI
 
