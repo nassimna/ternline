@@ -9,8 +9,9 @@ restart. Linux update installation and native signing have not been qualified en
 ## Feed configuration
 
 Packaged applications default to the public `nassimna/ternline` GitHub Releases
-provider. Stable uses the updater's `latest` channel. Beta and Alpha use their matching channels and permit
-prereleases; choose **Alpha** in Settings to receive this release series.
+provider. Settings currently offers only **Alpha**, the available release series, and new profiles
+default to it. If an older profile selected Stable or Beta, choose **Alpha** to receive updates.
+The updater retains feed support for future Stable and Beta releases.
 Previously installed builds use the former `nassimna/cmux-linux-alternative` repository URL;
 GitHub redirects it to `nassimna/ternline`. Keep the former repository name unused so those
 clients continue to reach the trusted feed.
@@ -32,8 +33,7 @@ packaged application's runtime environment:
 
 The values must be different HTTPS base URLs without credentials, query strings,
 fragments, localhost names, or IP-literal hosts. They are read only by the main
-process. The renderer selects `stable`, `beta` or `alpha`; it cannot provide a URL or
-provider configuration.
+process. The renderer currently offers `alpha`; it cannot provide a URL or provider configuration.
 
 For generic hosting, package generation requires a channel-specific URL and channel. Use the
 platform's explicit update script to replace the default GitHub provider, and use `alpha` with

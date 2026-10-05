@@ -665,11 +665,10 @@ export const messages = {
       info: 'Info',
       debug: 'Debug',
       trace: 'Trace',
-      stable: 'Stable',
-      beta: 'Beta',
       alpha: 'Alpha'
     },
     updater: {
+      chooseAlpha: 'Choose Alpha',
       automatic: 'Automatically check and download updates',
       automaticDescription: 'Updates download in the background. You choose when to restart.',
       restartDescription: 'Restarting closes local terminals and may interrupt running agents.',

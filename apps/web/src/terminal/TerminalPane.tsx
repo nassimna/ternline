@@ -1,3 +1,5 @@
+import { Alert } from '../ui/alert'
+import { Label } from '../ui/label'
 import { useEffect, useRef, useState } from 'react'
 
 import { ClipboardAddon } from '@xterm/addon-clipboard'
@@ -20,6 +22,10 @@ import { CheckpointScheduler } from './CheckpointScheduler'
 import { TerminalReconciler } from './TerminalReconciler'
 import { DENY_OSC52_CLIPBOARD_PROVIDER } from './clipboard-policy'
 import { withTerminalGlyphFallbacks } from './terminal-fonts'
+import { confirmAction } from '../ui/request-dialog'
+import { Checkbox } from '../ui/checkbox'
+import { Input } from '../ui/input'
+import { Button } from '../ui/button'
 
 const RESIZE_DEBOUNCE_MS = 50
 const DEFAULT_TERMINAL_CONFIGURATION: TerminalConfiguration = Object.freeze({
@@ -451,16 +457,18 @@ export function TerminalPane({
       if (!terminalId) {
         return
       }
-      if (multilinePasteProtectionRef.current && data.length > 1 && /[\r\n]/.test(data)) {
-        const lines = data.split(/\r\n|\r|\n/).length
-        if (!window.confirm(messages.terminalPane.pasteLinesPrompt(lines))) {
-          return
-        }
-      }
-      // Keystrokes arrive as separate IPC calls. Keep their order across the
-      // asynchronous desktop and sidecar transports, including the Enter key.
+      // Keep confirmation and sending in the same queue so later keystrokes cannot
+      // overtake a paste while its confirmation dialog is open.
+      const needsConfirmation =
+        multilinePasteProtectionRef.current && data.length > 1 && /[\r\n]/.test(data)
       inputQueue = inputQueue
-        .then(() => window.desktopBridge.sendTerminalInput(terminalId, data))
+        .then(async () => {
+          if (needsConfirmation) {
+            const lines = data.split(/\r\n|\r|\n/).length
+            if (!(await confirmAction(messages.terminalPane.pasteLinesPrompt(lines)))) return
+          }
+          await window.desktopBridge.sendTerminalInput(terminalId, data)
+        })
         .catch((error: unknown) => reportPaneError(messages.terminalPane.errors.inputFailed, error))
     })
     const titleDisposable = terminal.onTitleChange((nextTitle) => {
@@ -608,7 +616,7 @@ export function TerminalPane({
     >
       <header className="terminal-toolbar" hidden={!toolsOpen}>
         <div className="terminal-search" role="search">
-          <input
+          <Input
             aria-label={messages.terminalPane.search.label}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => {
@@ -620,110 +628,126 @@ export function TerminalPane({
             ref={searchInputRef}
             value={search}
           />
-          <button
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.search.matchCase}
             aria-pressed={caseSensitive}
             onClick={() => setCaseSensitive((value) => !value)}
             type="button"
           >
             {messages.terminalPane.search.matchCaseIndicator}
-          </button>
-          <button
+          </Button>
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.search.matchWholeWord}
             aria-pressed={wholeWord}
             onClick={() => setWholeWord((value) => !value)}
             type="button"
           >
             {messages.terminalPane.search.matchWholeWordIndicator}
-          </button>
-          <button
+          </Button>
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.search.useRegularExpression}
             aria-pressed={regularExpression}
             onClick={() => setRegularExpression((value) => !value)}
             type="button"
           >
             {messages.terminalPane.search.regularExpressionIndicator}
-          </button>
-          <button
+          </Button>
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.search.previousMatch}
             onClick={() => find('previous')}
             type="button"
           >
             {messages.terminalPane.search.previousMatchIndicator}
-          </button>
-          <button
+          </Button>
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.search.nextMatch}
             onClick={() => find('next')}
             type="button"
           >
             {messages.terminalPane.search.nextMatchIndicator}
-          </button>
+          </Button>
         </div>
         <div className="terminal-controls">
-          <button
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.controls.decreaseFontSize}
             onClick={() => changeFontSize(fontSize - 1)}
             type="button"
           >
             {messages.terminalPane.controls.decreaseFontSizeIndicator}
-          </button>
+          </Button>
           <output aria-label={messages.terminalPane.controls.fontSize}>{fontSize}</output>
-          <button
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.terminalPane.controls.increaseFontSize}
             onClick={() => changeFontSize(fontSize + 1)}
             type="button"
           >
             {messages.terminalPane.controls.increaseFontSizeIndicator}
-          </button>
-          <label className="copy-setting">
-            <input
+          </Button>
+          <Label className="copy-setting">
+            <Checkbox
               aria-label={messages.terminalPane.controls.copySelection}
               checked={copyOnSelect}
-              onChange={(event) => setCopyOnSelect(event.target.checked)}
-              type="checkbox"
+              onCheckedChange={(checked) => setCopyOnSelect(checked === true)}
             />
             <span className="copy-setting-label">
               {messages.terminalPane.controls.copySelection}
             </span>
-          </label>
-          <label className="copy-setting">
-            <input
+          </Label>
+          <Label className="copy-setting">
+            <Checkbox
               aria-label={messages.terminalPane.controls.screenReaderMode}
               checked={screenReaderMode}
-              onChange={(event) => setScreenReaderMode(event.target.checked)}
-              type="checkbox"
+              onCheckedChange={(checked) => setScreenReaderMode(checked === true)}
             />
             <span className="copy-setting-label">
               {messages.terminalPane.controls.screenReaderMode}
             </span>
-          </label>
+          </Label>
         </div>
-        <button
+        <Button
+          size="iconSmall"
+          variant="ghost"
           aria-label={messages.terminalPane.controls.closeTools}
           className="terminal-tools-close"
           onClick={() => onToolsOpenChange(false)}
           type="button"
         >
           <X aria-hidden="true" size={13} />
-        </button>
+        </Button>
       </header>
       <div className="terminal-stage">
         <div className="terminal-host" ref={hostRef} />
         {(paneError || exit) && (
-          <div className="terminal-exit" role={paneError ? 'alert' : 'status'}>
-            <span>
-              {paneError
-                ? paneError.message
-                : exit?.signal
-                  ? messages.terminalPane.exit.withSignal(exit.signal)
-                  : messages.terminalPane.exit.withCode(exit?.code)}
-            </span>
-            {(paneError?.recoverable || exit) && (
-              <button onClick={() => void restart()} type="button">
-                {messages.terminalPane.exit.restart}
-              </button>
-            )}
-          </div>
+          <Alert asChild variant={paneError ? 'destructive' : 'default'}>
+            <div className="terminal-exit" role={paneError ? 'alert' : 'status'}>
+              <span>
+                {paneError
+                  ? paneError.message
+                  : exit?.signal
+                    ? messages.terminalPane.exit.withSignal(exit.signal)
+                    : messages.terminalPane.exit.withCode(exit?.code)}
+              </span>
+              {(paneError?.recoverable || exit) && (
+                <Button variant="primary" onClick={() => void restart()} type="button">
+                  {messages.terminalPane.exit.restart}
+                </Button>
+              )}
+            </div>
+          </Alert>
         )}
       </div>
       <footer className="terminal-statusbar">

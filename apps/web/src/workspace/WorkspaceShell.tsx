@@ -1,3 +1,10 @@
+import { Kbd } from '../ui/kbd'
+import { Command as CommandRoot, CommandInput, CommandItem, CommandList } from '../ui/command'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
+import { Alert } from '../ui/alert'
+import { Badge } from '../ui/badge'
+import { Card } from '../ui/card'
+import { Label } from '../ui/label'
 import {
   DndContext,
   KeyboardSensor,
@@ -33,6 +40,7 @@ import {
   Globe2,
   GripVertical,
   Layers,
+  LayoutPanelLeft,
   Keyboard,
   MoreHorizontal,
   Pencil,
@@ -132,6 +140,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
@@ -181,6 +190,9 @@ import {
   workspaceSelectionReplacement,
   type SelectionModifiers
 } from './organization'
+import { confirmAction, requestText, showMessage } from '../ui/request-dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { Input } from '../ui/input'
 
 const DEFAULT_ROWS = 30
 
@@ -578,11 +590,11 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
     }
   }
 
-  const forgetSshWorkspace = (workspaceId: string): void => {
+  const forgetSshWorkspace = async (workspaceId: string): Promise<void> => {
     if (
-      !window.confirm(
+      !(await confirmAction(
         'Forget the saved SSH connection? The workspace and its open tabs stay available.'
-      )
+      ))
     ) {
       return
     }
@@ -1113,6 +1125,7 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
             <Settings size={14} />
           </IconButton>
           <Button
+            variant="ghost"
             aria-label={messages.settings.updater.open}
             className="titlebar-update-button"
             onClick={() => openSettings('updates')}
@@ -1137,24 +1150,28 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
       </header>
 
       {projection.mutationError ? (
-        <div className="mutation-error" role="alert">
-          <span>
-            <strong>{messages.workspaceShell.mutation.notSaved}</strong> {projection.mutationError}{' '}
-            {messages.workspaceShell.mutation.tryAgain}
-          </span>
-          <button onClick={() => projection.clearMutationError()} type="button">
-            {messages.workspaceShell.mutation.dismiss}
-          </button>
-        </div>
+        <Alert asChild variant="destructive">
+          <div className="mutation-error" role="alert">
+            <span>
+              <strong>{messages.workspaceShell.mutation.notSaved}</strong>{' '}
+              {projection.mutationError} {messages.workspaceShell.mutation.tryAgain}
+            </span>
+            <Button onClick={() => projection.clearMutationError()} type="button">
+              {messages.workspaceShell.mutation.dismiss}
+            </Button>
+          </div>
+        </Alert>
       ) : null}
 
       {commandError ? (
-        <div aria-live="assertive" className="mutation-error" role="alert">
-          <span>{commandError}</span>
-          <button onClick={() => setCommandError(null)} type="button">
-            {messages.workspaceShell.mutation.dismiss}
-          </button>
-        </div>
+        <Alert asChild variant="destructive">
+          <div aria-live="assertive" className="mutation-error" role="alert">
+            <span>{commandError}</span>
+            <Button onClick={() => setCommandError(null)} type="button">
+              {messages.workspaceShell.mutation.dismiss}
+            </Button>
+          </div>
+        </Alert>
       ) : null}
 
       {publicShortcutConflictMessage ? (
@@ -1178,7 +1195,7 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
             setCreateOpen(true)
           }}
           onEditSsh={setEditingSshWorkspaceId}
-          onForgetSsh={forgetSshWorkspace}
+          onForgetSsh={(workspaceId) => void forgetSshWorkspace(workspaceId)}
           onMutation={runMutation}
           onLayoutMutation={(operation) => {
             void operation
@@ -1268,7 +1285,7 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
         mode={createMode}
         onCreated={runMutation}
         onCreateSsh={createSshWorkspace}
-        onForgetSsh={forgetSshWorkspace}
+        onForgetSsh={(workspaceId) => void forgetSshWorkspace(workspaceId)}
         onOpenChange={setCreateOpen}
         open={createOpen}
         savedSshWorkspaces={sshWorkspaces}
@@ -1656,9 +1673,13 @@ function WorkspaceSidebar({
   return (
     <aside className="workspace-sidebar" aria-label={messages.workspaceShell.sidebar.label}>
       <div className="sidebar-heading">
-        <span>{messages.workspaceShell.sidebar.label}</span>
+        <span className="text-small font-semibold text-text-secondary">
+          {messages.workspaceShell.sidebar.label}
+        </span>
         {organizationEnabled ? (
-          <button
+          <Button
+            size="small"
+            variant="ghost"
             aria-label="Create workspace group"
             className="sidebar-heading-action"
             data-workspace-action={workspaceCardActionRegistry.resolve('groupCreate').actionId}
@@ -1666,35 +1687,39 @@ function WorkspaceSidebar({
             onClick={() => setCreateGroupOpen(true)}
             type="button"
           >
-            <Layers aria-hidden="true" size={13} />
+            <Layers aria-hidden="true" size={14} />
             <span>New group</span>
-          </button>
+          </Button>
         ) : null}
       </div>
-      <Button
-        aria-label={messages.workspaceShell.sidebar.createWorkspace}
-        className="sidebar-open-folder"
-        disabled={!!organization?.legacyOverLimit}
-        onClick={onCreate}
-        title={
-          organization?.legacyOverLimit
-            ? 'Close workspaces, panes, or tabs until the legacy counts are within limits.'
-            : undefined
-        }
-      >
-        <FolderOpen size={14} />
-        <span>{messages.workspaceShell.sidebar.openFolder}</span>
-        {shortcutLabel ? <kbd>{shortcutLabel}</kbd> : null}
-      </Button>
-      <Button
-        aria-label="Create SSH workspace"
-        className="sidebar-open-folder sidebar-open-ssh"
-        disabled={!!organization?.legacyOverLimit}
-        onClick={onCreateSsh}
-      >
-        <TerminalSquare size={14} />
-        <span>SSH workspace</span>
-      </Button>
+      <div className="sidebar-create-actions">
+        <Button
+          variant="ghost"
+          aria-label={messages.workspaceShell.sidebar.createWorkspace}
+          className="sidebar-open-folder"
+          disabled={!!organization?.legacyOverLimit}
+          onClick={onCreate}
+          title={
+            organization?.legacyOverLimit
+              ? 'Close workspaces, panes, or tabs until the legacy counts are within limits.'
+              : undefined
+          }
+        >
+          <FolderOpen aria-hidden="true" size={16} />
+          <span>{messages.workspaceShell.sidebar.openFolder}</span>
+          {shortcutLabel ? <Kbd className="ml-auto">{shortcutLabel}</Kbd> : null}
+        </Button>
+        <Button
+          aria-label="Create SSH workspace"
+          variant="ghost"
+          className="sidebar-open-folder"
+          disabled={!!organization?.legacyOverLimit}
+          onClick={onCreateSsh}
+        >
+          <TerminalSquare aria-hidden="true" size={16} />
+          <span>SSH workspace</span>
+        </Button>
+      </div>
       {organization?.legacyOverLimit ? (
         <LegacyOverLimitNotice
           legacy={organization.legacyOverLimit}
@@ -1864,9 +1889,9 @@ function WorkspaceGroupNameDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form className="dialog-form" onSubmit={(event) => void submit(event)}>
-          <label>
+          <Label>
             <span>Group name</span>
-            <input
+            <Input
               aria-describedby={error ? 'create-group-error' : undefined}
               autoFocus
               maxLength={MAX_WORKSPACE_GROUP_NAME_CHARS}
@@ -1878,11 +1903,13 @@ function WorkspaceGroupNameDialog({
               placeholder="For example, Client projects"
               value={name}
             />
-          </label>
+          </Label>
           {error ? (
-            <p className="dialog-field-error" id="create-group-error" role="alert">
-              {error}
-            </p>
+            <Alert asChild variant="destructive">
+              <p className="dialog-field-error" id="create-group-error" role="alert">
+                {error}
+              </p>
+            </Alert>
           ) : null}
           <DialogFooter>
             <Button disabled={submitting} onClick={() => onOpenChange(false)} type="button">
@@ -1912,19 +1939,19 @@ function SavedLayoutsPanel({
   selectedWorkspaceId: string | null
 }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
+  const workspaceIds = organization?.selection ?? (selectedWorkspaceId ? [selectedWorkspaceId] : [])
+  const validSelection = workspaceIds.length >= 1 && workspaceIds.length <= 32
   const mutationBase = (): { expectedRevision: number; idempotencyKey: string } => ({
     expectedRevision: savedLayouts.revision,
     idempotencyKey: globalThis.crypto.randomUUID()
   })
-  const save = (): void => {
+  const save = async (): Promise<void> => {
     if (!window.desktopBridge.saveLayout) return
-    const workspaceIds =
-      organization?.selection ?? (selectedWorkspaceId ? [selectedWorkspaceId] : [])
-    if (workspaceIds.length < 1 || workspaceIds.length > 32) {
-      window.alert('Select between 1 and 32 workspaces to save a layout.')
+    if (!validSelection) {
+      void showMessage('Select between 1 and 32 workspaces to save a layout.')
       return
     }
-    const name = window.prompt('Save selected workspaces as a layout')?.trim()
+    const name = (await requestText('Save selected workspaces as a layout'))?.trim()
     if (!name) return
     onLayoutMutation(
       window.desktopBridge.saveLayout({
@@ -1955,95 +1982,145 @@ function SavedLayoutsPanel({
       tabIndex={-1}
     >
       <div className="saved-layouts-heading">
-        <button
+        <Button
+          size="small"
+          variant="ghost"
           aria-expanded={expanded}
           className="saved-layouts-toggle"
           onClick={() => setExpanded((value) => !value)}
           type="button"
         >
-          <ChevronDown aria-hidden="true" data-collapsed={expanded ? 'false' : 'true'} size={12} />
+          <ChevronDown aria-hidden="true" data-collapsed={expanded ? 'false' : 'true'} size={14} />
           <strong>Saved layouts</strong>
-        </button>
-        {expanded ? (
-          <>
-            <button
+          <span className="text-metadata text-text-muted">{savedLayouts.layouts.length}</span>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="iconSmall" variant="ghost" aria-label="Saved layout actions">
+              <MoreHorizontal aria-hidden="true" size={16} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Saved layouts</DropdownMenuLabel>
+            <DropdownMenuItem
               data-workspace-action={workspaceCardActionRegistry.resolve('layoutSave').actionId}
-              onClick={save}
-              type="button"
+              disabled={!validSelection || !window.desktopBridge.saveLayout}
+              onSelect={() => void save()}
             >
               Save selection
-            </button>
-            <button
+            </DropdownMenuItem>
+            <DropdownMenuItem
               data-workspace-action={workspaceCardActionRegistry.resolve('layoutImport').actionId}
-              disabled={legacyOverLimit}
-              onClick={importLayout}
-              type="button"
+              disabled={legacyOverLimit || !window.desktopBridge.importSavedLayoutFromFile}
+              onSelect={importLayout}
             >
-              Import
-            </button>
-          </>
-        ) : (
-          <span className="workspace-group-count">{savedLayouts.layouts.length}</span>
-        )}
+              Import layout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {!expanded ? null : savedLayouts.layouts.length > 0 ? (
         <ul>
           {savedLayouts.layouts.map((layout) => (
             <li key={layout.id}>
-              <span title={`${String(layout.workspaceCount)} workspaces`}>{layout.name}</span>
-              <button
+              <LayoutPanelLeft aria-hidden="true" size={14} />
+              <div className="saved-layout-copy">
+                <span className="text-ui text-text-primary" title={layout.name}>
+                  {layout.name}
+                </span>
+                <span className="text-metadata text-text-muted">
+                  {messages.workspaceShell.sidebar.workspaceCount(layout.workspaceCount)}
+                </span>
+              </div>
+              <Button
+                size="small"
+                variant="ghost"
                 data-workspace-action={workspaceCardActionRegistry.resolve('layoutApply').actionId}
                 onClick={() => {
-                  if (legacyOverLimit || !window.desktopBridge.applyLayout) return
-                  if (
-                    !window.confirm(`Apply “${layout.name}” and replace the current workspace set?`)
-                  )
-                    return
-                  onLayoutMutation(
-                    window.desktopBridge.applyLayout({ layoutId: layout.id, ...mutationBase() })
-                  )
+                  void (async () => {
+                    if (legacyOverLimit || !window.desktopBridge.applyLayout) return
+                    if (
+                      !(await confirmAction(
+                        `Apply “${layout.name}” and replace the current workspace set?`
+                      ))
+                    )
+                      return
+                    onLayoutMutation(
+                      window.desktopBridge.applyLayout({ layoutId: layout.id, ...mutationBase() })
+                    )
+                  })()
                 }}
                 disabled={legacyOverLimit}
                 type="button"
               >
                 Apply
-              </button>
-              <button
-                data-workspace-action={workspaceCardActionRegistry.resolve('layoutExport').actionId}
-                onClick={() => {
-                  if (window.desktopBridge.exportSavedLayoutToFile) {
-                    onLayoutMutation(
-                      window.desktopBridge.exportSavedLayoutToFile({ layoutId: layout.id })
-                    )
-                  }
-                }}
-                type="button"
-              >
-                Export
-              </button>
-              <button
-                aria-label={`Delete saved layout ${layout.name}`}
-                data-workspace-action={workspaceCardActionRegistry.resolve('layoutDelete').actionId}
-                onClick={() => {
-                  if (
-                    !window.desktopBridge.deleteLayout ||
-                    !window.confirm(`Delete “${layout.name}”?`)
-                  )
-                    return
-                  onLayoutMutation(
-                    window.desktopBridge.deleteLayout({ layoutId: layout.id, ...mutationBase() })
-                  )
-                }}
-                type="button"
-              >
-                Delete
-              </button>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="iconSmall"
+                    variant="ghost"
+                    aria-label={`Actions for saved layout ${layout.name}`}
+                  >
+                    <MoreHorizontal aria-hidden="true" size={16} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    data-workspace-action={
+                      workspaceCardActionRegistry.resolve('layoutExport').actionId
+                    }
+                    disabled={!window.desktopBridge.exportSavedLayoutToFile}
+                    onSelect={() => {
+                      if (window.desktopBridge.exportSavedLayoutToFile) {
+                        onLayoutMutation(
+                          window.desktopBridge.exportSavedLayoutToFile({ layoutId: layout.id })
+                        )
+                      }
+                    }}
+                  >
+                    Export
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    destructive
+                    aria-label={`Delete saved layout ${layout.name}`}
+                    data-workspace-action={
+                      workspaceCardActionRegistry.resolve('layoutDelete').actionId
+                    }
+                    disabled={!window.desktopBridge.deleteLayout}
+                    onSelect={() => {
+                      void (async () => {
+                        if (
+                          !window.desktopBridge.deleteLayout ||
+                          !(await confirmAction(`Delete “${layout.name}”?`))
+                        )
+                          return
+                        onLayoutMutation(
+                          window.desktopBridge.deleteLayout({
+                            layoutId: layout.id,
+                            ...mutationBase()
+                          })
+                        )
+                      })()
+                    }}
+                  >
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
         </ul>
       ) : (
-        <small>No saved layouts</small>
+        <p className="saved-layouts-empty text-small text-text-muted">
+          No saved layouts. Save a workspace selection to return to it later.
+        </p>
       )}
+      {expanded && !validSelection ? (
+        <p className="saved-layouts-hint text-metadata text-text-muted">
+          Select between 1 and 32 workspaces to enable Save selection.
+        </p>
+      ) : null}
     </section>
   )
 }
@@ -2089,10 +2166,10 @@ function WorkspaceGroupHeader({
       return false
     }
   }
-  const remove = (): void => {
+  const remove = async (): Promise<void> => {
     if (
       !window.desktopBridge.deleteGroup ||
-      !window.confirm(`Delete the “${group.name}” group? Workspaces will become ungrouped.`)
+      !(await confirmAction(`Delete the “${group.name}” group? Workspaces will become ungrouped.`))
     )
       return
     void onMutation(window.desktopBridge.deleteGroup({ groupId: group.id, ...mutationBase() }))
@@ -2111,7 +2188,9 @@ function WorkspaceGroupHeader({
   }
   return (
     <div className="workspace-group-heading" role="listitem">
-      <button
+      <Button
+        size="small"
+        variant="ghost"
         aria-expanded={!group.collapsed}
         aria-label={`${group.collapsed ? 'Expand' : 'Collapse'} ${group.name}`}
         data-workspace-action={workspaceCardActionRegistry.resolve('groupCollapse').actionId}
@@ -2144,7 +2223,7 @@ function WorkspaceGroupHeader({
           size={12}
         />
         <span>{group.name}</span>
-      </button>
+      </Button>
       {group.collapsed ? (
         <span
           aria-label={messages.workspaceShell.sidebar.workspaceCount(workspaceCount)}
@@ -2154,7 +2233,9 @@ function WorkspaceGroupHeader({
           {workspaceCount}
         </span>
       ) : null}
-      <button
+      <Button
+        size="small"
+        variant="ghost"
         aria-label={`Rename ${group.name}`}
         data-workspace-action={workspaceCardActionRegistry.resolve('groupRename').actionId}
         onClick={() => setRenameOpen(true)}
@@ -2162,8 +2243,10 @@ function WorkspaceGroupHeader({
         type="button"
       >
         <Pencil aria-hidden="true" size={12} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="small"
+        variant="ghost"
         aria-label={`Move ${group.name} up`}
         data-workspace-action={workspaceCardActionRegistry.resolve('groupMove').actionId}
         disabled={groupIndex <= 0}
@@ -2172,8 +2255,10 @@ function WorkspaceGroupHeader({
         type="button"
       >
         <ArrowUp aria-hidden="true" size={12} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="small"
+        variant="ghost"
         aria-label={`Move ${group.name} down`}
         data-workspace-action={workspaceCardActionRegistry.resolve('groupMove').actionId}
         disabled={groupIndex >= groupCount - 1}
@@ -2182,16 +2267,18 @@ function WorkspaceGroupHeader({
         type="button"
       >
         <ArrowDown aria-hidden="true" size={12} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="small"
+        variant="ghost"
         aria-label={`Delete ${group.name}`}
         data-workspace-action={workspaceCardActionRegistry.resolve('groupDelete').actionId}
-        onClick={remove}
+        onClick={() => void remove()}
         title={`Delete ${group.name}`}
         type="button"
       >
         <Trash2 aria-hidden="true" size={12} />
-      </button>
+      </Button>
       {renameOpen ? (
         <WorkspaceGroupNameDialog
           description="Choose a short name that makes this workspace collection easy to recognize."
@@ -2258,8 +2345,8 @@ function SortableWorkspace({
     id: workspace.id
   })
   const activity = workspaceActivity(cardSlots, cardSlotsV2)
-  const rename = (): void => {
-    const name = window.prompt(messages.workspaceContextMenu.rename, workspace.name)?.trim()
+  const rename = async (): Promise<void> => {
+    const name = (await requestText(messages.workspaceContextMenu.rename, workspace.name))?.trim()
     if (name && name !== workspace.name)
       void onMutation(window.desktopBridge.updateWorkspace({ workspaceId: workspace.id, name }))
   }
@@ -2288,15 +2375,15 @@ function SortableWorkspace({
       })
     )
   }
-  const chooseCustomColor = (): void => {
-    const color = window.prompt(
+  const chooseCustomColor = async (): Promise<void> => {
+    const color = await requestText(
       messages.workspaceContextMenu.chooseColor,
       safeWorkspaceColor(workspace.color) ?? '#5B8DEF'
     )
     if (color === null) return
     const normalized = normalizeWorkspaceColor(color)
     if (!normalized) {
-      window.alert(messages.workspaceContextMenu.invalidColor)
+      void showMessage(messages.workspaceContextMenu.invalidColor)
       return
     }
     setColor(normalized)
@@ -2304,7 +2391,7 @@ function SortableWorkspace({
   const duplicate = (): void => {
     void onMutation(window.desktopBridge.createWorkspace(duplicateWorkspaceParams(workspace)))
   }
-  const close = (): void => {
+  const close = async (): Promise<void> => {
     if (
       organization &&
       organization.selection.length > 1 &&
@@ -2312,7 +2399,7 @@ function SortableWorkspace({
       window.desktopBridge.closeSelectedWorkspaces
     ) {
       const confirmation = `Close ${String(organization.selection.length)} selected workspaces (${selectedWorkspaceNames.join(', ')})?`
-      if (!window.confirm(confirmation)) return
+      if (!(await confirmAction(confirmation))) return
       void onMutation(
         window.desktopBridge.closeSelectedWorkspaces({
           ...(batchCloseReplacement ? { replacement: batchCloseReplacement } : {}),
@@ -2321,7 +2408,8 @@ function SortableWorkspace({
         })
       )
     } else {
-      if (!window.confirm(messages.workspaceShell.sidebar.closeConfirmation(workspace.name))) return
+      if (!(await confirmAction(messages.workspaceShell.sidebar.closeConfirmation(workspace.name))))
+        return
       void onMutation(window.desktopBridge.closeWorkspace({ workspaceId: workspace.id }))
     }
   }
@@ -2413,7 +2501,7 @@ function SortableWorkspace({
     if (!window.desktopBridge.openWorkspacePath) return
     void window.desktopBridge
       .openWorkspacePath({ workspaceId: workspace.id, openerId })
-      .catch(() => window.alert(messages.workspaceContextMenu.openFailed))
+      .catch(() => void showMessage(messages.workspaceContextMenu.openFailed))
   }
   return (
     <ContextMenu>
@@ -2430,222 +2518,244 @@ function SortableWorkspace({
             opacity: isDragging ? 0.55 : 1
           }}
         >
-          <div
-            className="workspace-card"
-            data-attention={attention?.state ?? 'none'}
-            data-selected={selected ? 'true' : 'false'}
-            data-workspace-id={workspace.id}
-            {...pointerDragListeners(listeners)}
-            onClick={(event) => {
-              const target = event.target
-              if (
-                target instanceof Element &&
-                target.closest('button, a, input, select, textarea, [role="button"], [role="link"]')
-              ) {
-                return
-              }
-              activateWorkspace(event.ctrlKey || event.metaKey, event.shiftKey)
-            }}
-          >
-            <button
-              aria-current={focused ? 'page' : undefined}
-              aria-label={messages.workspaceShell.sidebar.cardAccessibleName(
-                workspace.name,
-                attention?.state ?? 'none',
-                attention?.unreadCount ?? 0
-              )}
-              className="workspace-row"
-              data-workspace-action={workspaceCardActionRegistry.resolve('select').actionId}
-              aria-pressed={organization ? selected : undefined}
+          <Card asChild variant="interactive">
+            <div
+              className="workspace-card"
+              data-attention={attention?.state ?? 'none'}
+              data-selected={selected ? 'true' : 'false'}
+              data-workspace-id={workspace.id}
+              {...pointerDragListeners(listeners)}
               onClick={(event) => {
+                const target = event.target
+                if (
+                  target instanceof Element &&
+                  target.closest(
+                    'button, a, input, select, textarea, [role="button"], [role="link"]'
+                  )
+                ) {
+                  return
+                }
                 activateWorkspace(event.ctrlKey || event.metaKey, event.shiftKey)
               }}
-              onDoubleClick={rename}
-              onKeyDown={(event) => {
-                if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+            >
+              <Button
+                variant="ghost"
+                aria-current={focused ? 'page' : undefined}
+                aria-label={messages.workspaceShell.sidebar.cardAccessibleName(
+                  workspace.name,
+                  attention?.state ?? 'none',
+                  attention?.unreadCount ?? 0
+                )}
+                className="workspace-row h-auto"
+                data-workspace-action={workspaceCardActionRegistry.resolve('select').actionId}
+                aria-pressed={organization ? selected : undefined}
+                onClick={(event) => {
+                  activateWorkspace(event.ctrlKey || event.metaKey, event.shiftKey)
+                }}
+                onDoubleClick={() => void rename()}
+                onKeyDown={(event) => {
+                  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+                    event.preventDefault()
+                    const bounds = event.currentTarget.getBoundingClientRect()
+                    event.currentTarget.dispatchEvent(
+                      new MouseEvent('contextmenu', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: bounds.left + bounds.width / 2,
+                        clientY: bounds.top + bounds.height / 2
+                      })
+                    )
+                    return
+                  }
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    activateWorkspace(event.ctrlKey || event.metaKey, event.shiftKey)
+                    return
+                  }
+                  const action =
+                    event.key === 'ArrowDown'
+                      ? 'next'
+                      : event.key === 'ArrowUp'
+                        ? 'previous'
+                        : event.key === 'Home'
+                          ? 'home'
+                          : event.key === 'End'
+                            ? 'end'
+                            : undefined
+                  if (!action) return
+                  const options = [
+                    ...(event.currentTarget
+                      .closest('[role="list"]')
+                      ?.querySelectorAll<HTMLButtonElement>('.workspace-row') ?? [])
+                  ]
+                  const nextIndex = rovingFocusIndex(
+                    options.indexOf(event.currentTarget),
+                    options.length,
+                    action
+                  )
+                  const next = options[nextIndex]
+                  if (!next) return
                   event.preventDefault()
-                  const bounds = event.currentTarget.getBoundingClientRect()
-                  event.currentTarget.dispatchEvent(
-                    new MouseEvent('contextmenu', {
+                  next.focus()
+                  next.dispatchEvent(
+                    new MouseEvent('click', {
                       bubbles: true,
                       cancelable: true,
-                      clientX: bounds.left + bounds.width / 2,
-                      clientY: bounds.top + bounds.height / 2
+                      ctrlKey: event.ctrlKey,
+                      metaKey: event.metaKey,
+                      shiftKey: event.shiftKey
                     })
                   )
-                  return
-                }
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  activateWorkspace(event.ctrlKey || event.metaKey, event.shiftKey)
-                  return
-                }
-                const action =
-                  event.key === 'ArrowDown'
-                    ? 'next'
-                    : event.key === 'ArrowUp'
-                      ? 'previous'
-                      : event.key === 'Home'
-                        ? 'home'
-                        : event.key === 'End'
-                          ? 'end'
-                          : undefined
-                if (!action) return
-                const options = [
-                  ...(event.currentTarget
-                    .closest('[role="list"]')
-                    ?.querySelectorAll<HTMLButtonElement>('.workspace-row') ?? [])
-                ]
-                const nextIndex = rovingFocusIndex(
-                  options.indexOf(event.currentTarget),
-                  options.length,
-                  action
-                )
-                const next = options[nextIndex]
-                if (!next) return
-                event.preventDefault()
-                next.focus()
-                next.dispatchEvent(
-                  new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    ctrlKey: event.ctrlKey,
-                    metaKey: event.metaKey,
-                    shiftKey: event.shiftKey
-                  })
-                )
-              }}
-              tabIndex={tabStop ? 0 : -1}
-              type="button"
-            >
-              <span className="workspace-name-line">
-                <span
-                  className="workspace-indicator"
-                  style={
-                    attention?.state === 'waiting' || attention?.state === 'urgent'
-                      ? undefined
-                      : { background: safeWorkspaceColor(workspace.color) }
-                  }
-                  aria-hidden="true"
-                />
-                <strong>{workspace.name}</strong>
-                <WorkspaceActivityBadge activity={activity} workspaceName={workspace.name} />
-                {attention ? (
-                  <AttentionBadge
-                    announce={false}
-                    attention={attention}
-                    compact
-                    label={workspace.name}
+                }}
+                tabIndex={tabStop ? 0 : -1}
+                type="button"
+              >
+                <span className="workspace-name-line">
+                  <span
+                    className="workspace-indicator"
+                    style={
+                      attention?.state === 'waiting' || attention?.state === 'urgent'
+                        ? undefined
+                        : { background: safeWorkspaceColor(workspace.color) }
+                    }
+                    aria-hidden="true"
                   />
-                ) : null}
-                <span
-                  aria-hidden="true"
-                  className="workspace-when"
-                  title={messages.workspaceShell.sidebar.lastActivity(
-                    new Date(workspace.updatedAt).toLocaleString()
+                  <strong>{workspace.name}</strong>
+                  <WorkspaceActivityBadge activity={activity} workspaceName={workspace.name} />
+                  {attention ? (
+                    <AttentionBadge
+                      announce={false}
+                      attention={attention}
+                      compact
+                      label={workspace.name}
+                    />
+                  ) : null}
+                  <span
+                    aria-hidden="true"
+                    className="workspace-when"
+                    title={messages.workspaceShell.sidebar.lastActivity(
+                      new Date(workspace.updatedAt).toLocaleString()
+                    )}
+                  >
+                    {workspaceRelativeTime(workspace.updatedAt)}
+                  </span>
+                </span>
+              </Button>
+              <div className="workspace-copy workspace-details">
+                <small
+                  aria-label={messages.workspaceRuntimeMetadata.workingDirectory(
+                    workspace.workingDirectory
                   )}
+                  className="workspace-directory"
+                  title={workspace.workingDirectory}
                 >
-                  {workspaceRelativeTime(workspace.updatedAt)}
-                </span>
-              </span>
-            </button>
-            <div className="workspace-copy workspace-details">
-              <small
-                aria-label={messages.workspaceRuntimeMetadata.workingDirectory(
-                  workspace.workingDirectory
-                )}
-                className="workspace-directory"
-                title={workspace.workingDirectory}
-              >
-                <FolderOpen aria-hidden="true" size={11} />
-                <span className="workspace-meta-value">
-                  {workspaceDirectoryDisplayPath(workspace.workingDirectory)}
-                </span>
-                {metadata?.gitBranch ? (
-                  <span className="workspace-branch" title={metadata.gitBranch}>
-                    <GitBranch aria-hidden="true" size={11} />
-                    <span>{metadata.gitBranch}</span>
+                  <FolderOpen aria-hidden="true" size={11} />
+                  <span className="workspace-meta-value">
+                    {workspaceDirectoryDisplayPath(workspace.workingDirectory)}
                   </span>
-                ) : null}
-              </small>
-              <small
-                aria-label={messages.workspaceRuntimeMetadata.accessibilityLabel(
-                  metadata?.gitBranch ?? messages.workspaceRuntimeMetadata.unavailable,
-                  workspaceGitStatusLabel(metadata?.gitStatus),
-                  processTitle,
-                  workspaceListeningPortsAccessibilityLabel(listeningPorts)
-                )}
-                className="workspace-runtime-metadata"
-                tabIndex={0}
-              >
-                {workspaceGitStatusDirty(metadata?.gitStatus) ? (
-                  <span
-                    className="workspace-git-status"
-                    title={workspaceGitStatusLabel(metadata?.gitStatus)}
-                  >
-                    {workspaceGitStatusLabel(metadata?.gitStatus)}
-                  </span>
-                ) : null}
-                <span className="workspace-chips">
-                  <span className="workspace-chip" title={processTitle}>
-                    <span className="workspace-runtime-metadata-label">
-                      {messages.workspaceRuntimeMetadata.process}:{' '}
+                  {metadata?.gitBranch ? (
+                    <span className="workspace-branch" title={metadata.gitBranch}>
+                      <GitBranch aria-hidden="true" size={11} />
+                      <span>{metadata.gitBranch}</span>
                     </span>
-                    {processTitle}
-                  </span>
-                  <span
-                    className="workspace-runtime-metadata-label"
-                    title={workspaceListeningPortsTitle(listeningPorts)}
-                  >
-                    {messages.workspaceRuntimeMetadata.ports}:{' '}
-                    {workspaceListeningPortsLabel(listeningPorts)}
-                  </span>
-                  {listeningPorts.map((port) => (
+                  ) : null}
+                </small>
+                <small
+                  aria-label={messages.workspaceRuntimeMetadata.accessibilityLabel(
+                    metadata?.gitBranch ?? messages.workspaceRuntimeMetadata.unavailable,
+                    workspaceGitStatusLabel(metadata?.gitStatus),
+                    processTitle,
+                    workspaceListeningPortsAccessibilityLabel(listeningPorts)
+                  )}
+                  className="workspace-runtime-metadata"
+                  tabIndex={0}
+                >
+                  {workspaceGitStatusDirty(metadata?.gitStatus) ? (
                     <span
-                      aria-hidden="true"
-                      className="workspace-chip workspace-chip-port"
-                      key={port}
+                      className="workspace-git-status"
+                      title={workspaceGitStatusLabel(metadata?.gitStatus)}
                     >
-                      :{port}
+                      {workspaceGitStatusLabel(metadata?.gitStatus)}
                     </span>
-                  ))}
-                  {workspaceBrowserHosts(workspace).map((host) => (
-                    <span className="workspace-chip" key={host} title={host}>
-                      <Globe2 aria-hidden="true" size={10} />
-                      {host}
+                  ) : null}
+                  <span className="workspace-chips">
+                    <Badge
+                      size="small"
+                      variant="outline"
+                      className="workspace-chip"
+                      title={processTitle}
+                    >
+                      <span className="workspace-runtime-metadata-label">
+                        {messages.workspaceRuntimeMetadata.process}:{' '}
+                      </span>
+                      {processTitle}
+                    </Badge>
+                    <span
+                      className="workspace-runtime-metadata-label"
+                      title={workspaceListeningPortsTitle(listeningPorts)}
+                    >
+                      {messages.workspaceRuntimeMetadata.ports}:{' '}
+                      {workspaceListeningPortsLabel(listeningPorts)}
                     </span>
-                  ))}
-                </span>
-              </small>
-              <WorkspaceCardSlots slots={cardSlots} />
-              {sshProfile ? (
-                <div className="workspace-ssh-target">
-                  <small title={sshProfile.host}>
-                    SSH · {sshProfile.user ? `${sshProfile.user}@` : ''}
-                    {sshProfile.host}
-                    {sshProfile.port === 22 ? '' : `:${sshProfile.port}`}
-                  </small>
-                  <button
-                    aria-label={`New SSH shell in ${workspace.name}`}
-                    onClick={newSshShell}
-                    title="Open a fresh SSH shell; existing remote processes are not resumed"
-                    type="button"
-                  >
-                    New shell
-                  </button>
-                </div>
-              ) : null}
-              <WorkspaceCardSlotsV2 slots={cardSlotsV2} />
-              {workspace.attention.latestUnread ? (
-                <span className="workspace-attention-excerpt">
-                  {workspace.attention.latestUnread.title}
-                </span>
-              ) : null}
+                    {listeningPorts.map((port) => (
+                      <Badge
+                        size="small"
+                        variant="outline"
+                        aria-hidden="true"
+                        className="workspace-chip workspace-chip-port"
+                        key={port}
+                      >
+                        :{port}
+                      </Badge>
+                    ))}
+                    {workspaceBrowserHosts(workspace).map((host) => (
+                      <Badge
+                        size="small"
+                        variant="outline"
+                        className="workspace-chip"
+                        key={host}
+                        title={host}
+                      >
+                        <Globe2 aria-hidden="true" size={10} />
+                        {host}
+                      </Badge>
+                    ))}
+                  </span>
+                </small>
+                <WorkspaceCardSlots slots={cardSlots} />
+                {sshProfile ? (
+                  <div className="workspace-ssh-target">
+                    <small title={sshProfile.host}>
+                      SSH · {sshProfile.user ? `${sshProfile.user}@` : ''}
+                      {sshProfile.host}
+                      {sshProfile.port === 22 ? '' : `:${sshProfile.port}`}
+                    </small>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      aria-label={`New SSH shell in ${workspace.name}`}
+                      onClick={newSshShell}
+                      title="Open a fresh SSH shell; existing remote processes are not resumed"
+                      type="button"
+                    >
+                      New shell
+                    </Button>
+                  </div>
+                ) : null}
+                <WorkspaceCardSlotsV2 slots={cardSlotsV2} />
+                {workspace.attention.latestUnread ? (
+                  <span className="workspace-attention-excerpt">
+                    {workspace.attention.latestUnread.title}
+                  </span>
+                ) : null}
+              </div>
             </div>
-          </div>
+          </Card>
           <DropdownMenu onOpenChange={loadPathOpeners}>
             <DropdownMenuTrigger asChild>
-              <button
+              <Button
+                size="iconSmall"
+                variant="ghost"
                 aria-label={`${messages.workspaceContextMenu.openWith} ${workspace.name}`}
                 className="workspace-open-path"
                 data-workspace-action={workspaceCardActionRegistry.resolve('openPath').actionId}
@@ -2654,7 +2764,7 @@ function SortableWorkspace({
                 type="button"
               >
                 <FolderOpen aria-hidden="true" size={13} />
-              </button>
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" side="right" sideOffset={6}>
               <DropdownMenuItem onSelect={() => openWorkspacePath('fileManager')}>
@@ -2686,7 +2796,9 @@ function SortableWorkspace({
             </DropdownMenuContent>
           </DropdownMenu>
           {organization ? (
-            <button
+            <Button
+              size="iconSmall"
+              variant="ghost"
               aria-label={`${pinned ? 'Unpin' : 'Pin'} ${workspace.name}`}
               aria-pressed={pinned}
               className="workspace-pin"
@@ -2696,9 +2808,11 @@ function SortableWorkspace({
               type="button"
             >
               <Pin aria-hidden="true" size={13} />
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
+            size="iconSmall"
+            variant="ghost"
             className="workspace-drag"
             aria-label={messages.workspaceShell.sidebar.reorder(workspace.name)}
             data-workspace-action={workspaceCardActionRegistry.resolve('reorder').actionId}
@@ -2713,8 +2827,10 @@ function SortableWorkspace({
             type="button"
           >
             <GripVertical size={13} />
-          </button>
-          <button
+          </Button>
+          <Button
+            size="iconSmall"
+            variant="ghost"
             className="workspace-remove"
             aria-label={messages.workspaceShell.sidebar.close(workspace.name)}
             data-workspace-action={
@@ -2726,13 +2842,15 @@ function SortableWorkspace({
                   : 'close'
               ).actionId
             }
-            onClick={close}
+            onClick={() => void close()}
             type="button"
           >
             <X size={12} />
-          </button>
+          </Button>
           {organization && attention && attention.state !== 'none' ? (
-            <button
+            <Button
+              size="iconSmall"
+              variant="ghost"
               aria-label={`Open attention for ${workspace.name}`}
               className="workspace-attention-open"
               data-workspace-action={workspaceCardActionRegistry.resolve('attention').actionId}
@@ -2740,7 +2858,7 @@ function SortableWorkspace({
               type="button"
             >
               <Bell aria-hidden="true" size={12} />
-            </button>
+            </Button>
           ) : null}
         </div>
       </ContextMenuTrigger>
@@ -2787,7 +2905,7 @@ function SortableWorkspace({
         ) : null}
         <ContextMenuItem
           data-workspace-action={workspaceCardActionRegistry.resolve('rename').actionId}
-          onSelect={rename}
+          onSelect={() => void rename()}
         >
           {messages.workspaceContextMenu.rename}
         </ContextMenuItem>
@@ -2815,7 +2933,7 @@ function SortableWorkspace({
             <ContextMenuSeparator />
             <ContextMenuItem
               data-workspace-action={workspaceCardActionRegistry.resolve('colorChoose').actionId}
-              onSelect={chooseCustomColor}
+              onSelect={() => void chooseCustomColor()}
             >
               {messages.workspaceContextMenu.chooseColor}
             </ContextMenuItem>
@@ -2853,7 +2971,7 @@ function SortableWorkspace({
         <ContextMenuItem
           data-workspace-action={workspaceCardActionRegistry.resolve('close').actionId}
           destructive
-          onSelect={close}
+          onSelect={() => void close()}
         >
           {messages.workspaceContextMenu.close}
         </ContextMenuItem>
@@ -3292,88 +3410,178 @@ function PaneView({
   const selectedTab = tabs.find((tab) => tab.id === pane.selectedTabId) ?? tabs[0]
   const terminalToolsOpen = terminalToolsTabId === selectedTab?.id
   return (
-    <section
-      className={workspace.selectedPaneId === pane.id ? 'pane-view selected' : 'pane-view'}
-      data-pane-id={pane.id}
-      data-selected={workspace.selectedPaneId === pane.id ? 'true' : 'false'}
-      onMouseDown={(event) => {
-        if ((event.target as HTMLElement).closest('button, select, input, [role="separator"]'))
-          return
-        if (workspace.selectedPaneId !== pane.id)
-          void onMutation(
-            window.desktopBridge.focusPane({ workspaceId: workspace.id, paneId: pane.id })
-          )
-      }}
-      tabIndex={-1}
-    >
-      <div className="pane-tabbar">
-        <SortableContext
-          items={tabs.map(({ id }) => tabDragId(id))}
-          strategy={horizontalListSortingStrategy}
-        >
-          <div
-            aria-label={pane.title ?? messages.workspaceShell.pane.tabs}
-            className="pane-tabs"
-            role="tablist"
+    <Tabs asChild activationMode="manual" value={selectedTab?.id ?? ''}>
+      <section
+        className={workspace.selectedPaneId === pane.id ? 'pane-view selected' : 'pane-view'}
+        data-pane-id={pane.id}
+        data-selected={workspace.selectedPaneId === pane.id ? 'true' : 'false'}
+        onMouseDown={(event) => {
+          if ((event.target as HTMLElement).closest('button, select, input, [role="separator"]'))
+            return
+          if (workspace.selectedPaneId !== pane.id)
+            void onMutation(
+              window.desktopBridge.focusPane({ workspaceId: workspace.id, paneId: pane.id })
+            )
+        }}
+        tabIndex={-1}
+      >
+        <div className="pane-tabbar">
+          <SortableContext
+            items={tabs.map(({ id }) => tabDragId(id))}
+            strategy={horizontalListSortingStrategy}
           >
-            {tabs.map((tab) => (
-              <PaneTab
-                key={tab.id}
+            <TabsList asChild unstyled>
+              <div
+                aria-label={pane.title ?? messages.workspaceShell.pane.tabs}
+                className="pane-tabs"
+              >
+                {tabs.map((tab) => (
+                  <PaneTab
+                    key={tab.id}
+                    onMutation={onMutation}
+                    pane={pane}
+                    selected={tab.id === selectedTab?.id}
+                    tab={tab}
+                    workspace={workspace}
+                  />
+                ))}
+              </div>
+            </TabsList>
+          </SortableContext>
+          {selectedTab ? (
+            <PaneTabUtilities
+              onMutation={onMutation}
+              onTabAction={onTabAction}
+              pane={pane}
+              tab={selectedTab}
+              workspace={workspace}
+            />
+          ) : null}
+          <div className="pane-actions">
+            <AttentionBadge
+              announce={false}
+              attention={pane.attention}
+              compact
+              label={pane.title ?? messages.workspaceShell.pane.attentionLabel}
+            />
+            {selectedTab?.content.kind === 'terminal' ? (
+              <IconButton
+                aria-label={
+                  terminalToolsOpen
+                    ? messages.terminalPane.controls.closeTools
+                    : messages.terminalPane.controls.openTools
+                }
+                aria-pressed={terminalToolsOpen}
+                className="pane-search-action"
+                onClick={() => setTerminalToolsTabId(terminalToolsOpen ? null : selectedTab.id)}
+                tooltip={`${messages.terminalPane.controls.openTools} · Ctrl+F`}
+              >
+                <Search size={14} />
+              </IconButton>
+            ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="iconSmall"
+                  variant="ghost"
+                  aria-label={messages.workspaceShell.pane.addTab}
+                  className="pane-add-tab"
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={14} />
+                  <span>{messages.workspaceShell.pane.addTab}</span>
+                  <ChevronDown aria-hidden="true" size={12} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() =>
+                    void onMutation(
+                      window.desktopBridge.openTerminalTab({
+                        workspaceId: workspace.id,
+                        paneId: pane.id,
+                        launch: terminalLaunch(workspace.workingDirectory, sshProfile)
+                      })
+                    )
+                  }
+                >
+                  <TerminalSquare aria-hidden="true" size={14} />
+                  {messages.workspaceShell.pane.terminalTab}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!browserTabsEnabled}
+                  onSelect={() =>
+                    void onMutation(
+                      window.desktopBridge.openBrowserTab({
+                        workspaceId: workspace.id,
+                        paneId: pane.id,
+                        metadata: { url: messages.workspaceShell.defaultBrowserUrl }
+                      })
+                    )
+                  }
+                >
+                  <Globe2 aria-hidden="true" size={14} />
+                  {messages.workspaceShell.pane.browserTab}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <IconButton
+              aria-label={messages.workspaceShell.pane.splitRight}
+              className="pane-split-action"
+              onClick={() =>
+                void splitWithTerminal(workspace, pane.id, 'horizontal', onMutation, sshProfile)
+              }
+              tooltip={`${messages.workspaceShell.pane.splitRight} · Ctrl+D`}
+            >
+              <SplitSquareHorizontal size={14} />
+            </IconButton>
+            <IconButton
+              aria-label={messages.workspaceShell.pane.splitDown}
+              className="pane-split-action"
+              onClick={() =>
+                void splitWithTerminal(workspace, pane.id, 'vertical', onMutation, sshProfile)
+              }
+              tooltip={`${messages.workspaceShell.pane.splitDown} · Ctrl+Shift+D`}
+            >
+              <SplitSquareVertical size={14} />
+            </IconButton>
+            {workspace.panes.length > 1 ? (
+              <IconButton
+                aria-label={messages.workspaceShell.pane.close}
+                onClick={() =>
+                  void onMutation(
+                    window.desktopBridge.closePane({ workspaceId: workspace.id, paneId: pane.id })
+                  )
+                }
+                tooltip={messages.workspaceShell.pane.close}
+              >
+                <Trash2 size={13} />
+              </IconButton>
+            ) : null}
+          </div>
+        </div>
+        <TabsContent asChild forceMount value={selectedTab?.id ?? ''}>
+          <div
+            aria-labelledby={selectedTab ? tabDomId(selectedTab.id) : undefined}
+            className="pane-content"
+            id={panePanelDomId(pane.id)}
+            role={selectedTab ? 'tabpanel' : undefined}
+          >
+            {selectedTab ? (
+              <TabContent
+                browserVisible={browserViewsVisible}
                 onMutation={onMutation}
-                pane={pane}
-                selected={tab.id === selectedTab?.id}
-                tab={tab}
+                onProcessTitleChange={onProcessTitleChange}
+                onTerminalToolsOpenChange={(open) =>
+                  setTerminalToolsTabId(open ? selectedTab.id : null)
+                }
+                tab={selectedTab}
+                terminalToolsOpen={terminalToolsOpen}
                 workspace={workspace}
               />
-            ))}
-          </div>
-        </SortableContext>
-        {selectedTab ? (
-          <PaneTabUtilities
-            onMutation={onMutation}
-            onTabAction={onTabAction}
-            pane={pane}
-            tab={selectedTab}
-            workspace={workspace}
-          />
-        ) : null}
-        <div className="pane-actions">
-          <AttentionBadge
-            announce={false}
-            attention={pane.attention}
-            compact
-            label={pane.title ?? messages.workspaceShell.pane.attentionLabel}
-          />
-          {selectedTab?.content.kind === 'terminal' ? (
-            <IconButton
-              aria-label={
-                terminalToolsOpen
-                  ? messages.terminalPane.controls.closeTools
-                  : messages.terminalPane.controls.openTools
-              }
-              aria-pressed={terminalToolsOpen}
-              className="pane-search-action"
-              onClick={() => setTerminalToolsTabId(terminalToolsOpen ? null : selectedTab.id)}
-              tooltip={`${messages.terminalPane.controls.openTools} · Ctrl+F`}
-            >
-              <Search size={14} />
-            </IconButton>
-          ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                aria-label={messages.workspaceShell.pane.addTab}
-                className="pane-add-tab"
-                type="button"
-              >
-                <Plus aria-hidden="true" size={14} />
-                <span>{messages.workspaceShell.pane.addTab}</span>
-                <ChevronDown aria-hidden="true" size={12} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={() =>
+            ) : (
+              <EmptyPane
+                onAdd={() =>
                   void onMutation(
                     window.desktopBridge.openTerminalTab({
                       workspaceId: workspace.id,
@@ -3382,96 +3590,13 @@ function PaneView({
                     })
                   )
                 }
-              >
-                <TerminalSquare aria-hidden="true" size={14} />
-                {messages.workspaceShell.pane.terminalTab}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!browserTabsEnabled}
-                onSelect={() =>
-                  void onMutation(
-                    window.desktopBridge.openBrowserTab({
-                      workspaceId: workspace.id,
-                      paneId: pane.id,
-                      metadata: { url: messages.workspaceShell.defaultBrowserUrl }
-                    })
-                  )
-                }
-              >
-                <Globe2 aria-hidden="true" size={14} />
-                {messages.workspaceShell.pane.browserTab}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <IconButton
-            aria-label={messages.workspaceShell.pane.splitRight}
-            className="pane-split-action"
-            onClick={() =>
-              void splitWithTerminal(workspace, pane.id, 'horizontal', onMutation, sshProfile)
-            }
-            tooltip={`${messages.workspaceShell.pane.splitRight} · Ctrl+D`}
-          >
-            <SplitSquareHorizontal size={14} />
-          </IconButton>
-          <IconButton
-            aria-label={messages.workspaceShell.pane.splitDown}
-            className="pane-split-action"
-            onClick={() =>
-              void splitWithTerminal(workspace, pane.id, 'vertical', onMutation, sshProfile)
-            }
-            tooltip={`${messages.workspaceShell.pane.splitDown} · Ctrl+Shift+D`}
-          >
-            <SplitSquareVertical size={14} />
-          </IconButton>
-          {workspace.panes.length > 1 ? (
-            <IconButton
-              aria-label={messages.workspaceShell.pane.close}
-              onClick={() =>
-                void onMutation(
-                  window.desktopBridge.closePane({ workspaceId: workspace.id, paneId: pane.id })
-                )
-              }
-              tooltip={messages.workspaceShell.pane.close}
-            >
-              <Trash2 size={13} />
-            </IconButton>
-          ) : null}
-        </div>
-      </div>
-      <div
-        aria-labelledby={selectedTab ? tabDomId(selectedTab.id) : undefined}
-        className="pane-content"
-        id={panePanelDomId(pane.id)}
-        role={selectedTab ? 'tabpanel' : undefined}
-      >
-        {selectedTab ? (
-          <TabContent
-            browserVisible={browserViewsVisible}
-            onMutation={onMutation}
-            onProcessTitleChange={onProcessTitleChange}
-            onTerminalToolsOpenChange={(open) =>
-              setTerminalToolsTabId(open ? selectedTab.id : null)
-            }
-            tab={selectedTab}
-            terminalToolsOpen={terminalToolsOpen}
-            workspace={workspace}
-          />
-        ) : (
-          <EmptyPane
-            onAdd={() =>
-              void onMutation(
-                window.desktopBridge.openTerminalTab({
-                  workspaceId: workspace.id,
-                  paneId: pane.id,
-                  launch: terminalLaunch(workspace.workingDirectory, sshProfile)
-                })
-              )
-            }
-          />
-        )}
-      </div>
-      <PaneDropTargets active={draggedTab !== null} pane={pane} source={draggedTab} />
-    </section>
+              />
+            )}
+          </div>
+        </TabsContent>
+        <PaneDropTargets active={draggedTab !== null} pane={pane} source={draggedTab} />
+      </section>
+    </Tabs>
   )
 }
 
@@ -3520,7 +3645,8 @@ function PaneTab({
       }}
     >
       {renaming ? (
-        <input
+        <Input
+          controlSize="small"
           aria-label={messages.workspaceShell.tab.rename}
           autoFocus
           className="pane-tab-rename"
@@ -3540,7 +3666,9 @@ function PaneTab({
         />
       ) : (
         <>
-          <button
+          <TabsTrigger
+            value={tab.id}
+            variant="pane"
             aria-controls={panePanelDomId(pane.id)}
             className="pane-tab-select"
             data-selected={selected ? 'true' : 'false'}
@@ -3602,7 +3730,7 @@ function PaneTab({
               next.focus()
               next.click()
             }}
-            role="tab"
+
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             type="button"
@@ -3614,10 +3742,12 @@ function PaneTab({
             )}
             <span className="pane-tab-title">{title}</span>
             <AttentionBadge announce={false} attention={tab.attention} compact label={title} />
-          </button>
+          </TabsTrigger>
           {/* Mouse affordance only: the accessible close control lives in the
               tab utilities toolbar, because a tablist may only own tabs. */}
-          <button
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-hidden="true"
             className="tab-close"
             onClick={() =>
@@ -3630,7 +3760,7 @@ function PaneTab({
             type="button"
           >
             <X size={11} />
-          </button>
+          </Button>
         </>
       )}
     </div>
@@ -3659,92 +3789,104 @@ function PaneTabUtilities({
         { kind: 'move', targetPaneId: pane.id, targetIndex: desiredIndex }
       )
   }
+  const act = (value: string): void => {
+    const [kind, targetPaneId, direction] = value.split(':')
+    if (kind === 'previous' || kind === 'next') {
+      move(kind === 'previous' ? -1 : 1)
+      return
+    }
+    const targetPane = workspace.panes.find((candidate) => candidate.id === targetPaneId)
+    if (!targetPane) return
+    const source = { tabId: tab.id, sourcePaneId: pane.id }
+    if (kind === 'move') {
+      onTabAction(source, {
+        kind: 'move',
+        targetPaneId: targetPane.id,
+        targetIndex:
+          targetPaneId === pane.id
+            ? Math.max(0, targetPane.tabIds.length - 1)
+            : targetPane.tabIds.length
+      })
+    } else if (kind === 'split' && isDropZone(direction) && direction !== 'move') {
+      onTabAction(source, { kind: 'split', targetPaneId: targetPane.id, direction })
+    }
+  }
   return (
     <div
       aria-label={messages.workspaceShell.tab.actions(title)}
       className="pane-tab-utilities"
       role="toolbar"
     >
-      <button
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={messages.workspaceShell.tab.moveLeft(title)}
         className="tab-keyboard-move"
         onClick={() => move(-1)}
         type="button"
       >
         <ChevronLeft aria-hidden="true" size={14} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={messages.workspaceShell.tab.moveRight(title)}
         className="tab-keyboard-move"
         onClick={() => move(1)}
         type="button"
       >
         <ChevronRight aria-hidden="true" size={14} />
-      </button>
-      <span
-        className="tab-drop-actions-control"
-        title={messages.workspaceShell.tab.keyboardDestinations}
-      >
-        <MoreHorizontal aria-hidden="true" size={13} />
-        <select
-          aria-label={messages.workspaceShell.tab.moveOrSplit(title)}
-          className="tab-drop-actions"
-          defaultValue=""
-          onChange={(event) => {
-            const [kind, targetPaneId, direction] = event.currentTarget.value.split(':')
-            event.currentTarget.value = ''
-            if (kind === 'previous' || kind === 'next') {
-              move(kind === 'previous' ? -1 : 1)
-              return
-            }
-            const targetPane = workspace.panes.find((candidate) => candidate.id === targetPaneId)
-            if (!targetPane) return
-            const source = { tabId: tab.id, sourcePaneId: pane.id }
-            if (kind === 'move') {
-              onTabAction(source, {
-                kind: 'move',
-                targetPaneId: targetPane.id,
-                targetIndex:
-                  targetPaneId === pane.id
-                    ? Math.max(0, targetPane.tabIds.length - 1)
-                    : targetPane.tabIds.length
-              })
-            } else if (kind === 'split' && isDropZone(direction) && direction !== 'move') {
-              onTabAction(source, { kind: 'split', targetPaneId: targetPane.id, direction })
-            }
-          }}
-          title={messages.workspaceShell.tab.keyboardDestinations}
-        >
-          <option value="">{messages.workspaceShell.tab.destinations}</option>
-          <option disabled={index === 0} value="previous">
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label={messages.workspaceShell.tab.moveOrSplit(title)}
+            className="tab-drop-actions-control"
+            title={messages.workspaceShell.tab.keyboardDestinations}
+            size="icon"
+            variant="ghost"
+          >
+            <MoreHorizontal aria-hidden="true" size={13} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent aria-label={messages.workspaceShell.tab.destinations}>
+          <DropdownMenuItem disabled={index === 0} onSelect={() => act('previous')}>
             {messages.workspaceShell.tab.moveLeft(title)}
-          </option>
-          <option disabled={index === pane.tabIds.length - 1} value="next">
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={index === pane.tabIds.length - 1}
+            onSelect={() => act('next')}
+          >
             {messages.workspaceShell.tab.moveRight(title)}
-          </option>
+          </DropdownMenuItem>
           {workspace.panes.map((targetPane) => (
-            <option key={`move:${targetPane.id}`} value={`move:${targetPane.id}`}>
+            <DropdownMenuItem
+              key={`move:${targetPane.id}`}
+              onSelect={() => act(`move:${targetPane.id}`)}
+            >
               {messages.workspaceShell.tab.moveToPane(paneLabel(targetPane, workspace))}
-            </option>
+            </DropdownMenuItem>
           ))}
           {workspace.panes.flatMap((targetPane) =>
             targetPane.id === pane.id && pane.tabIds.length === 1
               ? []
               : (['left', 'right', 'top', 'bottom'] as const).map((direction) => (
-                  <option
+                  <DropdownMenuItem
                     key={`split:${targetPane.id}:${direction}`}
-                    value={`split:${targetPane.id}:${direction}`}
+                    onSelect={() => act(`split:${targetPane.id}:${direction}`)}
                   >
                     {messages.workspaceShell.tab.splitPane(
                       paneLabel(targetPane, workspace),
                       direction
                     )}
-                  </option>
+                  </DropdownMenuItem>
                 ))
           )}
-        </select>
-      </span>
-      <button
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={messages.workspaceShell.tab.close(title)}
         className="tab-close"
         onClick={() =>
@@ -3755,7 +3897,7 @@ function PaneTabUtilities({
         type="button"
       >
         <X size={11} />
-      </button>
+      </Button>
     </div>
   )
 }
@@ -3989,20 +4131,21 @@ function MoveTabToWindowDialog({
           <DialogDescription>Choose the exact destination window for this tab.</DialogDescription>
         </DialogHeader>
         <form className="dialog-form" onSubmit={submit}>
-          <label>
+          <Label>
             <span>Destination window</span>
-            <select
-              autoFocus
-              onChange={(event) => setWindowId(event.target.value)}
-              value={windowId}
-            >
-              {destinations.map((destination) => (
-                <option key={destination.windowId} value={destination.windowId}>
-                  {destination.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <Select onValueChange={setWindowId} value={windowId}>
+              <SelectTrigger autoFocus>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {destinations.map((destination) => (
+                  <SelectItem key={destination.windowId} value={destination.windowId}>
+                    {destination.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Label>
           <DialogFooter>
             <Button onClick={() => onOpenChange(false)} type="button">
               Cancel
@@ -4116,19 +4259,19 @@ function CreateWorkspaceDialog({
         <form className="dialog-form" onSubmit={(event) => void submit(event)}>
           {mode === 'ssh' ? (
             <>
-              <label>
+              <Label>
                 <span>Workspace name</span>
-                <input
+                <Input
                   autoFocus
                   maxLength={MAX_WORKSPACE_NAME_CHARS}
                   onChange={(event) => setSshName(event.target.value)}
                   placeholder="Production server"
                   value={sshName}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label>
                 <span>SSH host or alias</span>
-                <input
+                <Input
                   autoComplete="off"
                   maxLength={253}
                   onChange={(event) => setSshHost(event.target.value)}
@@ -4137,10 +4280,10 @@ function CreateWorkspaceDialog({
                   spellCheck={false}
                   value={sshHost}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label>
                 <span>Username (optional)</span>
-                <input
+                <Input
                   autoComplete="username"
                   maxLength={64}
                   onChange={(event) => setSshUser(event.target.value)}
@@ -4148,10 +4291,10 @@ function CreateWorkspaceDialog({
                   spellCheck={false}
                   value={sshUser}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label>
                 <span>Port</span>
-                <input
+                <Input
                   max={65535}
                   min={1}
                   onChange={(event) => setSshPort(event.target.value)}
@@ -4159,8 +4302,12 @@ function CreateWorkspaceDialog({
                   type="number"
                   value={sshPort}
                 />
-              </label>
-              {sshError ? <p role="alert">{sshError}</p> : null}
+              </Label>
+              {sshError ? (
+                <Alert asChild variant="destructive">
+                  <p role="alert">{sshError}</p>
+                </Alert>
+              ) : null}
             </>
           ) : (
             <>
@@ -4178,9 +4325,9 @@ function CreateWorkspaceDialog({
               <div className="workspace-path-divider">
                 {messages.workspaceShell.createWorkspace.manualDivider}
               </div>
-              <label>
+              <Label>
                 <span>{messages.workspaceShell.createWorkspace.workingDirectory}</span>
-                <input
+                <Input
                   autoFocus={!window.desktopBridge.pickWorkspaceDirectory}
                   onChange={(event) => setDirectory(event.target.value)}
                   placeholder={
@@ -4191,7 +4338,7 @@ function CreateWorkspaceDialog({
                   spellCheck={false}
                   value={directory}
                 />
-              </label>
+              </Label>
             </>
           )}
           <DialogFooter>
@@ -4290,9 +4437,9 @@ function EditSshWorkspaceDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="dialog-form" onSubmit={submit}>
-          <label>
+          <Label>
             <span>SSH host or alias</span>
-            <input
+            <Input
               autoFocus
               maxLength={253}
               onChange={(event) => setHost(event.target.value)}
@@ -4300,20 +4447,20 @@ function EditSshWorkspaceDialog({
               spellCheck={false}
               value={host}
             />
-          </label>
-          <label>
+          </Label>
+          <Label>
             <span>Username (optional)</span>
-            <input
+            <Input
               autoComplete="username"
               maxLength={64}
               onChange={(event) => setUser(event.target.value)}
               spellCheck={false}
               value={user}
             />
-          </label>
-          <label>
+          </Label>
+          <Label>
             <span>Port</span>
-            <input
+            <Input
               max={65535}
               min={1}
               onChange={(event) => setPort(event.target.value)}
@@ -4321,8 +4468,12 @@ function EditSshWorkspaceDialog({
               type="number"
               value={port}
             />
-          </label>
-          {error ? <p role="alert">{error}</p> : null}
+          </Label>
+          {error ? (
+            <Alert asChild variant="destructive">
+              <p role="alert">{error}</p>
+            </Alert>
+          ) : null}
           <DialogFooter>
             <Button onClick={() => onOpenChange(false)} type="button">
               Cancel
@@ -4380,23 +4531,6 @@ export function CommandPalette({
     context
   )
   const publicCommandIds = new Set(publicCommands.map(({ command }) => command.id))
-  const availableIndices = matches.flatMap((match, index) => (match.available ? [index] : []))
-  const [requestedActiveIndex, setRequestedActiveIndex] = useState(0)
-  const activeIndex = matches[requestedActiveIndex]?.available
-    ? requestedActiveIndex
-    : (availableIndices[0] ?? -1)
-  const activeCommandId = matches[activeIndex]?.command.id ?? null
-  const moveActive = (action: 'next' | 'previous' | 'home' | 'end'): void => {
-    if (availableIndices.length === 0) return
-    const currentAvailableIndex = availableIndices.indexOf(activeIndex)
-    const nextAvailableIndex = rovingFocusIndex(
-      currentAvailableIndex,
-      availableIndices.length,
-      action
-    )
-    const nextIndex = availableIndices[nextAvailableIndex]
-    if (nextIndex !== undefined) setRequestedActiveIndex(nextIndex)
-  }
   const execute = async (commandId: string): Promise<void> => {
     if (executionGuardRef.current) return
     executionGuardRef.current = true
@@ -4445,81 +4579,51 @@ export function CommandPalette({
         <DialogTitle className="sr-only">
           {messages.workspaceShell.commandPalette.title}
         </DialogTitle>
-        <div className="command-search">
-          <Command size={16} />
-          <input
-            aria-activedescendant={
-              activeCommandId ? commandOptionDomId(activeCommandId) : undefined
-            }
-            aria-autocomplete="list"
-            aria-controls="command-palette-results"
-            aria-expanded={open}
-            aria-label={messages.workspaceShell.commandPalette.search}
-            autoFocus
-            onChange={(event) => {
-              setRequestedActiveIndex(0)
-              setQuery(event.target.value)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                event.preventDefault()
-                moveActive(event.key === 'ArrowDown' ? 'next' : 'previous')
-              } else if (event.key === 'Home' || event.key === 'End') {
-                event.preventDefault()
-                moveActive(event.key === 'Home' ? 'home' : 'end')
-              } else if (event.key === 'Enter' && activeCommandId) {
-                event.preventDefault()
-                void execute(activeCommandId)
-              }
-            }}
-            placeholder={messages.workspaceShell.commandPalette.placeholder}
-            role="combobox"
-            value={query}
-          />
-        </div>
-        <div
-          aria-label={messages.workspaceShell.commandPalette.results}
-          className="command-results"
-          id="command-palette-results"
-          role="listbox"
+        <CommandRoot
+          label={messages.workspaceShell.commandPalette.search}
+          shouldFilter={false}
+          loop
         >
-          {matches.map((match, index) => (
-            <button
-              aria-disabled={!match.available}
-              aria-selected={match.command.id === activeCommandId}
-              className="command-result"
-              disabled={!match.available}
-              id={commandOptionDomId(match.command.id)}
-              key={match.command.id}
-              onClick={() => void execute(match.command.id)}
-              onMouseMove={() => {
-                if (match.available) setRequestedActiveIndex(index)
-              }}
-              role="option"
-              tabIndex={-1}
-              type="button"
-            >
-              <span>
-                <strong>{match.command.title}</strong>
-                <small>{match.unavailableReason ?? match.command.description}</small>
-              </span>
-              <kbd>
-                {publicCommandIds.has(match.command.id)
-                  ? 'API'
-                  : match.command.defaultShortcut
-                    ? shortcutLabel(match.command.defaultShortcut)
-                    : ''}
-              </kbd>
-            </button>
-          ))}
-        </div>
+          <div className="command-search">
+            <Command aria-hidden="true" size={16} />
+            <CommandInput
+              aria-label={messages.workspaceShell.commandPalette.search}
+              autoFocus
+              onValueChange={setQuery}
+              placeholder={messages.workspaceShell.commandPalette.placeholder}
+              value={query}
+            />
+          </div>
+          <CommandList
+            aria-label={messages.workspaceShell.commandPalette.results}
+            className="command-results"
+          >
+            {matches.map((match) => (
+              <CommandItem
+                className="command-result"
+                disabled={!match.available}
+                key={match.command.id}
+                value={match.command.id}
+                onSelect={() => void execute(match.command.id)}
+              >
+                <span>
+                  <strong>{match.command.title}</strong>
+                  <small>{match.unavailableReason ?? match.command.description}</small>
+                </span>
+                <Kbd>
+                  {publicCommandIds.has(match.command.id)
+                    ? 'API'
+                    : match.command.defaultShortcut
+                      ? shortcutLabel(match.command.defaultShortcut)
+                      : ''}
+                </Kbd>
+              </CommandItem>
+            ))}
+          </CommandList>
+        </CommandRoot>
       </DialogContent>
     </Dialog>
   )
-}
-
-function commandOptionDomId(commandId: string): string {
-  return `command-palette-option-${commandId.replace(/[^a-zA-Z0-9_-]/g, '-')}`
 }
 
 type SettingsSectionId = ConfigurationSettingsSection | 'shortcuts' | 'remote'
@@ -4544,7 +4648,7 @@ const SETTINGS_SECTIONS: readonly {
   {
     id: 'updates',
     label: messages.settings.updates,
-    keywords: 'version stable beta alpha download'
+    keywords: 'version alpha download'
   },
   { id: 'remote', label: 'Remote sessions', keywords: 'ssh tmux host key credential' },
   {
@@ -4688,9 +4792,10 @@ export function SettingsDialog({
             <DialogTitle>{messages.workspaceShell.settingsShortcuts.title}</DialogTitle>
             <DialogDescription>{messages.settings.description}</DialogDescription>
           </DialogHeader>
-          <label className="settings-search">
+          <Label className="settings-search">
             <Search aria-hidden="true" size={14} />
-            <input
+            <Input
+              className="pl-8"
               aria-label={messages.settings.search}
               onChange={(event) => {
                 const query = event.currentTarget.value
@@ -4704,10 +4809,11 @@ export function SettingsDialog({
               placeholder={messages.settings.search}
               value={settingsQuery}
             />
-          </label>
+          </Label>
           <nav aria-label={messages.workspaceShell.settingsShortcuts.title}>
             {visibleSettingsSections.map((section) => (
-              <button
+              <Button
+                variant="ghost"
                 aria-current={activeSection === section.id ? 'page' : undefined}
                 key={section.id}
                 onClick={() => setActiveSection(section.id)}
@@ -4716,7 +4822,7 @@ export function SettingsDialog({
                 <SettingsSectionIcon section={section.id} />
                 <span>{section.label}</span>
                 <ChevronRight aria-hidden="true" className="settings-nav-chevron" size={12} />
-              </button>
+              </Button>
             ))}
           </nav>
           {!configurationReadOnly && (
@@ -4790,7 +4896,7 @@ export function SettingsDialog({
                           )}
                         </small>
                       </span>
-                      <input
+                      <Input
                         aria-describedby={!valid || conflictMessage ? validationId : undefined}
                         aria-invalid={!valid || Boolean(conflictMessage)}
                         aria-label={messages.workspaceShell.settingsShortcuts.inputLabel(

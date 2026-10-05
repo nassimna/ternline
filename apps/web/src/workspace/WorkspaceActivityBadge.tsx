@@ -1,3 +1,4 @@
+import { Badge } from '../ui/badge'
 import { CheckCircle2, Circle, CircleX, Clock3, LoaderCircle } from 'lucide-react'
 import type { AgentStatus, WorkspaceCardSlotsSnapshot } from '@agent-workspace/protocol-client'
 
@@ -42,7 +43,19 @@ export function WorkspaceActivityBadge({
   const iconProps = { 'aria-hidden': true as const, size: 12, strokeWidth: 2 }
 
   return (
-    <span
+    <Badge
+      size="small"
+      variant={
+        activity.state === 'completed'
+          ? 'success'
+          : activity.state === 'failed'
+            ? 'destructive'
+            : activity.state === 'waiting'
+              ? 'warning'
+              : activity.state === 'running'
+                ? 'info'
+                : 'secondary'
+      }
       aria-label={accessible}
       className="workspace-activity"
       data-state={activity.state}
@@ -55,7 +68,7 @@ export function WorkspaceActivityBadge({
       {activity.state === 'failed' ? <CircleX {...iconProps} /> : null}
       {activity.state === 'idle' ? <Circle {...iconProps} /> : null}
       <span>{status}</span>
-    </span>
+    </Badge>
   )
 }
 

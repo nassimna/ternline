@@ -3,8 +3,10 @@
 
 import '@testing-library/jest-dom/vitest'
 
+import * as requestDialogs from './ui/request-dialog'
+
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   ApplicationSnapshot,
@@ -24,6 +26,7 @@ import type {
 import projection from '../../../packages/protocol-client/fixtures/milestone2-projection.json'
 import settings from '../../../packages/protocol-client/fixtures/milestone2-settings.json'
 import { App } from './App'
+import { chooseSelectOption } from './test/select'
 import { resetConfigurationStoreForTests } from './configuration-store'
 import { messages } from './messages'
 import { resetProjectionStoreForTests } from './workspace/projection-store'
@@ -75,6 +78,19 @@ vi.mock('react-resizable-panels', () => ({
 
 const projectionFixture = projection as ApplicationSnapshot
 const settingsFixture = settings as SettingsGetResult
+
+// cmdk measures its list in the browser; jsdom does not implement ResizeObserver.
+beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+  )
+})
 
 afterEach(() => {
   cleanup()
@@ -856,8 +872,8 @@ describe('App', () => {
   it('routes workspace context rename, move, and close actions through existing mutations', async () => {
     const snapshot = projectionWithSecondWorkspace()
     const bridge = createBridge(undefined, snapshot)
-    vi.stubGlobal('prompt', vi.fn().mockReturnValue('Renamed workspace'))
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    vi.spyOn(requestDialogs, 'requestText').mockResolvedValue('Renamed workspace')
+    vi.spyOn(requestDialogs, 'confirmAction').mockResolvedValue(true)
     window.desktopBridge = bridge
     render(<App />)
 
@@ -1120,9 +1136,11 @@ describe('App', () => {
     expect(moveRight.querySelector('svg')).not.toBeNull()
     expect(moveLeft).not.toHaveTextContent('‹')
     expect(moveRight).not.toHaveTextContent('›')
-    const destinations = screen.getByRole('combobox', { name: 'Move or split M2 tests' })
-    expect(within(destinations).getByRole('option', { name: 'Move M2 tests left' })).toBeEnabled()
-    fireEvent.change(destinations, { target: { value: 'previous' } })
+    const destinations = screen.getByRole('button', { name: 'Move or split M2 tests' })
+    fireEvent.keyDown(destinations, { key: 'Enter' })
+    const moveItem = await screen.findByRole('menuitem', { name: 'Move M2 tests left' })
+    expect(moveItem).not.toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(moveItem)
     await waitFor(() => expect(bridge.moveTab).toHaveBeenCalledOnce())
     expect(screen.getByRole('tabpanel', { name: 'M2 tests' })).toHaveAttribute(
       'id',
@@ -1146,7 +1164,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open command palette' }))
 
     const search = await screen.findByRole('combobox', { name: 'Search commands' })
-    expect(search).toHaveAttribute('aria-activedescendant')
+    await waitFor(() => expect(search).toHaveAttribute('aria-activedescendant'))
     expect(screen.getByRole('option', { selected: true })).toHaveTextContent('Open folder')
 
     fireEvent.keyDown(search, { key: 'End' })
@@ -1355,6 +1373,86 @@ describe('App', () => {
         screen.queryByRole('dialog', { name: 'Create workspace group' })
       ).not.toBeInTheDocument()
     )
+  })
+
+  it('saves and imports layouts from the sidebar menu while keeping Apply visible', async () => {
+    const bridge = createSavedLayoutsBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const actions = await screen.findByRole('button', { name: 'Saved layout actions' })
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Save selection' }))
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Save selected workspaces as a layout'
+    })
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'My setup' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
+    await waitFor(() =>
+      expect(bridge.saveLayout).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'My setup',
+          workspaceIds: [projectionFixture.selectedWorkspaceId],
+          expectedRevision: 9
+        })
+      )
+    )
+
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import layout' }))
+    await waitFor(() =>
+      expect(bridge.importSavedLayoutFromFile).toHaveBeenCalledWith(
+        expect.objectContaining({ expectedRevision: 9 })
+      )
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^Saved layouts/ }))
+    const panel = screen.getByRole('region', { name: 'Saved layouts' })
+    expect(within(panel).getByRole('button', { name: 'Apply' })).toBeVisible()
+    fireEvent.pointerDown(
+      within(panel).getByRole('button', { name: 'Actions for saved layout Daily development' }),
+      { button: 0, ctrlKey: false }
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export' }))
+    await waitFor(() =>
+      expect(bridge.exportSavedLayoutToFile).toHaveBeenCalledWith({
+        layoutId: '10000000-0000-4000-8000-000000000010'
+      })
+    )
+  })
+
+  it('explains unavailable layout saving when no workspace is selected', async () => {
+    const bridge = createSavedLayoutsBridge()
+    bridge.identify = vi.fn().mockResolvedValue({
+      application: 'agent-workspace',
+      version: '0.1.0',
+      protocolVersion: 1,
+      capabilities: ['configuration-v2', 'saved-layouts-v1', 'workspace-groups-v1']
+    })
+    bridge.getWorkspaceOrganization = vi.fn().mockResolvedValue({
+      organization: {
+        revision: 9,
+        selection: [],
+        focusedWorkspaceId: projectionFixture.selectedWorkspaceId,
+        pins: [],
+        groups: [],
+        assignments: []
+      }
+    })
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const actions = await screen.findByRole('button', { name: 'Saved layout actions' })
+    fireEvent.click(screen.getByRole('button', { name: /^Saved layouts/ }))
+    expect(
+      screen.getByText('Select between 1 and 32 workspaces to enable Save selection.')
+    ).toBeVisible()
+    fireEvent.pointerDown(actions, { button: 0, ctrlKey: false })
+    expect(await screen.findByRole('menuitem', { name: 'Save selection' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+    expect(bridge.saveLayout).not.toHaveBeenCalled()
   })
 
   it('blocks physical shortcut conflicts while preserving set, clear, and reset mutations', async () => {
@@ -1969,9 +2067,7 @@ describe('App', () => {
 
     const theme = await screen.findByRole('button', { name: 'Dark' })
     fireEvent.click(theme)
-    fireEvent.change(screen.getByRole('combobox', { name: 'Density' }), {
-      target: { value: 'expanded' }
-    })
+    await chooseSelectOption(screen.getByRole('combobox', { name: 'Density' }), 'Expanded')
     const appearance = theme.closest('.configuration-section')
     expect(appearance).not.toBeNull()
 
@@ -2136,9 +2232,7 @@ describe('App', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Open settings' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Dark' }))
     await waitFor(() => expect(bridge.updateConfiguration).toHaveBeenCalledOnce())
-    fireEvent.change(screen.getByRole('combobox', { name: 'Density' }), {
-      target: { value: 'compact' }
-    })
+    await chooseSelectOption(screen.getByRole('combobox', { name: 'Density' }), 'Compact')
     resolveSave({
       config: {
         ...configurationFixture,
@@ -2153,7 +2247,7 @@ describe('App', () => {
         appearance: { ...configurationFixture.appearance, theme: 'dark', density: 'compact' }
       }
     })
-    expect(screen.getByRole('combobox', { name: 'Density' })).toHaveValue('compact')
+    expect(screen.getByRole('combobox', { name: 'Density' })).toHaveTextContent('Compact')
   })
 
   it('saves and clears the configured shell with the authoritative terminal section', async () => {
@@ -2219,7 +2313,7 @@ describe('App', () => {
     const logLevel = await screen.findByRole('combobox', { name: 'Log level' })
     const loggingSection = logLevel.closest('.configuration-section')
     expect(loggingSection).not.toBeNull()
-    fireEvent.change(logLevel, { target: { value: 'debug' } })
+    await chooseSelectOption(logLevel, 'Debug')
 
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenCalledWith({
@@ -2227,7 +2321,43 @@ describe('App', () => {
         update: { logging: { level: 'debug' } }
       })
     )
-    await waitFor(() => expect(logLevel).toHaveValue('debug'))
+    await waitFor(() => expect(logLevel).toHaveTextContent('Debug'))
+  })
+
+  it('offers only Alpha for an existing beta profile and saves the corrected channel', async () => {
+    const bridge = createBridge()
+    bridge.getConfiguration = vi.fn().mockResolvedValue({
+      config: { ...configurationFixture, updates: { channel: 'beta', automatic: false } }
+    })
+    window.desktopBridge = bridge
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open update settings' }))
+    const channel = await screen.findByRole('combobox', { name: 'Update channel' })
+    expect(channel).toHaveTextContent('Choose Alpha')
+    await chooseSelectOption(channel, 'Alpha')
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await waitFor(() =>
+      expect(bridge.updateConfiguration).toHaveBeenCalledWith({
+        expectedRevision: 4,
+        update: { updates: { channel: 'alpha', automatic: false } }
+      })
+    )
+  })
+
+  it('shows the saved Alpha channel without changing configuration on open or close', async () => {
+    const bridge = createBridge()
+    bridge.getConfiguration = vi.fn().mockResolvedValue({
+      config: { ...configurationFixture, updates: { channel: 'alpha', automatic: false } }
+    })
+    window.desktopBridge = bridge
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Open update settings' }))
+    expect(await screen.findByRole('combobox', { name: 'Update channel' })).toHaveTextContent(
+      'Alpha'
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Close dialog' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(bridge.updateConfiguration).not.toHaveBeenCalled()
   })
 
   it('opens updates from the titlebar, persists automatic updates and requires explicit restart', async () => {
@@ -2259,10 +2389,15 @@ describe('App', () => {
     const automatic = screen.getByRole('checkbox', {
       name: 'Automatically check and download updates'
     })
+    expect(channel).toHaveTextContent('Choose Alpha')
+    fireEvent.keyDown(channel, { key: 'Enter' })
+    expect(await screen.findByRole('option', { name: 'Alpha' })).toBeVisible()
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    fireEvent.keyDown(screen.getByRole('option', { name: 'Alpha' }), { key: 'Escape' })
     expect(automatic).not.toBeChecked()
     fireEvent.click(automatic)
-    fireEvent.change(channel, { target: { value: 'alpha' } })
-    expect(channel).toHaveValue('alpha')
+    await chooseSelectOption(channel, 'Alpha')
+    expect(channel).toHaveTextContent('Alpha')
     await waitFor(() =>
       expect(bridge.updateConfiguration).toHaveBeenCalledWith({
         expectedRevision: 4,
@@ -2423,6 +2558,38 @@ function createBridge(
     onDomainResyncRequired: vi.fn(() => () => undefined),
     onServiceEvent: vi.fn(() => () => undefined)
   }
+}
+
+function createSavedLayoutsBridge(
+  snapshot: ApplicationSnapshot = projectionFixture
+): DesktopBridge {
+  const bridge = createBridge(
+    vi.fn().mockResolvedValue({
+      application: 'agent-workspace',
+      version: '0.1.0',
+      protocolVersion: 1,
+      capabilities: ['configuration-v2', 'saved-layouts-v1']
+    }),
+    snapshot
+  )
+  bridge.listSavedLayouts = vi.fn().mockResolvedValue({
+    revision: 9,
+    layouts: [
+      {
+        id: '10000000-0000-4000-8000-000000000010',
+        name: 'Daily development',
+        formatVersion: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        workspaceCount: 1
+      }
+    ]
+  })
+  bridge.saveLayout = vi.fn().mockResolvedValue({})
+  bridge.importSavedLayoutFromFile = vi.fn().mockResolvedValue(true)
+  bridge.exportSavedLayoutToFile = vi.fn().mockResolvedValue(true)
+  bridge.deleteLayout = vi.fn().mockResolvedValue({})
+  return bridge
 }
 
 function projectionWithSecondWorkspace(): ApplicationSnapshot {

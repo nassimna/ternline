@@ -1,3 +1,4 @@
+import { Card } from './ui/card'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type {
@@ -295,27 +296,29 @@ function LifecycleLoading({ label }: { label: string }): React.JSX.Element {
 
 function DiagnosticPreview({ preview }: { preview: DiagnosticBundlePreview }): React.JSX.Element {
   return (
-    <section className="diagnostic-preview" aria-labelledby="diagnostic-preview-title">
-      <h2 id="diagnostic-preview-title">{messages.lifecycle.diagnosticsTitle}</h2>
-      <p>{messages.lifecycle.diagnosticsPrivacy}</p>
-      <ul>
-        {preview.entries.map((entry, index) => (
-          <li key={`${entry.name}-${String(index)}`}>
-            <span>{entry.name}</span>
-            <span>{formatBytes(entry.bytes)}</span>
-          </li>
-        ))}
-      </ul>
-      <dl>
-        <div>
-          <dt>{messages.lifecycle.diagnosticsTotal}</dt>
-          <dd>{formatBytes(preview.totalBytes)}</dd>
-        </div>
-        <div>
-          <dt>{messages.lifecycle.diagnosticsRedactions}</dt>
-          <dd>{preview.redactionCount}</dd>
-        </div>
-      </dl>
-    </section>
+    <Card asChild>
+      <section className="diagnostic-preview" aria-labelledby="diagnostic-preview-title">
+        <h2 id="diagnostic-preview-title">{messages.lifecycle.diagnosticsTitle}</h2>
+        <p>{messages.lifecycle.diagnosticsPrivacy}</p>
+        <ul>
+          {preview.entries.map((entry, index) => (
+            <li key={`${entry.name}-${String(index)}`}>
+              <span>{entry.name}</span>
+              <span>{formatBytes(entry.bytes)}</span>
+            </li>
+          ))}
+        </ul>
+        <dl>
+          <div>
+            <dt>{messages.lifecycle.diagnosticsTotal}</dt>
+            <dd>{formatBytes(preview.totalBytes)}</dd>
+          </div>
+          <div>
+            <dt>{messages.lifecycle.diagnosticsRedactions}</dt>
+            <dd>{preview.redactionCount}</dd>
+          </div>
+        </dl>
+      </section>
+    </Card>
   )
 }

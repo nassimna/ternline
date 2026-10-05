@@ -2,6 +2,7 @@ import type { WorkspaceCardSlotsSnapshot } from '@agent-workspace/protocol-clien
 import type { JSX } from 'react'
 
 import { messages } from '../messages'
+import { Progress } from '../ui/progress'
 
 export function WorkspaceCardSlots({
   slots
@@ -11,6 +12,11 @@ export function WorkspaceCardSlots({
   if (!slots?.agentStatus && !slots?.progress) return null
   const agentStatus = slots.agentStatus
   const progress = slots.progress
+  const progressLabel = progress
+    ? progress.mode === 'determinate'
+      ? messages.workspaceCardSlots.progressAccessible(progress.value, progress.label)
+      : messages.workspaceCardSlots.indeterminateAccessible(progress.label)
+    : undefined
   return (
     <span className="workspace-card-slots">
       {agentStatus ? (
@@ -20,40 +26,20 @@ export function WorkspaceCardSlots({
           {agentStatus.label ? ` — ${agentStatus.label}` : ''}
         </small>
       ) : null}
-      {progress?.mode === 'determinate' ? (
-        <span
-          aria-label={messages.workspaceCardSlots.progressAccessible(
-            progress.value,
-            progress.label
-          )}
-          aria-valuemax={100}
-          aria-valuemin={0}
-          aria-valuenow={progress.value}
-          aria-valuetext={messages.workspaceCardSlots.progressAccessible(
-            progress.value,
-            progress.label
-          )}
-          className="workspace-card-progress"
-          role="progressbar"
-        >
+      {progress ? (
+        <span className="workspace-card-progress">
           <span className="workspace-card-progress-copy">
             {progress.label ? `${progress.label} · ` : ''}
-            {String(progress.value)}%
+            {progress.mode === 'determinate'
+              ? `${String(progress.value)}%`
+              : messages.workspaceCardSlots.inProgress}
           </span>
-          <span aria-hidden="true" className="workspace-card-progress-track">
-            <span style={{ width: `${String(progress.value)}%` }} />
-          </span>
+          <Progress
+            aria-label={progressLabel}
+            aria-valuetext={progressLabel}
+            value={progress.mode === 'determinate' ? progress.value : null}
+          />
         </span>
-      ) : null}
-      {progress?.mode === 'indeterminate' ? (
-        <small
-          aria-label={messages.workspaceCardSlots.indeterminateAccessible(progress.label)}
-          className="workspace-card-progress-indeterminate"
-          role="progressbar"
-        >
-          <span className="workspace-card-slot-label">{messages.workspaceCardSlots.progress}:</span>{' '}
-          {progress.label} · {messages.workspaceCardSlots.inProgress}
-        </small>
       ) : null}
     </span>
   )
