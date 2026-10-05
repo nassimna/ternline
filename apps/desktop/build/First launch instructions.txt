@@ -1,0 +1,17 @@
+Opening Ternline on macOS
+
+This release is unsigned and not notarized by Apple. If you trust this
+download, follow these steps to approve Ternline on its first launch:
+
+1. Drag Ternline.app into Applications.
+2. Open Ternline from Applications. If macOS says the developer cannot be
+   verified or Apple cannot check the app, dismiss the warning.
+3. Open System Settings > Privacy & Security and scroll down.
+4. Click Open Anyway for Ternline, then confirm Open. macOS may ask for
+   your password or Touch ID.
+
+Try opening Ternline before looking for Open Anyway. After approval, you
+can open it normally from Applications.
+
+Apple's instructions:
+https://support.apple.com/en-us/102445

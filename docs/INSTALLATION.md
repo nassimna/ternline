@@ -96,6 +96,15 @@ choose an installation directory; the installer creates desktop and Start menu s
 preserves user data on uninstall. The zip on macOS is used by the updater and is also available
 for manual extraction.
 
+The macOS download buttons show a first-launch guide before downloading. New DMGs also contain
+**First launch instructions.txt** beside the app and the Applications shortcut.
+
+On macOS, this unsigned release may be blocked on first launch. If you trust the download,
+try opening Ternline from Applications, dismiss the developer-verification warning, then open
+**System Settings → Privacy & Security**, scroll down, and click
+**Open Anyway** for Ternline. Confirm **Open** to save an exception for this app.
+See [Apple's first-launch instructions](https://support.apple.com/en-us/102445).
+
 The CLI is available in terminals opened inside Ternline. macOS packages include
 `Ternline.app/Contents/Resources/cli/ternline-cli`; Windows packages include
 `resources/cli/ternline-cli.cmd`. See the [CLI reference](CLI.md) for external-agent setup.
