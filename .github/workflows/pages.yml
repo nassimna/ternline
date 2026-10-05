@@ -35,28 +35,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - name: Verify published downloads
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version=$(node -p 'require("./package.json").version')
-          gh release view "v$version" --json tagName,isDraft,assets > published-release.json
-          node --input-type=module <<'EOF'
-          import { readFile } from 'node:fs/promises'
-          const { version } = JSON.parse(await readFile('package.json', 'utf8'))
-          const release = JSON.parse(await readFile('published-release.json', 'utf8'))
-          if (release.isDraft || release.tagName !== `v${version}`) throw new Error('Release is not published.')
-          const names = new Set(release.assets.map(asset => asset.name))
-          for (const name of [
-            `agent-workspace-${version}-x86_64.AppImage`,
-            `agent-workspace-${version}-x86_64.deb`,
-            `agent-workspace-${version}-x86_64.rpm`,
-            `agent-workspace-${version}-macos-arm64.dmg`,
-            `agent-workspace-${version}-macos-x64.dmg`,
-            `agent-workspace-${version}-windows-x64-setup.exe`,
-            'SHA256SUMS'
-          ]) if (!names.has(name)) throw new Error(`Missing download: ${name}`)
-          EOF
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.0
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -64,6 +42,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+      - name: Verify published downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > published-releases.json
+          node --experimental-strip-types --input-type=module <<'EOF'
+          import { appendFile, readFile } from 'node:fs/promises'
+          import { latestPublishedRelease } from './apps/website/src/lib/downloads.ts'
+          const release = latestPublishedRelease(JSON.parse(await readFile('published-releases.json', 'utf8')))
+          if (!release) throw new Error('No complete published release is available.')
+          await appendFile(process.env.GITHUB_ENV, `WEBSITE_RELEASE_VERSION=${release.version}\n`)
+          console.log(`Website downloads: v${release.version}`)
+          EOF
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - run: pnpm install --filter @ternline/website --filter agent-workspace --frozen-lockfile --ignore-scripts
       - run: pnpm build:website

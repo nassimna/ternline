@@ -116,3 +116,23 @@ disposable VM with the appropriate package manager. AppImage tests must launch t
 rather than an unpacked directory. macOS and Windows tests must verify platform signatures before
 qualifying an update and must exercise an installed DMG/NSIS candidate, not only an unpacked
 application.
+
+## Unsigned macOS alpha builds
+
+Ad-hoc signed and unsigned installed `-alpha.N` builds use a dedicated ZIP installer because
+Squirrel.Mac cannot validate updates across their changing ad-hoc signatures. Signed builds
+continue to use Squirrel.Mac. This fallback only accepts alpha versions and the running
+architecture's ZIP from the configured provider. It retains the provider's SHA-512 validation
+and verifies the cached ZIP again immediately before extraction.
+
+On explicit restart, the installer stages a matching bundle identifier and version beside the
+installed application. The containing directory must be writable; read-only disk images and
+non-writable installations fail without quitting. Normal application cleanup runs before a
+helper replaces the bundle after the old process exits. Failed replacement or a rejected launch
+request restores the previous bundle. A launch accepted by macOS is not a health check of the
+new application. There is no privilege escalation or Gatekeeper modification.
+
+Unsigned updates trust the configured HTTPS release origin and its checksum metadata, not an
+Apple signing identity. Install the first build containing this fallback manually: previously
+released clients cannot acquire this updater through their broken native update path. Saved
+workspace data is kept outside the application bundle and is not replaced.

@@ -7,6 +7,19 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.2] - 2026-10-05
+
+### Fixed
+
+- AppImage updates restart after service shutdown and single-instance lock release.
+- Unsigned macOS alpha builds install validated updates after shutdown and reopen the saved workspace.
+- Website downloads follow the latest complete published release, including alpha releases.
+
+### Status
+
+- Unsigned alpha packages for Linux, macOS, and Windows. Verify downloads against `SHA256SUMS`.
+- Existing macOS clients need a one-time manual installation of this release to receive future in-app alpha updates.
+
 ## [0.2.1-alpha.1] - 2026-10-03
 
 ### Fixed
