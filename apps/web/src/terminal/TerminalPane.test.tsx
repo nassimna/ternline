@@ -2,6 +2,8 @@
 
 import '@testing-library/jest-dom/vitest'
 
+import * as requestDialogs from '../ui/request-dialog'
+
 import { useState } from 'react'
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -476,8 +478,7 @@ describe('TerminalPane', () => {
     const sendTerminalInput = vi
       .fn<DesktopBridge['sendTerminalInput']>()
       .mockResolvedValue(undefined)
-    const confirm = vi.fn().mockReturnValue(false)
-    vi.stubGlobal('confirm', confirm)
+    const confirm = vi.spyOn(requestDialogs, 'confirmAction').mockResolvedValue(false)
     const initial = configuration({
       fontFamily: 'Iosevka',
       fontSize: 16,
@@ -500,9 +501,7 @@ describe('TerminalPane', () => {
 
     terminalSpies.onData?.('first\nsecond')
     expect(confirm).not.toHaveBeenCalled()
-    await waitFor(() =>
-      expect(sendTerminalInput).toHaveBeenCalledWith(terminalId, 'first\nsecond')
-    )
+    await waitFor(() => expect(sendTerminalInput).toHaveBeenCalledWith(terminalId, 'first\nsecond'))
 
     useConfigurationStore.getState().apply(
       configuration({
@@ -520,8 +519,44 @@ describe('TerminalPane', () => {
       })
     )
     terminalSpies.onData?.('blocked\nlines')
-    expect(confirm).toHaveBeenCalledWith(messages.terminalPane.pasteLinesPrompt(2))
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith(messages.terminalPane.pasteLinesPrompt(2))
+    )
     expect(sendTerminalInput).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds later terminal input until the paste confirmation resolves', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    let releaseConfirmation!: (allowed: boolean) => void
+    const confirmation = new Promise<boolean>((resolve) => {
+      releaseConfirmation = resolve
+    })
+    const confirm = vi.spyOn(requestDialogs, 'confirmAction').mockReturnValue(confirmation)
+    const sendTerminalInput = vi
+      .fn<DesktopBridge['sendTerminalInput']>()
+      .mockResolvedValue(undefined)
+    useConfigurationStore.setState({
+      config: configuration({
+        fontFamily: 'monospace',
+        fontSize: 13,
+        scrollback: 10_000,
+        multilinePasteProtection: true
+      }),
+      status: 'ready'
+    })
+    window.desktopBridge = terminalBridge({
+      restartTerminal: vi.fn().mockResolvedValue(mutationResult()),
+      sendTerminalInput
+    })
+    renderTerminalPane()
+    await screen.findByText('Connected', { selector: '.terminal-statusbar span' })
+    terminalSpies.onData?.('first\nsecond')
+    terminalSpies.onData?.('x')
+    await waitFor(() => expect(confirm).toHaveBeenCalledOnce())
+    expect(sendTerminalInput).not.toHaveBeenCalled()
+    releaseConfirmation(true)
+    await waitFor(() => expect(sendTerminalInput).toHaveBeenCalledTimes(2))
+    expect(sendTerminalInput.mock.calls.map(([, data]) => data)).toEqual(['first\nsecond', 'x'])
   })
 
   it('sends rapid terminal input in order', async () => {
@@ -545,13 +580,7 @@ describe('TerminalPane', () => {
     await waitFor(() => expect(sendTerminalInput).toHaveBeenCalledTimes(1))
     releaseFirst?.()
     await waitFor(() => expect(sendTerminalInput).toHaveBeenCalledTimes(5))
-    expect(sendTerminalInput.mock.calls.map(([, data]) => data)).toEqual([
-      'e',
-      'c',
-      'h',
-      'o',
-      '\r'
-    ])
+    expect(sendTerminalInput.mock.calls.map(([, data]) => data)).toEqual(['e', 'c', 'h', 'o', '\r'])
   })
 
   it('keeps xterm screen-reader output opt-in and under direct user control', async () => {

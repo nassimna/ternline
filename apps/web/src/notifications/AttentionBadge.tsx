@@ -1,3 +1,4 @@
+import { Badge } from '../ui/badge'
 import type { AttentionSummary, WorkspaceAttentionSnapshot } from '@agent-workspace/protocol-client'
 
 import { messages } from '../messages'
@@ -31,7 +32,18 @@ export function AttentionBadge({
             ? '!'
             : 'i'
     return (
-      <span
+      <Badge
+        size={compact ? 'small' : 'default'}
+        data-attention={attention.state}
+        variant={
+          attention.state === 'urgent'
+            ? 'destructive'
+            : attention.state === 'waiting'
+              ? 'warning'
+              : attention.state === 'completed'
+                ? 'success'
+                : 'info'
+        }
         aria-hidden={announce ? undefined : true}
         aria-label={announce ? accessible : undefined}
         className={`attention-badge attention-${attention.state}${compact ? ' compact' : ''}`}
@@ -44,7 +56,7 @@ export function AttentionBadge({
             ? messages.attentionBadge.displayCount(attention.unreadCount)
             : messages.attentionBadge.stateLabel(attention.state)}
         </span>
-      </span>
+      </Badge>
     )
   }
   if (attention.unreadCount === 0) return null
@@ -57,7 +69,9 @@ export function AttentionBadge({
     title
   )
   return (
-    <span
+    <Badge
+      size={compact ? 'small' : 'default'}
+      variant={severity === 'error' ? 'destructive' : severity === 'warning' ? 'warning' : 'info'}
       aria-label={accessible}
       className={`attention-badge severity-${severity}${compact ? ' compact' : ''}`}
       role="status"
@@ -65,6 +79,6 @@ export function AttentionBadge({
     >
       <span aria-hidden="true">!</span>
       <span>{messages.attentionBadge.displayCount(attention.unreadCount)}</span>
-    </span>
+    </Badge>
   )
 }

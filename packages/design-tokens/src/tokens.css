@@ -32,7 +32,17 @@
   --aw-color-terminal-canvas: #17181b;
   --aw-color-browser-content: #fff;
 
+  /* Fixed swatches in the theme chooser; independent of the active theme. */
+  --aw-color-preview-light-canvas: #fafafa;
+  --aw-color-preview-light-sidebar: #e9ebef;
+  --aw-color-preview-light-line: #cdd1d8;
+  --aw-color-preview-dark-canvas: #202226;
+  --aw-color-preview-dark-sidebar: #17191c;
+  --aw-color-preview-dark-line: #42464e;
+  --aw-color-preview-system-line: #8b9099;
+
   --aw-font-ui: 'Geist', system-ui, sans-serif;
+  --aw-font-size-root: 16px;
   --aw-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
   --aw-font-size-2xs: 9px;
   --aw-font-size-2xs-plus: 9.5px;
@@ -85,7 +95,7 @@
   --aw-size-control-sm: 1.75rem;
   --aw-size-control-md: 2rem;
   --aw-size-titlebar: 2rem;
-  --aw-size-toolbar: 1.875rem;
+  --aw-size-toolbar: calc(var(--aw-size-control-md) + var(--aw-space-unit));
   --aw-size-tabstrip: 1.875rem;
   --aw-size-sidebar: 14.5rem;
 
@@ -121,6 +131,7 @@
   --aw-z-floating: 20;
   --aw-z-dropdown: 40;
   --aw-z-dialog: 50;
+  --aw-z-popover: 55;
   --aw-z-tooltip: 60;
   --aw-z-toast: 70;
 }
@@ -165,7 +176,6 @@
   --aw-size-control-sm: 1.5rem;
   --aw-size-control-md: 1.75rem;
   --aw-size-titlebar: 1.75rem;
-  --aw-size-toolbar: 1.75rem;
   --aw-size-tabstrip: 1.75rem;
 }
 

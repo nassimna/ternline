@@ -1,3 +1,5 @@
+import { Card } from '../ui/card'
+import { Label } from '../ui/label'
 import { useEffect, useState, type FormEvent } from 'react'
 
 import type {
@@ -14,6 +16,7 @@ import { messages } from '../messages'
 import { Button } from '../ui/button'
 import { AgentSessionCard } from './AgentSessionCard'
 import { AgentTeamCard } from './AgentTeamCard'
+import { Input } from '../ui/input'
 
 export interface AgentWorkspaceContext {
   workspaceId: string
@@ -162,20 +165,22 @@ export function AgentSessionsSettings({
         </p>
       ) : null}
       {allowRegistration ? (
-        <form className="agent-sessions-register" onSubmit={register}>
-          <fieldset disabled={Boolean(busy) || !context}>
-            <legend>{messages.agentSessions.register}</legend>
-            <label>
-              {messages.agentSessions.threadId}
-              <input name="agentSessionId" required type="text" />
-            </label>
-            <label>
-              {messages.agentSessions.sessionTitle}
-              <input maxLength={160} name="title" required type="text" />
-            </label>
-            <Button type="submit">{messages.agentSessions.register}</Button>
-          </fieldset>
-        </form>
+        <Card asChild>
+          <form className="agent-sessions-register" onSubmit={register}>
+            <fieldset disabled={Boolean(busy) || !context}>
+              <legend>{messages.agentSessions.register}</legend>
+              <Label>
+                {messages.agentSessions.threadId}
+                <Input name="agentSessionId" required type="text" />
+              </Label>
+              <Label>
+                {messages.agentSessions.sessionTitle}
+                <Input maxLength={160} name="title" required type="text" />
+              </Label>
+              <Button type="submit">{messages.agentSessions.register}</Button>
+            </fieldset>
+          </form>
+        </Card>
       ) : null}
       {(allowRegistration || allowFork) && !context ? (
         <p className="agent-sessions-note">{messages.agentSessions.noTerminal}</p>
@@ -266,15 +271,17 @@ export function AgentSessionsSettings({
       {!assessmentOnly ? (
         <>
           <h3>{messages.agentSessions.teams}</h3>
-          <form className="agent-sessions-team-create" onSubmit={createTeam}>
-            <label>
-              {messages.agentSessions.teamTitle}
-              <input maxLength={160} name="title" required type="text" />
-            </label>
-            <Button disabled={Boolean(busy)} type="submit">
-              {messages.agentSessions.createTeam}
-            </Button>
-          </form>
+          <Card asChild>
+            <form className="agent-sessions-team-create" onSubmit={createTeam}>
+              <Label>
+                {messages.agentSessions.teamTitle}
+                <Input maxLength={160} name="title" required type="text" />
+              </Label>
+              <Button disabled={Boolean(busy)} type="submit">
+                {messages.agentSessions.createTeam}
+              </Button>
+            </form>
+          </Card>
           {catalog.teams.length ? (
             <ul aria-label={messages.agentSessions.teams} className="agent-sessions-team-list">
               {catalog.teams.map((team) => (

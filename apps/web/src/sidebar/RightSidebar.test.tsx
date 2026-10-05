@@ -2,6 +2,8 @@
 
 import '@testing-library/jest-dom/vitest'
 
+import * as requestDialogs from '../ui/request-dialog'
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -191,7 +193,10 @@ describe('RightSidebar', () => {
         })
       })
     })
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValue(true)
+    const confirm = vi
+      .spyOn(requestDialogs, 'confirmAction')
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true)
     const onFileDirtyChange = vi.fn()
     render(
       <RightSidebar
@@ -212,7 +217,7 @@ describe('RightSidebar', () => {
     await waitFor(() => expect(onFileDirtyChange).toHaveBeenLastCalledWith(true))
     const recentlyClosed = screen.getByRole('tab', { name: 'Recently Closed' })
     fireEvent.click(recentlyClosed)
-    expect(confirm).toHaveBeenCalledWith('Discard unsaved file changes?')
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith('Discard unsaved file changes?'))
     expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true')
     expect(listRecentlyClosed).not.toHaveBeenCalled()
 
@@ -234,7 +239,7 @@ describe('RightSidebar', () => {
     )
     recentlyClosed.focus()
     fireEvent.keyDown(recentlyClosed, { key: 'Home' })
-    expect(screen.getByRole('tab', { name: 'Files' })).toHaveFocus()
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Files' })).toHaveFocus())
     confirm.mockRestore()
   })
 
@@ -541,10 +546,10 @@ describe('RightSidebar', () => {
     expect(screen.getByText('Implement sidebar UX')).toBeVisible()
     expect(screen.getByText('running', { selector: '.task-state' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Terminate' })).toBeVisible()
-    expect(screen.queryByRole('button', { name: 'Force terminate' })).not.toBeVisible()
+    expect(screen.queryByRole('menuitem', { name: 'Force terminate' })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('More actions'))
-    expect(screen.getByRole('button', { name: 'Force terminate' })).toBeVisible()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions' }), { key: 'Enter' })
+    expect(await screen.findByRole('menuitem', { name: 'Force terminate' })).toBeVisible()
   })
 
   it('shows a TextBox conflict without replacing the editor contents', async () => {

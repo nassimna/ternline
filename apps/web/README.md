@@ -7,3 +7,7 @@ transient interaction state belong to the renderer.
 
 This package can build its static assets independently, but the application requires the Electron
 bridge at runtime. Use `pnpm dev` from the repository root to run the complete desktop app.
+
+UI changes must follow the shared [desktop design system](../../docs/DESIGN_SYSTEM.md).
+Use `src/ui` components and `packages/design-tokens`; run `pnpm lint:design-system`
+to check those boundaries before adding or changing UI.

@@ -1,5 +1,15 @@
+import { Card } from '../ui/card'
+import { Label } from '../ui/label'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
+import { Checkbox } from '../ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
-import { AlertCircle, Check, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
 import { configurationUpdateParamsSchema } from '@agent-workspace/protocol-client'
 
 import type {
@@ -349,11 +359,9 @@ export function ConfigurationSettings({
             label={messages.settings.fields.density}
             description={messages.settings.densityDescription}
           >
-            <select
-              aria-label={messages.settings.fields.density}
-              onChange={(event) => {
-                const density = event.currentTarget
-                  .value as ConfigurationSnapshot['appearance']['density']
+            <Select
+              onValueChange={(value) => {
+                const density = value as ConfigurationSnapshot['appearance']['density']
                 updateDraft((current) => ({
                   ...current,
                   appearance: { ...current.appearance, density }
@@ -361,45 +369,70 @@ export function ConfigurationSettings({
               }}
               value={draft.appearance.density}
             >
-              <option value="compact">{messages.settings.options.compact}</option>
-              <option value="comfortable">{messages.settings.options.comfortable}</option>
-              {configurationV2 ? (
-                <option value="expanded">{messages.settings.options.expanded}</option>
-              ) : null}
-            </select>
+              <SelectTrigger aria-label={messages.settings.fields.density}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="compact">{messages.settings.options.compact}</SelectItem>
+                <SelectItem value="comfortable">{messages.settings.options.comfortable}</SelectItem>
+                {configurationV2 ? (
+                  <SelectItem value="expanded">{messages.settings.options.expanded}</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
           </Field>
           <Field
             label={messages.settings.fields.interfaceFontFamily}
             description={messages.settings.interfaceFontBehavior}
           >
-            <Input
-              aria-label={messages.settings.fields.interfaceFontFamily}
-              autoComplete="off"
-              list="interface-fonts"
-              onChange={(event) => {
-                const fontFamily = event.currentTarget.value
-                updateDraft((current) => ({
-                  ...current,
-                  appearance: { ...current.appearance, fontFamily }
-                }))
-              }}
-              spellCheck={false}
-              value={interfaceFontFamily}
-            />
-            <datalist id="interface-fonts">
-              <option value="Geist" />
-              <option value="JetBrains Mono Variable" />
-              <option value="system-ui" />
-            </datalist>
+            <div className="configuration-font-control">
+              <Input
+                aria-label={messages.settings.fields.interfaceFontFamily}
+                autoComplete="off"
+                onChange={(event) => {
+                  const fontFamily = event.currentTarget.value
+                  updateDraft((current) => ({
+                    ...current,
+                    appearance: { ...current.appearance, fontFamily }
+                  }))
+                }}
+                spellCheck={false}
+                value={interfaceFontFamily}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button aria-label="Choose interface font" size="icon">
+                    <ChevronDown aria-hidden="true" size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {['Geist', 'JetBrains Mono Variable', 'system-ui'].map((fontFamily) => (
+                    <DropdownMenuItem
+                      key={fontFamily}
+                      onSelect={() =>
+                        updateDraft((current) => ({
+                          ...current,
+                          appearance: { ...current.appearance, fontFamily }
+                        }))
+                      }
+                    >
+                      {fontFamily}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </Field>
-          <div
-            className="appearance-font-preview"
-            style={{ fontFamily: `${interfaceFontFamily}, sans-serif` }}
-          >
-            <span>{messages.settings.fontPreview}</span>
-            <strong>The quick brown fox jumps over the lazy dog.</strong>
-            <p>Aa Bb Cc · 0123456789 · &amp; @ #</p>
-          </div>
+          <Card asChild>
+            <div
+              className="appearance-font-preview"
+              style={{ fontFamily: `${interfaceFontFamily}, sans-serif` }}
+            >
+              <span>{messages.settings.fontPreview}</span>
+              <strong>The quick brown fox jumps over the lazy dog.</strong>
+              <p>Aa Bb Cc · 0123456789 · &amp; @ #</p>
+            </div>
+          </Card>
         </SettingsSection>
 
         <SettingsSection
@@ -408,7 +441,7 @@ export function ConfigurationSettings({
           title={messages.settings.terminal}
         >
           <Field label={messages.settings.fields.shellPath}>
-            <input
+            <Input
               autoComplete="off"
               onChange={(event) =>
                 updateDraft((current) => ({
@@ -430,7 +463,7 @@ export function ConfigurationSettings({
             <DeferredNotice>{messages.settings.shellBehavior}</DeferredNotice>
           )}
           <Field label={messages.settings.fields.fontFamily}>
-            <input
+            <Input
               onChange={(event) =>
                 updateDraft((current) => ({
                   ...current,
@@ -441,7 +474,7 @@ export function ConfigurationSettings({
             />
           </Field>
           <Field label={messages.settings.fields.fontSize}>
-            <input
+            <Input
               max={72}
               min={6}
               onChange={(event) =>
@@ -455,7 +488,7 @@ export function ConfigurationSettings({
             />
           </Field>
           <Field label={messages.settings.fields.scrollback}>
-            <input
+            <Input
               max={1_000_000}
               min={100}
               onChange={(event) =>
@@ -487,16 +520,21 @@ export function ConfigurationSettings({
           title={messages.settings.browser}
         >
           <Field label={messages.settings.fields.profileName}>
-            <input disabled value={draft.browser.profileName} />
+            <Input disabled value={draft.browser.profileName} />
           </Field>
           <Field label={messages.settings.fields.profilePartition}>
-            <input disabled value={draft.browser.partition} />
+            <Input disabled value={draft.browser.partition} />
           </Field>
           <Field label={messages.settings.fields.privacy}>
-            <select disabled value={draft.browser.privacy}>
-              <option value="standard">{messages.settings.options.standard}</option>
-              <option value="strict">{messages.settings.options.strict}</option>
-            </select>
+            <Select disabled value={draft.browser.privacy}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="standard">{messages.settings.options.standard}</SelectItem>
+                <SelectItem value="strict">{messages.settings.options.strict}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
         </SettingsSection>
 
@@ -534,21 +572,26 @@ export function ConfigurationSettings({
           title={messages.settings.logging}
         >
           <Field label={messages.settings.fields.logLevel}>
-            <select
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 updateDraft((current) => ({
                   ...current,
-                  logging: { level: event.currentTarget.value as typeof current.logging.level }
+                  logging: { level: value as typeof current.logging.level }
                 }))
               }
               value={draft.logging.level}
             >
-              <option value="error">{messages.settings.options.error}</option>
-              <option value="warn">{messages.settings.options.warn}</option>
-              <option value="info">{messages.settings.options.info}</option>
-              <option value="debug">{messages.settings.options.debug}</option>
-              <option value="trace">{messages.settings.options.trace}</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="error">{messages.settings.options.error}</SelectItem>
+                <SelectItem value="warn">{messages.settings.options.warn}</SelectItem>
+                <SelectItem value="info">{messages.settings.options.info}</SelectItem>
+                <SelectItem value="debug">{messages.settings.options.debug}</SelectItem>
+                <SelectItem value="trace">{messages.settings.options.trace}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <DeferredNotice>{messages.settings.loggingBehavior}</DeferredNotice>
         </SettingsSection>
@@ -586,22 +629,25 @@ export function ConfigurationSettings({
           title={messages.settings.updates}
         >
           <Field label={messages.settings.fields.updateChannel}>
-            <select
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 updateDraft((current) => ({
                   ...current,
                   updates: {
                     ...current.updates,
-                    channel: event.currentTarget.value as 'stable' | 'beta' | 'alpha'
+                    channel: value as 'alpha'
                   }
                 }))
               }
-              value={draft.updates.channel}
+              value={draft.updates.channel === 'alpha' ? 'alpha' : ''}
             >
-              <option value="stable">{messages.settings.options.stable}</option>
-              <option value="beta">{messages.settings.options.beta}</option>
-              <option value="alpha">{messages.settings.options.alpha}</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder={messages.settings.updater.chooseAlpha} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="alpha">{messages.settings.options.alpha}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <CheckField
             checked={draft.updates.automatic === true}
@@ -710,13 +756,13 @@ function Field({
   description?: string
 }): React.JSX.Element {
   return (
-    <label className="configuration-field">
+    <Label className="configuration-field">
       <span className="configuration-field-label">
         <strong>{label}</strong>
         {description ? <small>{description}</small> : null}
       </span>
       {children}
-    </label>
+    </Label>
   )
 }
 
@@ -732,15 +778,14 @@ function CheckField({
   onChange?: (checked: boolean) => void
 }): React.JSX.Element {
   return (
-    <label className="configuration-check">
-      <input
+    <Label className="configuration-check">
+      <Checkbox
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-        type="checkbox"
+        onCheckedChange={(checked) => onChange(checked === true)}
       />
       <span>{label}</span>
-    </label>
+    </Label>
   )
 }
 

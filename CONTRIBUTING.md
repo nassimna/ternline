@@ -65,6 +65,11 @@ Do not shorten or describe the smoke run as the soak. Follow [Performance](docs/
 
 ## Change expectations
 
+Desktop UI must follow the [shared design system](docs/DESIGN_SYSTEM.md): reuse
+`apps/web/src/ui` components and `packages/design-tokens`. Screen CSS handles
+layout; shared components own appearance and interaction states. `pnpm lint`
+includes `pnpm lint:design-system` to enforce these boundaries.
+
 1. Start an RFC for protocol, persistence, security-boundary, update/release trust, plugin, or
    major UI architecture changes. Maintainers may require an ADR under `docs/decisions/`.
 2. Keep changes focused and include tests proportional to risk. User-visible behavior needs

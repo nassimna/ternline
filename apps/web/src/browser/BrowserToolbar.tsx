@@ -1,3 +1,4 @@
+import { Alert } from '../ui/alert'
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,6 +27,8 @@ import {
   type BrowserMessages
 } from '@agent-workspace/contracts/desktop/browser-messages'
 import type { MutationResult } from '@agent-workspace/protocol-client'
+import { Input } from '../ui/input'
+import { Button } from '../ui/button'
 
 export function BrowserToolbar({
   bridge,
@@ -74,23 +77,29 @@ export function BrowserToolbar({
 
   return (
     <div className="browser-toolbar" role="toolbar" aria-label={messages.toolbar.label}>
-      <button
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={messages.toolbar.back}
         disabled={!state.canBack}
         onClick={() => void onMutation(bridge.browserBack(browserCommandParams(state)))}
         type="button"
       >
         <ArrowLeft size={15} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={messages.toolbar.forward}
         disabled={!state.canForward}
         onClick={() => void onMutation(bridge.browserForward(browserCommandParams(state)))}
         type="button"
       >
         <ArrowRight size={15} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={state.loading ? messages.toolbar.stopLoading : messages.toolbar.reload}
         onClick={() =>
           void onMutation(
@@ -102,7 +111,7 @@ export function BrowserToolbar({
         type="button"
       >
         {state.loading ? <Square size={12} /> : <RotateCw size={14} />}
-      </button>
+      </Button>
       <div className={`browser-address${error ? ' invalid' : ''}`}>
         <span aria-label={securityLabel} className={`browser-security ${security}`} role="img">
           {security === 'secure' ? (
@@ -113,7 +122,8 @@ export function BrowserToolbar({
             <Globe2 size={14} />
           )}
         </span>
-        <input
+        <Input
+          variant="embedded"
           aria-describedby={error ? errorId : undefined}
           aria-invalid={Boolean(error)}
           aria-label={messages.toolbar.address}
@@ -148,12 +158,16 @@ export function BrowserToolbar({
           />
         ) : null}
         {error ? (
-          <span className="browser-address-error" id={errorId} role="alert">
-            {error}
-          </span>
+          <Alert asChild variant="destructive">
+            <span className="browser-address-error" id={errorId} role="alert">
+              {error}
+            </span>
+          </Alert>
         ) : null}
       </div>
-      <button
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={messages.toolbar.openExternally}
         className="browser-toolbar-secondary"
         data-browser-toolbar-action="open-external"
@@ -161,8 +175,10 @@ export function BrowserToolbar({
         type="button"
       >
         <ExternalLink size={14} />
-      </button>
-      <button
+      </Button>
+      <Button
+        size="iconSmall"
+        variant="ghost"
         aria-label={
           state.devToolsOpen
             ? messages.toolbar.focusDeveloperTools
@@ -175,17 +191,19 @@ export function BrowserToolbar({
         type="button"
       >
         <Wrench size={14} />
-      </button>
+      </Button>
       <DropdownMenu {...(onMenuOpenChange ? { onOpenChange: onMenuOpenChange } : {})}>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
+            size="iconSmall"
+            variant="ghost"
             aria-label={messages.toolbar.browserMenu}
             className="browser-menu-trigger"
             data-browser-toolbar-action="menu"
             type="button"
           >
             <MoreHorizontal size={15} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => void bridge.openExternal(state.url).catch(onError)}>

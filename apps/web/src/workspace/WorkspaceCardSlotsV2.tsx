@@ -1,3 +1,4 @@
+import { Progress } from '../ui/progress'
 import type {
   WorkspaceCardSlotV2Kind,
   WorkspaceCardSlotV2Payload,
@@ -60,15 +61,7 @@ function CardSlot({ payload }: { payload: WorkspaceCardSlotV2Payload }): JSX.Ele
           ? messages.workspaceCardSlots.progressAccessible(progress.value, progress.label)
           : messages.workspaceCardSlots.indeterminateAccessible(progress.label)
       return (
-        <div
-          aria-label={accessible}
-          aria-valuemax={progress.mode === 'determinate' ? 100 : undefined}
-          aria-valuemin={progress.mode === 'determinate' ? 0 : undefined}
-          aria-valuenow={progress.mode === 'determinate' ? progress.value : undefined}
-          aria-valuetext={accessible}
-          className="workspace-card-v2-progress"
-          role="progressbar"
-        >
+        <div className="workspace-card-v2-progress">
           <span>
             <SlotLabel kind={payload.kind} />
             {progress.label ? `${progress.label} · ` : ''}
@@ -76,11 +69,11 @@ function CardSlot({ payload }: { payload: WorkspaceCardSlotV2Payload }): JSX.Ele
               ? `${String(progress.value)}%`
               : messages.workspaceCardSlots.inProgress}
           </span>
-          {progress.mode === 'determinate' ? (
-            <span aria-hidden="true" className="workspace-card-progress-track">
-              <span style={{ width: `${String(progress.value)}%` }} />
-            </span>
-          ) : null}
+          <Progress
+            aria-label={accessible}
+            aria-valuetext={accessible}
+            value={progress.mode === 'determinate' ? progress.value : null}
+          />
         </div>
       )
     }

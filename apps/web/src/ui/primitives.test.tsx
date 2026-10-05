@@ -2,13 +2,14 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CirclePlus } from 'lucide-react'
 import { createRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Button } from './button'
+import { cn } from './cn'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -18,11 +19,19 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from './dialog'
 import { IconButton } from './icon-button'
 import { Input } from './input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select'
+import { chooseSelectOption } from '../test/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs'
 
 afterEach(cleanup)
 
 describe('UI primitives', () => {
+  it('keeps semantic type sizes separate from text colors when merging variants', () => {
+    expect(cn('text-ui text-text-primary', 'text-body text-text-secondary')).toBe(
+      'text-body text-text-secondary'
+    )
+    expect(cn('font-ui font-medium')).toBe('font-ui font-medium')
+  })
   it('forwards refs and preserves native button behavior', async () => {
     const user = userEvent.setup()
     const ref = createRef<HTMLButtonElement>()
@@ -103,6 +112,27 @@ describe('UI primitives', () => {
     item.focus()
     await user.keyboard('{Enter}')
     expect(onSelect).toHaveBeenCalledOnce()
+  })
+
+  it('chooses a select option with the keyboard and returns focus to the trigger', async () => {
+    const onValueChange = vi.fn()
+    render(
+      <Select defaultValue="comfortable" onValueChange={onValueChange}>
+        <SelectTrigger aria-label="Density">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="comfortable">Comfortable</SelectItem>
+          <SelectItem value="compact">Compact</SelectItem>
+          <SelectItem value="expanded">Expanded</SelectItem>
+        </SelectContent>
+      </Select>
+    )
+    const trigger = screen.getByRole('combobox', { name: 'Density' })
+    await chooseSelectOption(trigger, 'Expanded')
+    expect(onValueChange).toHaveBeenCalledWith('expanded')
+    expect(trigger).toHaveTextContent('Expanded')
+    await waitFor(() => expect(trigger).toHaveFocus())
   })
 
   it('provides keyboard-operable tab semantics', async () => {

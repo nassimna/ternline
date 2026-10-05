@@ -10,7 +10,7 @@
 
   :root {
     font-family: var(--aw-font-ui);
-    font-size: var(--aw-font-size-ui);
+    font-size: var(--aw-font-size-root);
     line-height: var(--aw-line-height-ui);
     color: var(--aw-color-text-primary);
     background: var(--aw-color-surface-canvas);

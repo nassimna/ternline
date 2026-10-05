@@ -2,15 +2,30 @@
 
 import '@testing-library/jest-dom/vitest'
 
+import { chooseSelectOption } from '../test/select'
+
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentSessionSnapshot, AgentTeamSnapshot } from '@agent-workspace/protocol-client'
 
 import { AgentSessionCard } from './AgentSessionCard'
 import { AgentTeamCard } from './AgentTeamCard'
 
-afterEach(cleanup)
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  )
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const binding = (seed: string) => ({
   workspaceId: `${seed}0000000-0000-4000-8000-000000000001`,
@@ -77,7 +92,7 @@ describe('agent session settings cards', () => {
     expect(screen.getByRole('button', { name: 'Hibernate' })).toBeEnabled()
   })
 
-  it('represents parent membership and exposes exact update and move mutations', () => {
+  it('represents parent membership and exposes exact update and move mutations', async () => {
     const first = session('1')
     const second = session('2')
     const rootId = '30000000-0000-4000-8000-000000000001'
@@ -120,9 +135,10 @@ describe('agent session settings cards', () => {
     fireEvent.submit(within(child).getByRole('button', { name: 'Update member' }).closest('form')!)
     expect(onUpdateMember).toHaveBeenCalledWith(team.members[1], 'reviewer', rootId)
 
-    fireEvent.change(within(child).getByLabelText('Move member to session'), {
-      target: { value: third.binding.agentSessionId }
-    })
+    await chooseSelectOption(
+      within(child).getByRole('combobox', { name: 'Move member to session' }),
+      third.title
+    )
     fireEvent.submit(
       within(child).getByRole('button', { name: 'Move member to session' }).closest('form')!
     )

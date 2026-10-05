@@ -13,15 +13,16 @@ const buttonVariants = cva(
         secondary:
           'border-border-default bg-surface-interactive text-text-primary hover:bg-surface-interactive-hover active:bg-surface-interactive-active',
         ghost:
-          'bg-transparent text-text-secondary hover:bg-surface-interactive-hover hover:text-text-primary active:bg-surface-interactive-active',
+          'bg-transparent text-text-secondary hover:bg-surface-interactive-hover hover:text-text-primary active:bg-surface-interactive-active aria-pressed:bg-surface-interactive-active aria-pressed:text-text-primary aria-[current=page]:bg-surface-interactive-active aria-[current=page]:text-text-primary',
         destructive:
           'bg-destructive text-text-on-accent hover:bg-destructive-hover active:bg-destructive-hover'
       },
       size: {
-        small: 'h-7 px-2.5',
-        default: 'h-8 px-3',
+        small: 'h-[var(--aw-size-control-sm)] px-2.5',
+        default: 'h-[var(--aw-size-control-md)] px-3',
         large: 'h-9 px-4',
-        icon: 'size-8 p-0'
+        icon: 'size-[var(--aw-size-control-md)] p-0',
+        iconSmall: 'size-[var(--aw-size-control-sm)] p-0'
       }
     },
     defaultVariants: {
@@ -43,6 +44,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <Component
         ref={ref}
+        data-slot="button"
         className={cn(buttonVariants({ className, size, variant }))}
         type={asChild ? undefined : (type ?? 'button')}
         {...props}
