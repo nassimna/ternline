@@ -9,8 +9,9 @@ restart. Linux update installation and native signing have not been qualified en
 ## Feed configuration
 
 Packaged applications default to the public `nassimna/ternline` GitHub Releases
-provider. Stable uses the updater's `latest` channel. Beta and Alpha use their matching channels and permit
-prereleases; choose **Alpha** in Settings to receive this release series.
+provider. Settings currently offers only **Alpha**, the available release series, and new profiles
+default to it. If an older profile selected Stable or Beta, choose **Alpha** to receive updates.
+The updater retains feed support for future Stable and Beta releases.
 Previously installed builds use the former `nassimna/cmux-linux-alternative` repository URL;
 GitHub redirects it to `nassimna/ternline`. Keep the former repository name unused so those
 clients continue to reach the trusted feed.
@@ -32,8 +33,7 @@ packaged application's runtime environment:
 
 The values must be different HTTPS base URLs without credentials, query strings,
 fragments, localhost names, or IP-literal hosts. They are read only by the main
-process. The renderer selects `stable`, `beta` or `alpha`; it cannot provide a URL or
-provider configuration.
+process. The renderer currently offers `alpha`; it cannot provide a URL or provider configuration.
 
 For generic hosting, package generation requires a channel-specific URL and channel. Use the
 platform's explicit update script to replace the default GitHub provider, and use `alpha` with
@@ -116,3 +116,23 @@ disposable VM with the appropriate package manager. AppImage tests must launch t
 rather than an unpacked directory. macOS and Windows tests must verify platform signatures before
 qualifying an update and must exercise an installed DMG/NSIS candidate, not only an unpacked
 application.
+
+## Unsigned macOS alpha builds
+
+Ad-hoc signed and unsigned installed `-alpha.N` builds use a dedicated ZIP installer because
+Squirrel.Mac cannot validate updates across their changing ad-hoc signatures. Signed builds
+continue to use Squirrel.Mac. This fallback only accepts alpha versions and the running
+architecture's ZIP from the configured provider. It retains the provider's SHA-512 validation
+and verifies the cached ZIP again immediately before extraction.
+
+On explicit restart, the installer stages a matching bundle identifier and version beside the
+installed application. The containing directory must be writable; read-only disk images and
+non-writable installations fail without quitting. Normal application cleanup runs before a
+helper replaces the bundle after the old process exits. Failed replacement or a rejected launch
+request restores the previous bundle. A launch accepted by macOS is not a health check of the
+new application. There is no privilege escalation or Gatekeeper modification.
+
+Unsigned updates trust the configured HTTPS release origin and its checksum metadata, not an
+Apple signing identity. Install the first build containing this fallback manually: previously
+released clients cannot acquire this updater through their broken native update path. Saved
+workspace data is kept outside the application bundle and is not replaced.

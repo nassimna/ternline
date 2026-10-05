@@ -5,13 +5,15 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tool
 
 export interface IconButtonProps extends Omit<ButtonProps, 'aria-label' | 'size'> {
   'aria-label': string
-  size?: Extract<ButtonProps['size'], 'small' | 'default' | 'large' | 'icon'>
+  size?: Extract<ButtonProps['size'], 'small' | 'default' | 'large' | 'icon' | 'iconSmall'>
   tooltip?: string
 }
 
 const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  ({ 'aria-label': ariaLabel, size = 'icon', tooltip, ...props }, ref) => {
-    const button = <Button ref={ref} aria-label={ariaLabel} size={size} {...props} />
+  ({ 'aria-label': ariaLabel, size = 'iconSmall', variant = 'ghost', tooltip, ...props }, ref) => {
+    const button = (
+      <Button ref={ref} aria-label={ariaLabel} size={size} variant={variant} {...props} />
+    )
 
     if (!tooltip) {
       return button

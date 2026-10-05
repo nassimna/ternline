@@ -67,6 +67,7 @@
   --radius-xs: var(--aw-radius-xs);
   --radius-sm: var(--aw-radius-sm);
   --radius-md: var(--aw-radius-md);
+  --radius-card: var(--aw-radius-card);
   --radius-lg: var(--aw-radius-lg);
   --radius-full: var(--aw-radius-full);
   --shadow-popup: var(--aw-shadow-popup);

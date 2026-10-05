@@ -1,4 +1,4 @@
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -56,6 +56,9 @@ import {
 import { ProjectActionConfirmationProvider } from './project-action-confirmation-provider'
 import { registerWithStableWindowClaims } from './desktop-provider-registration'
 import { ApplicationQuitOrchestrator } from './application-quit-orchestrator'
+import { AppImageUpdater } from './appimage-updater'
+import { isUnsignedMacAlpha } from './mac-alpha-installer'
+import { MacAlphaUpdater } from './mac-alpha-updater'
 import { performExitCleanup as performApplicationExitCleanup } from './application-exit-cleanup'
 import {
   NativeApplicationMenu,
@@ -1510,21 +1513,13 @@ function createBrowserAutomationManager(approvedProfileKey: string): BrowserAuto
         return undefined
       return entry.binding.browserViews.resolveAutomationTarget(tabId, target)
     },
-    confirmAttachment: async (target, signal) => {
-      if (signal.aborted) return false
-      const entry = requireEntry(target)
-      if (!entry) return false
-      const result = await dialog.showMessageBox(entry.window, {
-        type: 'warning',
-        buttons: ['Deny', 'Allow once'],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-        title: 'Allow browser automation?',
-        message: 'Allow automation to control the selected browser tab?',
-        detail: 'This one-time approval applies only to the exact current tab and window.'
-      })
-      return !signal.aborted && requireEntry(target) === entry && result.response === 1
+    confirmAttachment: (target, signal) => {
+      if (signal.aborted) return Promise.resolve(false)
+      const currentTarget = requireEntry(target)?.binding.browserViews.resolveAutomationTarget(
+        target.tabId,
+        target.window
+      )
+      return Promise.resolve(currentTarget?.browserSessionId === target.browserSessionId)
     },
     now: Date.now,
     schedule: (callback, delayMs) => setTimeout(callback, delayMs),
@@ -3593,14 +3588,21 @@ async function start(): Promise<void> {
   } catch {
     console.warn('Desktop update feeds are invalid; updates are disabled')
   }
-  const { autoUpdater } = electronUpdater
+  const packageType = detectNativeUpdatePackageType(process.platform, {
+    resourcesPath: process.resourcesPath,
+    ...(process.env.APPIMAGE === undefined ? {} : { appImagePath: process.env.APPIMAGE })
+  })
+  const macBundle = resolve(process.resourcesPath, '../..')
+  const autoUpdater =
+    packageType === 'appimage'
+      ? new AppImageUpdater()
+      : packageType === 'mac' && app.isPackaged && isUnsignedMacAlpha(macBundle, app.getVersion())
+        ? new MacAlphaUpdater(macBundle)
+        : electronUpdater.autoUpdater
   updateController = new UpdateController({
     feeds,
     isPackaged: app.isPackaged,
-    packageType: detectNativeUpdatePackageType(process.platform, {
-      resourcesPath: process.resourcesPath,
-      ...(process.env.APPIMAGE === undefined ? {} : { appImagePath: process.env.APPIMAGE })
-    }),
+    packageType,
     platform: process.platform,
     updater: autoUpdater,
     // Updater-owned quit emits before-quit, where the normal quit orchestrator performs the

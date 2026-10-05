@@ -1,3 +1,5 @@
+import { Card } from '../ui/card'
+import { Label } from '../ui/label'
 import { useEffect, useState, type FormEvent } from 'react'
 
 import type { RemoteSessionSnapshot, RemoteTargetSnapshot } from '@agent-workspace/protocol-client'
@@ -147,121 +149,125 @@ export function RemoteSessionsSettings({
         <p role="status">{messages.remoteSessions.targetManagementUnavailable}</p>
       ) : null}
       {manageTargets || allowEnrollment ? (
-        <form onSubmit={enroll}>
-          <fieldset disabled={busy !== null}>
-            <legend>{messages.remoteSessions.addLegend}</legend>
-            <label>
-              {messages.remoteSessions.label}
-              <Input name="label" required maxLength={128} />
-            </label>
-            <label>
-              {messages.remoteSessions.host}
-              <Input name="host" required maxLength={253} spellCheck={false} />
-            </label>
-            <label>
-              {messages.remoteSessions.port}
-              <Input name="port" required min={1} max={65535} type="number" defaultValue={22} />
-            </label>
-            <label>
-              {messages.remoteSessions.user}
-              <Input name="user" required maxLength={64} autoComplete="username" />
-            </label>
-            <Button type="submit" variant="primary">
-              {messages.remoteSessions.add}
-            </Button>
-          </fieldset>
-        </form>
+        <Card asChild>
+          <form onSubmit={enroll}>
+            <fieldset disabled={busy !== null}>
+              <legend>{messages.remoteSessions.addLegend}</legend>
+              <Label>
+                {messages.remoteSessions.label}
+                <Input name="label" required maxLength={128} />
+              </Label>
+              <Label>
+                {messages.remoteSessions.host}
+                <Input name="host" required maxLength={253} spellCheck={false} />
+              </Label>
+              <Label>
+                {messages.remoteSessions.port}
+                <Input name="port" required min={1} max={65535} type="number" defaultValue={22} />
+              </Label>
+              <Label>
+                {messages.remoteSessions.user}
+                <Input name="user" required maxLength={64} autoComplete="username" />
+              </Label>
+              <Button type="submit" variant="primary">
+                {messages.remoteSessions.add}
+              </Button>
+            </fieldset>
+          </form>
+        </Card>
       ) : null}
       <ul aria-label={messages.remoteSessions.targets}>
         {targets.map((target) => {
           const targetSessions = sessionsForTarget(target.remoteTargetId)
           return (
-            <li key={target.remoteTargetId}>
-              <strong>{target.label}</strong>{' '}
-              <span>
-                {target.user}@{target.host}:{target.port}
-              </span>
-              <small> {messages.remoteSessions.hostKeyState(target.hostKeyState)}</small>
-              <div>
-                {manageTargets || allowReplacement ? (
-                  <Button
-                    disabled={busy !== null}
-                    size="small"
-                    onClick={() =>
-                      void run(`replace-${target.remoteTargetId}`, async () => {
-                        const replaced = await window.desktopBridge.replaceRemoteCredential!(
-                          target.remoteTargetId
-                        )
-                        setStatus(
-                          replaced
-                            ? messages.remoteSessions.credentialReplaced
-                            : messages.remoteSessions.keySelectionCanceled
-                        )
-                      })
-                    }
-                  >
-                    {messages.remoteSessions.replaceCredential}
-                  </Button>
-                ) : null}
-                {manageTargets || allowDeletion ? (
-                  <Button
-                    disabled={busy !== null}
-                    size="small"
-                    variant="destructive"
-                    onClick={() =>
-                      void run(`delete-${target.remoteTargetId}`, async () => {
-                        const deleted = await window.desktopBridge.deleteRemoteTarget!({
-                          remoteTargetId: target.remoteTargetId,
-                          expectedRevision: target.revision
+            <Card asChild key={target.remoteTargetId}>
+              <li>
+                <strong>{target.label}</strong>{' '}
+                <span>
+                  {target.user}@{target.host}:{target.port}
+                </span>
+                <small> {messages.remoteSessions.hostKeyState(target.hostKeyState)}</small>
+                <div>
+                  {manageTargets || allowReplacement ? (
+                    <Button
+                      disabled={busy !== null}
+                      size="small"
+                      onClick={() =>
+                        void run(`replace-${target.remoteTargetId}`, async () => {
+                          const replaced = await window.desktopBridge.replaceRemoteCredential!(
+                            target.remoteTargetId
+                          )
+                          setStatus(
+                            replaced
+                              ? messages.remoteSessions.credentialReplaced
+                              : messages.remoteSessions.keySelectionCanceled
+                          )
                         })
-                        setStatus(
-                          deleted
-                            ? messages.remoteSessions.deleted
-                            : messages.remoteSessions.deleteCanceled
-                        )
-                      })
-                    }
-                  >
-                    {messages.remoteSessions.delete}
-                  </Button>
-                ) : null}
-                {targetSessions.length === 0 && context ? (
-                  <Button
-                    disabled={busy !== null}
-                    size="small"
-                    onClick={() =>
-                      void run(`connect-${target.remoteTargetId}`, async () => {
-                        await window.desktopBridge.connectRemoteSession!({
-                          remoteTargetId: target.remoteTargetId,
-                          ...context,
-                          tmux: { mode: 'create', sessionName: tmuxName },
-                          reconnect: { maxAttempts: 3, initialDelayMs: 500, maxDelayMs: 5000 }
+                      }
+                    >
+                      {messages.remoteSessions.replaceCredential}
+                    </Button>
+                  ) : null}
+                  {manageTargets || allowDeletion ? (
+                    <Button
+                      disabled={busy !== null}
+                      size="small"
+                      variant="destructive"
+                      onClick={() =>
+                        void run(`delete-${target.remoteTargetId}`, async () => {
+                          const deleted = await window.desktopBridge.deleteRemoteTarget!({
+                            remoteTargetId: target.remoteTargetId,
+                            expectedRevision: target.revision
+                          })
+                          setStatus(
+                            deleted
+                              ? messages.remoteSessions.deleted
+                              : messages.remoteSessions.deleteCanceled
+                          )
                         })
-                      })
-                    }
-                  >
-                    {messages.remoteSessions.connect}
-                  </Button>
-                ) : null}
-              </div>
-              {targetSessions.map((session) => (
-                <RemoteSessionActions
-                  key={session.remoteSessionId}
-                  session={session}
-                  hostKeyState={target.hostKeyState}
-                  busy={busy !== null}
-                  run={run}
-                  onDiscovery={setStatus}
-                />
-              ))}
-            </li>
+                      }
+                    >
+                      {messages.remoteSessions.delete}
+                    </Button>
+                  ) : null}
+                  {targetSessions.length === 0 && context ? (
+                    <Button
+                      disabled={busy !== null}
+                      size="small"
+                      onClick={() =>
+                        void run(`connect-${target.remoteTargetId}`, async () => {
+                          await window.desktopBridge.connectRemoteSession!({
+                            remoteTargetId: target.remoteTargetId,
+                            ...context,
+                            tmux: { mode: 'create', sessionName: tmuxName },
+                            reconnect: { maxAttempts: 3, initialDelayMs: 500, maxDelayMs: 5000 }
+                          })
+                        })
+                      }
+                    >
+                      {messages.remoteSessions.connect}
+                    </Button>
+                  ) : null}
+                </div>
+                {targetSessions.map((session) => (
+                  <RemoteSessionActions
+                    key={session.remoteSessionId}
+                    session={session}
+                    hostKeyState={target.hostKeyState}
+                    busy={busy !== null}
+                    run={run}
+                    onDiscovery={setStatus}
+                  />
+                ))}
+              </li>
+            </Card>
           )
         })}
       </ul>
       {loading ? <p role="status">{messages.remoteSessions.loading}</p> : null}
       {!loading && targets.length === 0 ? <p>{messages.remoteSessions.noTargets}</p> : null}
       {targets.length > 0 ? (
-        <label>
+        <Label>
           {messages.remoteSessions.tmuxName}
           <Input
             value={tmuxName}
@@ -269,7 +275,7 @@ export function RemoteSessionsSettings({
             maxLength={64}
             onChange={(event) => setTmuxName(event.currentTarget.value)}
           />
-        </label>
+        </Label>
       ) : null}
     </section>
   )

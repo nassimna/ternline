@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import '@fontsource-variable/jetbrains-mono/wght.css'
 import '@xterm/xterm/css/xterm.css'
+import './styles/fonts.css'
 import './styles/foundation.css'
 import './styles.css'
 

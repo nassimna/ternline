@@ -1,3 +1,6 @@
+import { Alert } from '../ui/alert'
+import { Badge } from '../ui/badge'
+import { Card } from '../ui/card'
 import { Check, CornerDownRight, Inbox, Trash2, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -101,9 +104,11 @@ export function NotificationCenter({
           </Button>
         </div>
         {error ? (
-          <p className="notification-navigation-error" role="alert">
-            {error}
-          </p>
+          <Alert asChild variant="destructive">
+            <p className="notification-navigation-error" role="alert">
+              {error}
+            </p>
+          </Alert>
         ) : null}
         <div className="notification-groups" aria-label={messages.notifications.history}>
           {groups.length === 0 ? (
@@ -122,79 +127,89 @@ export function NotificationCenter({
                     const target = targetLabel(notification, snapshot)
                     const itemPending = pending?.endsWith(notification.id) ?? false
                     return (
-                      <article
-                        className={`notification-item severity-${notification.level}${isUnread ? ' unread' : ''}`}
-                        data-notification-id={notification.id}
-                        key={notification.id}
-                      >
-                        <div className="notification-item-copy">
-                          <div className="notification-item-heading">
-                            <span className="notification-severity">
-                              <span aria-hidden="true">!</span> {notification.level}
-                            </span>
-                            <time dateTime={new Date(notification.createdAt).toISOString()}>
-                              {formatTime(notification.createdAt)}
-                            </time>
+                      <Card key={notification.id} asChild variant="compact">
+                        <article
+                          className={`notification-item severity-${notification.level}${isUnread ? ' unread' : ''}`}
+                          data-notification-id={notification.id}
+                        >
+                          <div className="notification-item-copy">
+                            <div className="notification-item-heading">
+                              <Badge
+                                variant={
+                                  notification.level === 'error'
+                                    ? 'destructive'
+                                    : notification.level === 'warning'
+                                      ? 'warning'
+                                      : 'info'
+                                }
+                                className="notification-severity"
+                              >
+                                <span aria-hidden="true">!</span> {notification.level}
+                              </Badge>
+                              <time dateTime={new Date(notification.createdAt).toISOString()}>
+                                {formatTime(notification.createdAt)}
+                              </time>
+                            </div>
+                            <strong>{notification.title}</strong>
+                            {notification.body ? <p>{notification.body}</p> : null}
+                            <small>
+                              {messages.notifications.sourceAndTarget(
+                                notification.source,
+                                target.label
+                              )}
+                            </small>
                           </div>
-                          <strong>{notification.title}</strong>
-                          {notification.body ? <p>{notification.body}</p> : null}
-                          <small>
-                            {messages.notifications.sourceAndTarget(
-                              notification.source,
-                              target.label
-                            )}
-                          </small>
-                        </div>
-                        <div className="notification-item-actions">
-                          <Button
-                            disabled={pending !== null || !target.available}
-                            onClick={() =>
-                              void run(`jump:${notification.id}`, () => onJump(notification))
-                            }
-                            size="small"
-                            title={
-                              target.available
-                                ? messages.notifications.openTarget
-                                : messages.notifications.targetNoLongerAvailable
-                            }
-                          >
-                            <CornerDownRight size={13} /> {messages.notifications.jump}
-                          </Button>
-                          <Button
-                            aria-label={
-                              isUnread
-                                ? messages.notifications.markRead
-                                : messages.notifications.markUnread
-                            }
-                            disabled={pending !== null}
-                            onClick={() =>
-                              void run(
-                                `read:${notification.id}`,
+                          <div className="notification-item-actions">
+                            <Button
+                              disabled={pending !== null || !target.available}
+                              onClick={() =>
+                                void run(`jump:${notification.id}`, () => onJump(notification))
+                              }
+                              size="small"
+                              title={
+                                target.available
+                                  ? messages.notifications.openTarget
+                                  : messages.notifications.targetNoLongerAvailable
+                              }
+                            >
+                              <CornerDownRight size={13} /> {messages.notifications.jump}
+                            </Button>
+                            <Button
+                              aria-label={
                                 isUnread
-                                  ? () => onMarkRead(notification.id)
-                                  : () => onMarkUnread(notification.id)
-                              )
-                            }
-                            size="icon"
-                            variant="ghost"
-                          >
-                            {isUnread ? <Check size={13} /> : <Undo2 size={13} />}
-                          </Button>
-                          <Button
-                            aria-label={messages.notifications.clearNotification}
-                            disabled={pending !== null || itemPending}
-                            onClick={() =>
-                              void run(`clear:${notification.id}`, () =>
-                                onClearNotification(notification.id)
-                              )
-                            }
-                            size="icon"
-                            variant="ghost"
-                          >
-                            <Trash2 size={13} />
-                          </Button>
-                        </div>
-                      </article>
+                                  ? messages.notifications.markRead
+                                  : messages.notifications.markUnread
+                              }
+                              disabled={pending !== null}
+                              onClick={() =>
+                                void run(
+                                  `read:${notification.id}`,
+                                  isUnread
+                                    ? () => onMarkRead(notification.id)
+                                    : () => onMarkUnread(notification.id)
+                                )
+                              }
+                              size="icon"
+                              variant="ghost"
+                            >
+                              {isUnread ? <Check size={13} /> : <Undo2 size={13} />}
+                            </Button>
+                            <Button
+                              aria-label={messages.notifications.clearNotification}
+                              disabled={pending !== null || itemPending}
+                              onClick={() =>
+                                void run(`clear:${notification.id}`, () =>
+                                  onClearNotification(notification.id)
+                                )
+                              }
+                              size="icon"
+                              variant="ghost"
+                            >
+                              <Trash2 size={13} />
+                            </Button>
+                          </div>
+                        </article>
+                      </Card>
                     )
                   })}
                 </div>

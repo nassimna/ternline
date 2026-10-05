@@ -57,8 +57,8 @@ describe('WorkspaceCardSlots', () => {
       name: 'Awaiting approval, progress indeterminate'
     })
     expect(progress.hasAttribute('aria-valuenow')).toBe(false)
-    expect(progress.hasAttribute('aria-valuemin')).toBe(false)
-    expect(progress.hasAttribute('aria-valuemax')).toBe(false)
-    expect(progress.textContent).toContain('Awaiting approval · In progress')
+    expect(progress.getAttribute('aria-valuemin')).toBe('0')
+    expect(progress.getAttribute('aria-valuemax')).toBe('100')
+    expect(screen.getByText('Awaiting approval · In progress')).toBeTruthy()
   })
 })

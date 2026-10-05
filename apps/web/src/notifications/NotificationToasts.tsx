@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Toaster, toast } from 'sonner'
+import { Toaster, toast } from '../ui/sonner'
 
 import type { NotificationSnapshot } from '@agent-workspace/protocol-client'
 

@@ -19,7 +19,7 @@ unsigned prereleases are distributed through [GitHub Releases](https://github.co
 - Visible workspace pins and saved SSH workspaces that launch OpenSSH with an existing alias, key,
   or host configuration.
 - Searchable command palette, editable shortcuts, keyboard navigation, appearance/terminal/
-  notification settings, and explicit stable/beta/alpha update controls.
+  notification settings, and alpha update controls.
 - Authenticated local protocol and packaged JSON CLI for workspace list/create, terminal
   create/send, pane split, identify, notifications, and reversible agent hooks.
 - Native Linux x64 AppImage/deb/rpm, macOS Intel and Apple Silicon DMG/zip, and Windows x64 NSIS
@@ -58,6 +58,7 @@ explicitly deferred, not passed.
 - [Implementation specification](docs/IMPLEMENTATION_SPEC.md),
   [milestone completion audit](docs/IMPLEMENTATION_MILESTONE_AUDIT.md), and [roadmap](ROADMAP.md)
 - [Contributing](CONTRIBUTING.md) and [dependency record](docs/DEPENDENCIES.md)
+- [Desktop design system](docs/DESIGN_SYSTEM.md)
 
 ## Local development
 
@@ -81,9 +82,9 @@ settle (strict limit below 1%). Cold/warm launch and resize passed their informa
 
 ## Browser automation for agents
 
-The CLI controls an isolated browser session or attaches to an existing browser tab after
-its owner approves. Every operation uses `--session-id`; `browser open` without one creates
-an isolated session and returns its ID. For example:
+The authenticated local CLI controls an isolated browser session or attaches to an existing browser
+tab without a confirmation prompt. Every operation uses `--session-id`; `browser open` without one
+creates an isolated session and returns its ID. For example:
 
 ```sh
 ternline-cli browser open --url http://localhost:3000

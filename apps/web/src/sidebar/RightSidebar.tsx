@@ -1,3 +1,19 @@
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
+import { Alert } from '../ui/alert'
+import { Badge } from '../ui/badge'
+import { Card } from '../ui/card'
+import { Label } from '../ui/label'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { Input } from '../ui/input'
+import { Textarea } from '../ui/textarea'
+import { Button } from '../ui/button'
 import { useEffect, useRef, useState } from 'react'
 import {
   BookOpenText,
@@ -27,6 +43,7 @@ import type {
   WorkspaceRootDescriptor
 } from '@agent-workspace/protocol-client'
 import { messages } from '../messages'
+import { confirmAction } from '../ui/request-dialog'
 
 const LABELS: Record<SidebarSurface, string> = messages.sidebarSurfaces.labels
 const DESCRIPTIONS: Record<SidebarSurface, string> = messages.sidebarSurfaces.descriptions
@@ -123,12 +140,12 @@ export function RightSidebar({
       ...(nodeTaskListEnabled ? (['taskManager'] as const) : []),
       ...(recentlyClosedEnabled ? (['recentlyClosed'] as const) : [])
     ]
-    const selectNodeSurface = (surface: NodeToolSurface): boolean => {
+    const selectNodeSurface = async (surface: NodeToolSurface): Promise<boolean> => {
       if (
         surface !== nodeSurface &&
         nodeSurface === 'files' &&
         fileDirty &&
-        !window.confirm('Discard unsaved file changes?')
+        !(await confirmAction('Discard unsaved file changes?'))
       ) {
         return false
       }
@@ -137,98 +154,113 @@ export function RightSidebar({
       return true
     }
     return (
-      <aside
-        aria-label={messages.sidebarSurfaces.title}
-        className="right-sidebar right-sidebar-files"
-      >
-        <header className="right-sidebar-header">
-          <div className="right-sidebar-heading">
-            <span className="right-sidebar-heading-icon" aria-hidden="true">
-              <SurfaceIcon surface={nodeSurface} />
-            </span>
-            <div>
-              <span className="right-sidebar-eyebrow">Workspace tools</span>
-              <h2>{LABELS[nodeSurface]}</h2>
-            </div>
-            <button
-              aria-label="Close tools"
-              className="right-sidebar-close"
-              onClick={() => {
-                if (fileDirty && !window.confirm('Discard unsaved file changes?')) return
-                onClose?.()
-              }}
-              type="button"
-            >
-              Close
-            </button>
-          </div>
-          <p>
-            {nodeSurface === 'taskManager'
-              ? nodeTaskDetachEnabled
-                ? 'Review running tasks and detach available remote sessions.'
-                : 'Review running tasks.'
-              : DESCRIPTIONS[nodeSurface]}
-          </p>
-        </header>
-        <nav aria-label="Tool surfaces" className="right-sidebar-tabs" role="tablist">
-          {nodeSurfaces.map((surface, index) => (
-            <button
-              aria-controls={`right-sidebar-panel-${surface}`}
-              aria-selected={surface === nodeSurface}
-              data-sidebar-tab="true"
-              id={`right-sidebar-tab-${surface}`}
-              key={surface}
-              onClick={() => selectNodeSurface(surface)}
-              onKeyDown={(event) => {
-                let nextIndex: number | null = null
-                if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                  nextIndex = (index - 1 + nodeSurfaces.length) % nodeSurfaces.length
-                }
-                if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                  nextIndex = (index + 1) % nodeSurfaces.length
-                }
-                if (event.key === 'Home') nextIndex = 0
-                if (event.key === 'End') nextIndex = nodeSurfaces.length - 1
-                if (nextIndex === null) return
-                event.preventDefault()
-                const next = nodeSurfaces[nextIndex]
-                if (!next) return
-                if (!selectNodeSurface(next)) return
-                const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                  '[data-sidebar-tab="true"]'
-                )
-                tabs?.[nextIndex]?.focus()
-              }}
-              role="tab"
-              tabIndex={surface === nodeSurface ? 0 : -1}
-              type="button"
-            >
-              <SurfaceIcon surface={surface} />
-              <span>{LABELS[surface]}</span>
-            </button>
-          ))}
-        </nav>
-        <section
-          aria-label={LABELS[nodeSurface]}
-          aria-labelledby={`right-sidebar-tab-${nodeSurface}`}
-          className="right-sidebar-panel"
-          id={`right-sidebar-panel-${nodeSurface}`}
-          role="tabpanel"
-          tabIndex={0}
+      <Tabs asChild activationMode="manual" value={nodeSurface}>
+        <aside
+          aria-label={messages.sidebarSurfaces.title}
+          className="right-sidebar right-sidebar-files"
         >
-          {nodeSurface === 'files' ? (
-            <Files editable onDirtyChange={setFileDirty} />
-          ) : (
-            <Surface
-              surface={nodeSurface}
-              workspaceId={workspaceId}
-              paneId={paneId}
-              nodeTaskMode
-              nodeTaskDetachEnabled={nodeTaskDetachEnabled}
-            />
-          )}
-        </section>
-      </aside>
+          <header className="right-sidebar-header">
+            <div className="right-sidebar-heading">
+              <span className="right-sidebar-heading-icon" aria-hidden="true">
+                <SurfaceIcon surface={nodeSurface} />
+              </span>
+              <div>
+                <span className="right-sidebar-eyebrow">Workspace tools</span>
+                <h2>{LABELS[nodeSurface]}</h2>
+              </div>
+              <Button
+                size="small"
+                variant="ghost"
+                aria-label="Close tools"
+                className="right-sidebar-close"
+                onClick={() => {
+                  void (async () => {
+                    if (fileDirty && !(await confirmAction('Discard unsaved file changes?'))) return
+                    onClose?.()
+                  })()
+                }}
+                type="button"
+              >
+                Close
+              </Button>
+            </div>
+            <p>
+              {nodeSurface === 'taskManager'
+                ? nodeTaskDetachEnabled
+                  ? 'Review running tasks and detach available remote sessions.'
+                  : 'Review running tasks.'
+                : DESCRIPTIONS[nodeSurface]}
+            </p>
+          </header>
+          <TabsList asChild unstyled>
+            <nav aria-label="Tool surfaces" className="right-sidebar-tabs">
+              {nodeSurfaces.map((surface, index) => (
+                <TabsTrigger
+                  value={surface}
+                  variant="navigation"
+                  aria-controls={`right-sidebar-panel-${surface}`}
+                  aria-selected={surface === nodeSurface}
+                  data-sidebar-tab="true"
+                  id={`right-sidebar-tab-${surface}`}
+                  key={surface}
+                  onClick={() => void selectNodeSurface(surface)}
+                  onKeyDown={(event) => {
+                    void (async () => {
+                      let nextIndex: number | null = null
+                      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                        nextIndex = (index - 1 + nodeSurfaces.length) % nodeSurfaces.length
+                      }
+                      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                        nextIndex = (index + 1) % nodeSurfaces.length
+                      }
+                      if (event.key === 'Home') nextIndex = 0
+                      if (event.key === 'End') nextIndex = nodeSurfaces.length - 1
+                      if (nextIndex === null) return
+                      event.preventDefault()
+                      const next = nodeSurfaces[nextIndex]
+                      if (!next) return
+                      const tabs =
+                        event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                          '[data-sidebar-tab="true"]'
+                        )
+                      if (!(await selectNodeSurface(next))) return
+                      tabs?.[nextIndex]?.focus()
+                    })()
+                  }}
+
+                  tabIndex={surface === nodeSurface ? 0 : -1}
+                  type="button"
+                >
+                  <SurfaceIcon surface={surface} />
+                  <span>{LABELS[surface]}</span>
+                </TabsTrigger>
+              ))}
+            </nav>
+          </TabsList>
+          <TabsContent asChild value={nodeSurface}>
+            <section
+              aria-label={LABELS[nodeSurface]}
+              aria-labelledby={`right-sidebar-tab-${nodeSurface}`}
+              className="right-sidebar-panel"
+              id={`right-sidebar-panel-${nodeSurface}`}
+
+              tabIndex={0}
+            >
+              {nodeSurface === 'files' ? (
+                <Files editable onDirtyChange={setFileDirty} />
+              ) : (
+                <Surface
+                  surface={nodeSurface}
+                  workspaceId={workspaceId}
+                  paneId={paneId}
+                  nodeTaskMode
+                  nodeTaskDetachEnabled={nodeTaskDetachEnabled}
+                />
+              )}
+            </section>
+          </TabsContent>
+        </aside>
+      </Tabs>
     )
   }
   if (!placement) {
@@ -237,9 +269,14 @@ export function RightSidebar({
         aria-label={messages.sidebarSurfaces.title}
         className="right-sidebar right-sidebar-loading"
       >
-        <p className={error ? 'right-sidebar-error' : undefined} role={error ? 'alert' : 'status'}>
-          {error ?? 'Loading tools…'}
-        </p>
+        <Alert asChild variant={error ? 'destructive' : 'default'}>
+          <p
+            className={error ? 'right-sidebar-error' : undefined}
+            role={error ? 'alert' : 'status'}
+          >
+            {error ?? 'Loading tools…'}
+          </p>
+        </Alert>
       </aside>
     )
   }
@@ -267,108 +304,119 @@ export function RightSidebar({
   }
 
   return (
-    <aside
-      aria-label={messages.sidebarSurfaces.title}
-      className="right-sidebar"
-      ref={dockRef}
-      style={{ width: effective.width }}
-    >
-      <div
-        aria-label={messages.sidebarSurfaces.resize}
-        aria-orientation="vertical"
-        aria-valuemin={MIN_WIDTH}
-        aria-valuemax={MAX_WIDTH}
-        aria-valuenow={effective.width}
-        className="right-sidebar-resizer"
-        role="separator"
-        tabIndex={0}
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-          event.preventDefault()
-          const delta = event.key === 'ArrowLeft' ? 12 : -12
-          resize(widthRef.current + delta)
-          void save(effective.selected, widthRef.current)
-        }}
-        onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId)
-          event.currentTarget.dataset.resizing = 'true'
-        }}
-        onPointerMove={(event) => {
-          if (event.currentTarget.dataset.resizing !== 'true') return
-          resize(window.innerWidth - event.clientX)
-        }}
-        onPointerUp={(event) => {
-          delete event.currentTarget.dataset.resizing
-          event.currentTarget.releasePointerCapture(event.pointerId)
-          void save(effective.selected, widthRef.current)
-        }}
-      />
-      <header className="right-sidebar-header">
-        <div className="right-sidebar-heading">
-          <span className="right-sidebar-heading-icon" aria-hidden="true">
-            <SurfaceIcon surface={effective.selected} />
-          </span>
-          <div>
-            <span className="right-sidebar-eyebrow">Workspace tools</span>
-            <h2>{LABELS[effective.selected]}</h2>
-          </div>
-        </div>
-        <p>{DESCRIPTIONS[effective.selected]}</p>
-      </header>
-      <nav aria-label="Tool surfaces" className="right-sidebar-tabs" role="tablist">
-        {enabledOrder.map((surface, index) => (
-          <button
-            aria-controls={`right-sidebar-panel-${surface}`}
-            aria-selected={surface === effective.selected}
-            data-sidebar-tab="true"
-            id={`right-sidebar-tab-${surface}`}
-            key={surface}
-            onClick={() => void save(surface, effective.width)}
-            onKeyDown={(event) => {
-              let nextIndex: number | null = null
-              if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                nextIndex = (index - 1 + enabledOrder.length) % enabledOrder.length
-              }
-              if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                nextIndex = (index + 1) % enabledOrder.length
-              }
-              if (event.key === 'Home') nextIndex = 0
-              if (event.key === 'End') nextIndex = enabledOrder.length - 1
-              if (nextIndex === null) return
-              event.preventDefault()
-              const next = enabledOrder[nextIndex]
-              if (!next) return
-              void save(next, effective.width)
-              const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                '[data-sidebar-tab="true"]'
-              )
-              tabs?.[nextIndex]?.focus()
-            }}
-            role="tab"
-            tabIndex={surface === effective.selected ? 0 : -1}
-            type="button"
-          >
-            <SurfaceIcon surface={surface} />
-            <span>{LABELS[surface]}</span>
-          </button>
-        ))}
-      </nav>
-      <section
-        aria-label={LABELS[effective.selected]}
-        aria-labelledby={`right-sidebar-tab-${effective.selected}`}
-        className="right-sidebar-panel"
-        id={`right-sidebar-panel-${effective.selected}`}
-        role="tabpanel"
-        tabIndex={0}
+    <Tabs asChild activationMode="manual" value={effective.selected}>
+      <aside
+        aria-label={messages.sidebarSurfaces.title}
+        className="right-sidebar"
+        ref={dockRef}
+        style={{ width: effective.width }}
       >
-        {error ? (
-          <p className="right-sidebar-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <Surface surface={effective.selected} workspaceId={workspaceId} paneId={paneId} />
-      </section>
-    </aside>
+        <div
+          aria-label={messages.sidebarSurfaces.resize}
+          aria-orientation="vertical"
+          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={MAX_WIDTH}
+          aria-valuenow={effective.width}
+          className="right-sidebar-resizer"
+          role="separator"
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+            event.preventDefault()
+            const delta = event.key === 'ArrowLeft' ? 12 : -12
+            resize(widthRef.current + delta)
+            void save(effective.selected, widthRef.current)
+          }}
+          onPointerDown={(event) => {
+            event.currentTarget.setPointerCapture(event.pointerId)
+            event.currentTarget.dataset.resizing = 'true'
+          }}
+          onPointerMove={(event) => {
+            if (event.currentTarget.dataset.resizing !== 'true') return
+            resize(window.innerWidth - event.clientX)
+          }}
+          onPointerUp={(event) => {
+            delete event.currentTarget.dataset.resizing
+            event.currentTarget.releasePointerCapture(event.pointerId)
+            void save(effective.selected, widthRef.current)
+          }}
+        />
+        <header className="right-sidebar-header">
+          <div className="right-sidebar-heading">
+            <span className="right-sidebar-heading-icon" aria-hidden="true">
+              <SurfaceIcon surface={effective.selected} />
+            </span>
+            <div>
+              <span className="right-sidebar-eyebrow">Workspace tools</span>
+              <h2>{LABELS[effective.selected]}</h2>
+            </div>
+          </div>
+          <p>{DESCRIPTIONS[effective.selected]}</p>
+        </header>
+        <TabsList asChild unstyled>
+          <nav aria-label="Tool surfaces" className="right-sidebar-tabs">
+            {enabledOrder.map((surface, index) => (
+              <TabsTrigger
+                value={surface}
+                variant="navigation"
+                aria-controls={`right-sidebar-panel-${surface}`}
+                aria-selected={surface === effective.selected}
+                data-sidebar-tab="true"
+                id={`right-sidebar-tab-${surface}`}
+                key={surface}
+                onClick={() => void save(surface, effective.width)}
+                onKeyDown={(event) => {
+                  let nextIndex: number | null = null
+                  if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                    nextIndex = (index - 1 + enabledOrder.length) % enabledOrder.length
+                  }
+                  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                    nextIndex = (index + 1) % enabledOrder.length
+                  }
+                  if (event.key === 'Home') nextIndex = 0
+                  if (event.key === 'End') nextIndex = enabledOrder.length - 1
+                  if (nextIndex === null) return
+                  event.preventDefault()
+                  const next = enabledOrder[nextIndex]
+                  if (!next) return
+                  void save(next, effective.width)
+                  const tabs =
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                      '[data-sidebar-tab="true"]'
+                    )
+                  tabs?.[nextIndex]?.focus()
+                }}
+
+                tabIndex={surface === effective.selected ? 0 : -1}
+                type="button"
+              >
+                <SurfaceIcon surface={surface} />
+                <span>{LABELS[surface]}</span>
+              </TabsTrigger>
+            ))}
+          </nav>
+        </TabsList>
+        <TabsContent asChild value={effective.selected}>
+          <section
+            aria-label={LABELS[effective.selected]}
+            aria-labelledby={`right-sidebar-tab-${effective.selected}`}
+            className="right-sidebar-panel"
+            id={`right-sidebar-panel-${effective.selected}`}
+
+            tabIndex={0}
+          >
+            {error ? (
+              <Alert asChild variant="destructive">
+                <p className="right-sidebar-error" role="alert">
+                  {error}
+                </p>
+              </Alert>
+            ) : null}
+            <Surface surface={effective.selected} workspaceId={workspaceId} paneId={paneId} />
+          </section>
+        </TabsContent>
+      </aside>
+    </Tabs>
   )
 }
 
@@ -493,21 +541,21 @@ function TextBoxes({ workspaceId }: { workspaceId: string }) {
     <div className="surface-stack">
       <div className="surface-list">
         {documents.map((document) => (
-          <button key={document.textBoxDocumentId} onClick={() => edit(document)} type="button">
+          <Button key={document.textBoxDocumentId} onClick={() => edit(document)} type="button">
             {document.title}
-          </button>
+          </Button>
         ))}
       </div>
-      <label>
+      <Label>
         Title
-        <input value={title} onChange={(event) => setTitle(event.target.value)} />
-      </label>
-      <label>
+        <Input value={title} onChange={(event) => setTitle(event.target.value)} />
+      </Label>
+      <Label>
         Text
-        <textarea rows={10} value={text} onChange={(event) => setText(event.target.value)} />
-      </label>
+        <Textarea rows={10} value={text} onChange={(event) => setText(event.target.value)} />
+      </Label>
       <div className="surface-actions">
-        <button
+        <Button
           onClick={() => {
             setSelectedId(null)
             setTitle('Untitled')
@@ -517,13 +565,13 @@ function TextBoxes({ workspaceId }: { workspaceId: string }) {
           type="button"
         >
           New
-        </button>
-        <button onClick={() => void save()} type="button">
+        </Button>
+        <Button onClick={() => void save()} type="button">
           Save
-        </button>
-        <button disabled={!selected} onClick={() => void remove()} type="button">
+        </Button>
+        <Button disabled={!selected} onClick={() => void remove()} type="button">
           Delete
-        </button>
+        </Button>
       </div>
       <p role="status">{status}</p>
     </div>
@@ -543,29 +591,34 @@ function Vault() {
     <div className="surface-stack">
       <h3>Local search privacy</h3>
       <p>{messages.sidebarSurfaces.localPrivacy}</p>
-      <label>
+      <Label>
         Authorized source ID
-        <input value={authorization} onChange={(event) => setAuthorization(event.target.value)} />
-      </label>
-      <label>
+        <Input value={authorization} onChange={(event) => setAuthorization(event.target.value)} />
+      </Label>
+      <Label>
         Source
-        <select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}>
-          <option value="workspaceFile">Workspace files</option>
-          <option value="agentTranscript">Agent transcripts</option>
-        </select>
-      </label>
-      <label>
+        <Select value={kind} onValueChange={(value) => setKind(value as typeof kind)}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="workspaceFile">Workspace files</SelectItem>
+            <SelectItem value="agentTranscript">Agent transcripts</SelectItem>
+          </SelectContent>
+        </Select>
+      </Label>
+      <Label>
         Retention days
-        <input
+        <Input
           min={1}
           max={365}
           type="number"
           value={retention}
           onChange={(event) => setRetention(Number(event.target.value))}
         />
-      </label>
+      </Label>
       <div className="surface-actions">
-        <button
+        <Button
           disabled={!valid}
           onClick={() =>
             void window.desktopBridge
@@ -585,8 +638,8 @@ function Vault() {
           type="button"
         >
           Enable locally
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={!valid}
           onClick={() =>
             void window.desktopBridge
@@ -603,8 +656,8 @@ function Vault() {
           type="button"
         >
           Exclude
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={!valid}
           onClick={() =>
             void window.desktopBridge
@@ -621,8 +674,8 @@ function Vault() {
           type="button"
         >
           Forget data
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={!valid}
           onClick={() =>
             void window.desktopBridge
@@ -640,8 +693,8 @@ function Vault() {
           type="button"
         >
           Rebuild index
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={!valid}
           onClick={() => {
             setStatus('Preparing export…')
@@ -653,7 +706,7 @@ function Vault() {
           type="button"
         >
           Export
-        </button>
+        </Button>
       </div>
       <p role="status">{status}</p>
     </div>
@@ -740,7 +793,7 @@ function Tasks({
                 : `${String(tasks.length)} active task${tasks.length === 1 ? '' : 's'}`}
           </strong>
         </div>
-        <button
+        <Button
           aria-label="Refresh tasks"
           disabled={loading}
           onClick={() => void load()}
@@ -748,75 +801,88 @@ function Tasks({
         >
           <RefreshCw aria-hidden="true" size={14} />
           Refresh
-        </button>
+        </Button>
       </div>
       {tasks.map((task) => (
-        <article
-          className="surface-card task-card"
-          key={`${task.target.sessionId}:${task.target.generation}`}
-        >
-          <div className="task-card-heading">
-            <strong>{task.label}</strong>
-            <span className="task-state" data-lifecycle={task.lifecycle}>
-              {task.lifecycle}
-            </span>
-          </div>
-          <small className="task-summary">
-            {task.kind} · {task.lifecycle} · {task.observation}
-          </small>
-          {(!nodeMode ||
-            (nodeDetachEnabled &&
-              task.kind === 'remoteSession' &&
-              task.lifecycle === 'running')) && (
-            <div className="surface-actions task-primary-actions">
-              <button
-                disabled={actingOn !== null || (nodeMode && loading)}
-                onClick={() => void action(task, 'detach')}
-                type="button"
+        <Card key={`${task.target.sessionId}:${task.target.generation}`} asChild variant="compact">
+          <article className="surface-card task-card">
+            <div className="task-card-heading">
+              <strong>{task.label}</strong>
+              <Badge
+                variant={
+                  task.lifecycle === 'running' || task.lifecycle === 'created'
+                    ? 'success'
+                    : 'secondary'
+                }
+                className="task-state"
+                data-lifecycle={task.lifecycle}
               >
-                Detach
-              </button>
-              {!nodeMode ? (
-                <>
-                  <button
-                    disabled={actingOn !== null}
-                    onClick={() => void action(task, 'cancel')}
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="surface-button-danger"
-                    disabled={actingOn !== null}
-                    onClick={() => void action(task, 'terminate')}
-                    type="button"
-                  >
-                    Terminate
-                  </button>
-                </>
-              ) : null}
+                {task.lifecycle}
+              </Badge>
             </div>
-          )}
-          {!nodeMode ? (
-            <details className="task-more-actions">
-              <summary>More actions</summary>
-              <p>Force termination should only be used when a task does not respond.</p>
-              <button
-                className="surface-button-danger"
-                disabled={actingOn !== null}
-                onClick={() => void action(task, 'forceTerminate')}
-                type="button"
-              >
-                Force terminate
-              </button>
-            </details>
-          ) : null}
-        </article>
+            <small className="task-summary">
+              {task.kind} · {task.lifecycle} · {task.observation}
+            </small>
+            {(!nodeMode ||
+              (nodeDetachEnabled &&
+                task.kind === 'remoteSession' &&
+                task.lifecycle === 'running')) && (
+              <div className="surface-actions task-primary-actions">
+                <Button
+                  disabled={actingOn !== null || (nodeMode && loading)}
+                  onClick={() => void action(task, 'detach')}
+                  type="button"
+                >
+                  Detach
+                </Button>
+                {!nodeMode ? (
+                  <>
+                    <Button
+                      disabled={actingOn !== null}
+                      onClick={() => void action(task, 'cancel')}
+                      type="button"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="surface-button-danger"
+                      disabled={actingOn !== null}
+                      onClick={() => void action(task, 'terminate')}
+                      type="button"
+                    >
+                      Terminate
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            )}
+            {!nodeMode ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="task-more-actions">More actions</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>
+                    Use force termination only when a task does not respond.
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    destructive
+                    disabled={actingOn !== null}
+                    onSelect={() => void action(task, 'forceTerminate')}
+                  >
+                    Force terminate
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </article>
+        </Card>
       ))}
       {nodeMode && nextCursor ? (
-        <button disabled={loading} onClick={() => void load(nextCursor)} type="button">
+        <Button disabled={loading} onClick={() => void load(nextCursor)} type="button">
           Load more tasks
-        </button>
+        </Button>
       ) : null}
       <p className="surface-status" role="status">
         {status}
@@ -860,11 +926,13 @@ function Files({
       })
       .catch((cause) => setStatus(messageOf(cause, 'File provider unavailable.')))
   }, [])
-  const canLeave = (): boolean =>
+  const canLeave = async (): Promise<boolean> =>
     !saving &&
-    (draft === null || draft === preview?.text || window.confirm('Discard unsaved file changes?'))
+    (draft === null ||
+      draft === preview?.text ||
+      (await confirmAction('Discard unsaved file changes?')))
   const open = async (nextTrail: typeof trail): Promise<void> => {
-    if (!canLeave()) return
+    if (!(await canLeave())) return
     const directory = nextTrail.at(-1)
     if (!directory) return
     try {
@@ -884,7 +952,7 @@ function Files({
     }
   }
   const previewFile = async (entry: WorkspaceDirectoryEntry): Promise<void> => {
-    if (!canLeave()) return
+    if (!(await canLeave())) return
     try {
       const issued = await window.desktopBridge.issueContentDocument?.({
         authorizedDescriptorId: entry.entryDescriptorId,
@@ -952,7 +1020,8 @@ function Files({
       <h3>Authorized roots</h3>
       <div className="files-roots">
         {roots.map((root) => (
-          <button
+          <Button
+            variant="ghost"
             aria-pressed={trail[0]?.descriptorId === root.directoryDescriptorId}
             className="files-root"
             key={root.rootId}
@@ -969,7 +1038,7 @@ function Files({
           >
             <FolderTree aria-hidden="true" size={14} />
             <span>{root.label}</span>
-          </button>
+          </Button>
         ))}
       </div>
       {trail.length ? (
@@ -979,16 +1048,17 @@ function Files({
             <strong>{trail.map(({ label }) => label).join(' / ')}</strong>
           </div>
           {trail.length > 1 ? (
-            <button onClick={() => void open(trail.slice(0, -1))} type="button">
+            <Button onClick={() => void open(trail.slice(0, -1))} type="button">
               Back
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
       {entries.length ? (
         <div className="files-entries">
           {entries.map((entry) => (
-            <button
+            <Button
+              variant="ghost"
               className="files-entry"
               key={entry.entryDescriptorId}
               onClick={() =>
@@ -1011,7 +1081,7 @@ function Files({
                 <FileText aria-hidden="true" size={14} />
               )}
               <span>{entry.label}</span>
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}
@@ -1022,21 +1092,21 @@ function Files({
             {editable && preview.complete ? (
               <div className="surface-actions">
                 {draft === null ? (
-                  <button onClick={() => setDraft(preview.text)} type="button">
+                  <Button onClick={() => setDraft(preview.text)} type="button">
                     Edit
-                  </button>
+                  </Button>
                 ) : (
                   <>
-                    <button
+                    <Button
                       disabled={saving || draft === preview.text || draftBytes > 256 * 1024}
                       onClick={() => void save()}
                       type="button"
                     >
                       {saving ? 'Saving…' : 'Save'}
-                    </button>
-                    <button disabled={saving} onClick={() => setDraft(null)} type="button">
+                    </Button>
+                    <Button disabled={saving} onClick={() => setDraft(null)} type="button">
                       Cancel
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
@@ -1045,9 +1115,10 @@ function Files({
           {draft === null ? (
             <pre className="safe-file-preview">{preview.text}</pre>
           ) : (
-            <label>
+            <Label>
               <span className="sr-only">Edit {preview.name}</span>
-              <textarea
+              <Textarea
+                variant="code"
                 aria-label={`Edit ${preview.name}`}
                 className="safe-file-editor"
                 disabled={saving}
@@ -1056,7 +1127,7 @@ function Files({
                 value={draft}
               />
               {draftBytes > 256 * 1024 ? <span>Files can be saved up to 256 KiB.</span> : null}
-            </label>
+            </Label>
           )}
         </section>
       ) : null}
@@ -1071,20 +1142,20 @@ function DocumentPicker({ onIssue }: { onIssue: (document: ContentDocumentIssueR
   const [status, setStatus] = useState('Paste an authorized opaque file descriptor from Files.')
   return (
     <div className="surface-stack">
-      <label>
+      <Label>
         Descriptor ID
-        <input value={descriptor} onChange={(event) => setDescriptor(event.target.value)} />
-      </label>
-      <label>
+        <Input value={descriptor} onChange={(event) => setDescriptor(event.target.value)} />
+      </Label>
+      <Label>
         Generation
-        <input
+        <Input
           min={1}
           type="number"
           value={generation}
           onChange={(event) => setGeneration(Number(event.target.value))}
         />
-      </label>
-      <button
+      </Label>
+      <Button
         onClick={() =>
           void window.desktopBridge
             .issueContentDocument?.({
@@ -1098,7 +1169,7 @@ function DocumentPicker({ onIssue }: { onIssue: (document: ContentDocumentIssueR
         type="button"
       >
         Authorize document
-      </button>
+      </Button>
       <p role="status">{status}</p>
     </div>
   )
@@ -1208,33 +1279,33 @@ function Diff() {
   })
   return (
     <div className="surface-stack">
-      <label>
+      <Label>
         Before document
-        <input value={before} onChange={(event) => setBefore(event.target.value)} />
-      </label>
-      <label>
+        <Input value={before} onChange={(event) => setBefore(event.target.value)} />
+      </Label>
+      <Label>
         After document
-        <input value={after} onChange={(event) => setAfter(event.target.value)} />
-      </label>
-      <label>
+        <Input value={after} onChange={(event) => setAfter(event.target.value)} />
+      </Label>
+      <Label>
         Before identity
-        <input
+        <Input
           min={1}
           type="number"
           value={beforeVersion}
           onChange={(event) => setBeforeVersion(Number(event.target.value))}
         />
-      </label>
-      <label>
+      </Label>
+      <Label>
         After identity
-        <input
+        <Input
           min={1}
           type="number"
           value={afterVersion}
           onChange={(event) => setAfterVersion(Number(event.target.value))}
         />
-      </label>
-      <button
+      </Label>
+      <Button
         onClick={() =>
           void window.desktopBridge
             .diffContent?.({
@@ -1251,7 +1322,7 @@ function Diff() {
         type="button"
       >
         Compare
-      </button>
+      </Button>
       <pre className="safe-diff">
         {lines.map((line, index) => (
           <span data-kind={line.kind} key={index}>
@@ -1291,27 +1362,29 @@ function Search() {
           .catch((cause) => setStatus(messageOf(cause, 'Search unavailable.')))
       }}
     >
-      <label>
+      <Label>
         Search
-        <input value={query} onChange={(event) => setQuery(event.target.value)} />
-      </label>
-      <button type="submit">Search</button>
+        <Input value={query} onChange={(event) => setQuery(event.target.value)} />
+      </Label>
+      <Button type="submit">Search</Button>
       {results.map((result, index) => (
-        <article className="surface-card" key={index}>
-          <small>{result.sourceKind}</small>
-          <p>{result.snippet}</p>
-          <button
-            onClick={() =>
-              void window.desktopBridge
-                .readContent?.({ document: result.document, offset: 0, maxBytes: 65536 })
-                .then((content) => content && setPreview(content))
-                .catch((cause) => setStatus(messageOf(cause, 'Search result is unavailable.')))
-            }
-            type="button"
-          >
-            Open preview
-          </button>
-        </article>
+        <Card key={index} asChild variant="compact">
+          <article className="surface-card">
+            <small>{result.sourceKind}</small>
+            <p>{result.snippet}</p>
+            <Button
+              onClick={() =>
+                void window.desktopBridge
+                  .readContent?.({ document: result.document, offset: 0, maxBytes: 65536 })
+                  .then((content) => content && setPreview(content))
+                  .catch((cause) => setStatus(messageOf(cause, 'Search result is unavailable.')))
+              }
+              type="button"
+            >
+              Open preview
+            </Button>
+          </article>
+        </Card>
       ))}
       {preview?.kind === 'text' ? (
         <section aria-label={`Preview ${preview.chunk.displayName}`}>
@@ -1388,19 +1461,21 @@ function RecentlyClosed({ workspaceId, paneId }: { workspaceId: string; paneId: 
           <span className="surface-kicker">Restore</span>
           <strong>Recently Closed</strong>
         </div>
-        <button aria-label="Refresh recently closed" onClick={() => void load()} type="button">
+        <Button aria-label="Refresh recently closed" onClick={() => void load()} type="button">
           <RefreshCw aria-hidden="true" size={14} />
           Refresh
-        </button>
+        </Button>
       </div>
       {records.map((record) => (
-        <article className="surface-card" key={record.recentlyClosedId}>
-          <strong>{record.label}</strong>
-          <small>{record.action}</small>
-          <button onClick={() => void reopen(record)} type="button">
-            Reopen
-          </button>
-        </article>
+        <Card key={record.recentlyClosedId} asChild variant="compact">
+          <article className="surface-card">
+            <strong>{record.label}</strong>
+            <small>{record.action}</small>
+            <Button onClick={() => void reopen(record)} type="button">
+              Reopen
+            </Button>
+          </article>
+        </Card>
       ))}
       <p role="status">{status}</p>
     </div>

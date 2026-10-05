@@ -547,7 +547,6 @@ export const messages = {
       summary: (commandId: string, defaultShortcut: string) =>
         `${commandId} · default ${defaultShortcut}`,
       inputLabel: (commandTitle: string) => `${commandTitle} shortcut`,
-      save: 'Save',
       clear: 'Clear',
       reset: (commandId: string) => `Reset ${commandId}`
     },
@@ -597,14 +596,16 @@ export const messages = {
     configurationReadOnly: 'Device configuration is read-only in this Node demo.',
     nodeShellUnavailable: 'Changing the shell path is unavailable in this Node preview.',
     loadFailed: 'Configuration could not be loaded. Try reopening settings.',
-    conflict: 'Settings changed elsewhere. The latest configuration has been reloaded.',
-    saveFailed: 'The setting could not be saved. The latest configuration has been reloaded.',
+    conflict: 'Settings changed elsewhere. Your edits are kept. Retry to apply them.',
+    saveFailed: 'Changes could not be saved. Your edits are kept. Retry to apply them.',
     saved: 'Setting saved.',
-    unsaved: 'Unsaved changes',
-    discardTitle: 'Discard unsaved changes?',
-    discardDescription: 'Your settings edits will be lost.',
-    keepEditing: 'Keep editing',
-    discard: 'Discard changes',
+    autoSave: 'Changes save automatically',
+    retry: 'Retry',
+    invalidValues: 'Check the font, shell path, font size, and scrollback values before saving.',
+    invalidShortcut: 'Fix the invalid or conflicting shortcut before closing settings.',
+    appearanceDescription: 'Make this workspace feel like yours.',
+    densityDescription: 'Choose how much space rows and controls use.',
+    fontPreview: 'Typography preview',
     search: 'Search settings',
     noSearchResults: 'No settings match your search.',
     advanced: 'Advanced',
@@ -618,11 +619,10 @@ export const messages = {
     updates: 'Updates',
     loading: 'Loading configuration…',
     saving: 'Saving…',
-    saveSection: 'Save section',
     shellBehavior:
       'Applies to new and restarted terminals. Existing terminal processes keep their current shell.',
     interfaceFontBehavior:
-      'Use system-ui for your operating system font, or enter the name of any installed font.',
+      'Geist and JetBrains Mono Variable are bundled for every platform. Other fonts must be installed on each device.',
     loggingBehavior: 'Applies immediately to subsequent service log events.',
     deferred: {
       browser:
@@ -665,11 +665,10 @@ export const messages = {
       info: 'Info',
       debug: 'Debug',
       trace: 'Trace',
-      stable: 'Stable',
-      beta: 'Beta',
       alpha: 'Alpha'
     },
     updater: {
+      chooseAlpha: 'Choose Alpha',
       automatic: 'Automatically check and download updates',
       automaticDescription: 'Updates download in the background. You choose when to restart.',
       restartDescription: 'Restarting closes local terminals and may interrupt running agents.',

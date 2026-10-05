@@ -1,4 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { Card } from '../ui/card'
+import { Label } from '../ui/label'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
+import { Checkbox } from '../ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { AlertCircle, Check, ChevronDown, LoaderCircle, Monitor, Moon, Sun } from 'lucide-react'
+import { configurationUpdateParamsSchema } from '@agent-workspace/protocol-client'
 
 import type {
   ConfigurationSnapshot,
@@ -10,12 +22,17 @@ import type { DesktopUpdateState } from '@agent-workspace/contracts/desktop/desk
 import { useConfigurationStore } from '../configuration-store'
 import { messages } from '../messages'
 import { Button } from '../ui/button'
+import { Input } from '../ui/input'
+
+export interface ConfigurationSettingsHandle {
+  flush(): Promise<boolean>
+}
 
 interface ConfigurationSettingsProps {
   activeSection: ConfigurationSettingsSection
   configurationV2: boolean
   nodePreview?: boolean
-  onDirtyChange?: (dirty: boolean) => void
+  ref?: Ref<ConfigurationSettingsHandle>
   readOnly?: boolean
   open: boolean
 }
@@ -37,7 +54,7 @@ export function ConfigurationSettings({
   activeSection,
   configurationV2,
   nodePreview = false,
-  onDirtyChange,
+  ref,
   readOnly = false,
   open
 }: ConfigurationSettingsProps): React.JSX.Element {
@@ -46,13 +63,10 @@ export function ConfigurationSettings({
   const [draft, setDraft] = useState<ConfigurationSnapshot | null>(null)
   const draftRef = useRef<ConfigurationSnapshot | null>(null)
   const baselineRef = useRef<ConfigurationSnapshot | null>(null)
-  const themeSelectRef = useRef<HTMLSelectElement | null>(null)
-  const densitySelectRef = useRef<HTMLSelectElement | null>(null)
-  const fontFamilyInputRef = useRef<HTMLInputElement | null>(null)
-  const loggingSelectRef = useRef<HTMLSelectElement | null>(null)
-  const updateChannelSelectRef = useRef<HTMLSelectElement | null>(null)
   const [status, setStatus] = useState<string | null>(null)
-  const [saving, setSaving] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
+  const savingRef = useRef<Promise<boolean> | null>(null)
   const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null)
   const [diagnosticPreview, setDiagnosticPreview] = useState<DiagnosticBundlePreview | null>(null)
   const [diagnosticBusy, setDiagnosticBusy] = useState(false)
@@ -81,16 +95,6 @@ export function ConfigurationSettings({
     })
   }, [config, open])
 
-  useEffect(() => {
-    onDirtyChange?.(
-      Boolean(
-        config &&
-        draft &&
-        editableSections.some((section) => sectionChanged(draft, config, section))
-      )
-    )
-  }, [config, draft, onDirtyChange])
-
   const adoptDraft = (next: ConfigurationSnapshot): void => {
     draftRef.current = next
     setDraft(next)
@@ -99,6 +103,8 @@ export function ConfigurationSettings({
   const updateDraft = (update: (current: ConfigurationSnapshot) => ConfigurationSnapshot): void => {
     const current = draftRef.current
     if (!current) return
+    setSaveFailed(false)
+    setStatus(null)
     adoptDraft(update(current))
   }
 
@@ -127,55 +133,76 @@ export function ConfigurationSettings({
     }
   }, [open])
 
-  const saveSection = async (
-    section: keyof ConfigurationUpdate,
-    createUpdate: (current: ConfigurationSnapshot) => ConfigurationUpdate
-  ): Promise<void> => {
+  const flush = useCallback(async (): Promise<boolean> => {
+    while (savingRef.current) {
+      if (!(await savingRef.current)) return false
+    }
     const bridge = window.desktopBridge
     const currentConfig = useConfigurationStore.getState().config
     const currentDraft = draftRef.current
-    if (
-      readOnly ||
-      !currentConfig ||
-      !currentDraft ||
-      !bridge.updateConfiguration ||
-      saving !== null
-    )
-      return
-    setSaving(section)
+    if (readOnly || !currentConfig || !currentDraft) return true
+    const update: ConfigurationUpdate = {}
+    for (const section of editableSections) {
+      if (sectionChanged(currentDraft, baselineRef.current ?? currentConfig, section)) {
+        Object.assign(update, { [section]: currentDraft[section] })
+      }
+    }
+    if (Object.keys(update).length === 0) return true
+    const params = { expectedRevision: currentConfig.revision, update }
+    if (!configurationUpdateParamsSchema.safeParse(params).success) {
+      setStatus(messages.settings.invalidValues)
+      setSaveFailed(true)
+      return false
+    }
+    if (!bridge.updateConfiguration) return false
+    setSaving(true)
     setStatus(null)
-    try {
-      const result = await bridge.updateConfiguration({
-        expectedRevision: currentConfig.revision,
-        update: createUpdate(currentDraft)
-      })
-      adoptDraft({ ...currentDraft, [section]: result.config[section] })
-      useConfigurationStore.getState().apply(result.config)
-      setStatus(messages.settings.saved)
-    } catch (error) {
-      const latest = await useConfigurationStore.getState().refresh()
-      if (latest) {
-        const next = structuredClone(latest)
-        for (const editableSection of editableSections) {
-          if (
-            editableSection !== section &&
-            sectionChanged(currentDraft, currentConfig, editableSection)
-          ) {
-            Object.assign(next, { [editableSection]: currentDraft[editableSection] })
+    const operation = (async (): Promise<boolean> => {
+      try {
+        const result = await bridge.updateConfiguration!(params)
+        const next = structuredClone(result.config)
+        const latestDraft = draftRef.current
+        if (latestDraft) {
+          for (const section of editableSections) {
+            if (sectionChanged(latestDraft, currentDraft, section)) {
+              Object.assign(next, { [section]: latestDraft[section] })
+            }
           }
         }
-        baselineRef.current = latest
+        baselineRef.current = result.config
         adoptDraft(next)
+        useConfigurationStore.getState().apply(result.config)
+        setSaveFailed(false)
+        setStatus(messages.settings.saved)
+        return true
+      } catch (error) {
+        await useConfigurationStore.getState().refresh()
+        setSaveFailed(true)
+        setStatus(
+          error instanceof Error && /conflict|revision|stale/iu.test(error.message)
+            ? messages.settings.conflict
+            : messages.settings.saveFailed
+        )
+        return false
+      } finally {
+        savingRef.current = null
+        setSaving(false)
       }
-      setStatus(
-        error instanceof Error && /conflict|revision|stale/iu.test(error.message)
-          ? messages.settings.conflict
-          : messages.settings.saveFailed
-      )
-    } finally {
-      setSaving(null)
-    }
-  }
+    })()
+    savingRef.current = operation
+    return operation
+  }, [readOnly])
+
+  useImperativeHandle(ref, () => ({ flush }), [flush])
+
+  const dirty = Boolean(
+    config && draft && editableSections.some((section) => sectionChanged(draft, config, section))
+  )
+  useEffect(() => {
+    if (!open || !dirty || readOnly || saveFailed || saving) return
+    const timer = window.setTimeout(() => void flush(), 350)
+    return () => window.clearTimeout(timer)
+  }, [draft, dirty, flush, open, readOnly, saveFailed, saving])
 
   const runUpdateAction = async (
     action: 'checkForUpdate' | 'downloadUpdate' | 'installUpdate'
@@ -243,6 +270,11 @@ export function ConfigurationSettings({
     )
   }
 
+  const interfaceFontFamily =
+    draft.appearance.fontFamily === "system-ui, 'Segoe UI', 'Cantarell', 'Ubuntu', sans-serif"
+      ? 'Geist'
+      : draft.appearance.fontFamily
+
   return (
     <div className="configuration-settings">
       {readOnly ? (
@@ -250,10 +282,26 @@ export function ConfigurationSettings({
           {messages.settings.configurationReadOnly}
         </p>
       ) : null}
-      {status ? (
-        <p className="configuration-status" role="status">
-          {status}
-        </p>
+      {!readOnly ? (
+        <div className="configuration-status" data-error={saveFailed} role="status">
+          {saveFailed ? (
+            <AlertCircle aria-hidden="true" size={14} />
+          ) : saving || dirty ? (
+            <LoaderCircle aria-hidden="true" size={14} />
+          ) : !status || status === messages.settings.saved ? (
+            <Check aria-hidden="true" size={14} />
+          ) : null}
+          <span>
+            {saving || (dirty && !saveFailed)
+              ? messages.settings.saving
+              : (status ?? messages.settings.autoSave)}
+          </span>
+          {saveFailed ? (
+            <Button onClick={() => void flush()} size="small" variant="ghost">
+              {messages.settings.retry}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       <fieldset className="configuration-read-only-fields" disabled={readOnly}>
         <SettingsSection
@@ -261,78 +309,130 @@ export function ConfigurationSettings({
           section="appearance"
           title={messages.settings.appearance}
         >
-          <Field label={messages.settings.fields.theme}>
-            <select
-              ref={themeSelectRef}
-              onChange={(event) =>
+          <p className="appearance-group-label">{messages.settings.fields.theme}</p>
+          <div
+            className="appearance-theme-picker"
+            role="group"
+            aria-label={messages.settings.fields.theme}
+          >
+            {(['system', 'light', 'dark'] as const).map((theme) => {
+              const Icon = theme === 'system' ? Monitor : theme === 'light' ? Sun : Moon
+              return (
+                <Button
+                  aria-pressed={draft.appearance.theme === theme}
+                  className="appearance-theme-option"
+                  key={theme}
+                  onClick={() =>
+                    updateDraft((current) => ({
+                      ...current,
+                      appearance: { ...current.appearance, theme }
+                    }))
+                  }
+                  variant="ghost"
+                >
+                  <span
+                    className="appearance-theme-preview"
+                    data-preview-theme={theme}
+                    aria-hidden="true"
+                  >
+                    <span className="appearance-preview-sidebar">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span className="appearance-preview-content">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  </span>
+                  <span className="appearance-theme-label">
+                    <Icon size={15} />
+                    {messages.settings.options[theme]}
+                    <Check className="appearance-theme-check" size={14} />
+                  </span>
+                </Button>
+              )
+            })}
+          </div>
+          <Field
+            label={messages.settings.fields.density}
+            description={messages.settings.densityDescription}
+          >
+            <Select
+              onValueChange={(value) => {
+                const density = value as ConfigurationSnapshot['appearance']['density']
                 updateDraft((current) => ({
                   ...current,
-                  appearance: {
-                    ...current.appearance,
-                    theme: event.currentTarget.value as never
-                  }
+                  appearance: { ...current.appearance, density }
                 }))
-              }
-              value={draft.appearance.theme}
-            >
-              <option value="system">{messages.settings.options.system}</option>
-              <option value="dark">{messages.settings.options.dark}</option>
-              <option value="light">{messages.settings.options.light}</option>
-            </select>
-          </Field>
-          <Field label={messages.settings.fields.density}>
-            <select
-              ref={densitySelectRef}
-              onChange={(event) =>
-                updateDraft((current) => ({
-                  ...current,
-                  appearance: {
-                    ...current.appearance,
-                    density: event.currentTarget.value as never
-                  }
-                }))
-              }
+              }}
               value={draft.appearance.density}
             >
-              <option value="comfortable">{messages.settings.options.comfortable}</option>
-              <option value="compact">{messages.settings.options.compact}</option>
-              {configurationV2 ? (
-                <option value="expanded">{messages.settings.options.expanded}</option>
-              ) : null}
-            </select>
+              <SelectTrigger aria-label={messages.settings.fields.density}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="compact">{messages.settings.options.compact}</SelectItem>
+                <SelectItem value="comfortable">{messages.settings.options.comfortable}</SelectItem>
+                {configurationV2 ? (
+                  <SelectItem value="expanded">{messages.settings.options.expanded}</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label={messages.settings.fields.interfaceFontFamily}>
-            <input
-              autoComplete="off"
-              ref={fontFamilyInputRef}
-              onChange={(event) =>
-                updateDraft((current) => ({
-                  ...current,
-                  appearance: {
-                    ...current.appearance,
-                    fontFamily: event.currentTarget.value
-                  }
-                }))
-              }
-              spellCheck={false}
-              value={draft.appearance.fontFamily}
-            />
+          <Field
+            label={messages.settings.fields.interfaceFontFamily}
+            description={messages.settings.interfaceFontBehavior}
+          >
+            <div className="configuration-font-control">
+              <Input
+                aria-label={messages.settings.fields.interfaceFontFamily}
+                autoComplete="off"
+                onChange={(event) => {
+                  const fontFamily = event.currentTarget.value
+                  updateDraft((current) => ({
+                    ...current,
+                    appearance: { ...current.appearance, fontFamily }
+                  }))
+                }}
+                spellCheck={false}
+                value={interfaceFontFamily}
+              />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button aria-label="Choose interface font" size="icon">
+                    <ChevronDown aria-hidden="true" size={14} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {['Geist', 'JetBrains Mono Variable', 'system-ui'].map((fontFamily) => (
+                    <DropdownMenuItem
+                      key={fontFamily}
+                      onSelect={() =>
+                        updateDraft((current) => ({
+                          ...current,
+                          appearance: { ...current.appearance, fontFamily }
+                        }))
+                      }
+                    >
+                      {fontFamily}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </Field>
-          <DeferredNotice>{messages.settings.interfaceFontBehavior}</DeferredNotice>
-          <SectionSave
-            busy={saving === 'appearance'}
-            onClick={() =>
-              void saveSection('appearance', (current) => ({
-                appearance: {
-                  theme: (themeSelectRef.current?.value ??
-                    current.appearance.theme) as ConfigurationSnapshot['appearance']['theme'],
-                  density: (densitySelectRef.current?.value ??
-                    current.appearance.density) as ConfigurationSnapshot['appearance']['density'],
-                  fontFamily: fontFamilyInputRef.current?.value ?? current.appearance.fontFamily
-                }
-              }))
-            }
-          />
+          <Card asChild>
+            <div
+              className="appearance-font-preview"
+              style={{ fontFamily: `${interfaceFontFamily}, sans-serif` }}
+            >
+              <span>{messages.settings.fontPreview}</span>
+              <strong>The quick brown fox jumps over the lazy dog.</strong>
+              <p>Aa Bb Cc · 0123456789 · &amp; @ #</p>
+            </div>
+          </Card>
         </SettingsSection>
 
         <SettingsSection
@@ -341,7 +441,7 @@ export function ConfigurationSettings({
           title={messages.settings.terminal}
         >
           <Field label={messages.settings.fields.shellPath}>
-            <input
+            <Input
               autoComplete="off"
               onChange={(event) =>
                 updateDraft((current) => ({
@@ -363,7 +463,7 @@ export function ConfigurationSettings({
             <DeferredNotice>{messages.settings.shellBehavior}</DeferredNotice>
           )}
           <Field label={messages.settings.fields.fontFamily}>
-            <input
+            <Input
               onChange={(event) =>
                 updateDraft((current) => ({
                   ...current,
@@ -374,7 +474,7 @@ export function ConfigurationSettings({
             />
           </Field>
           <Field label={messages.settings.fields.fontSize}>
-            <input
+            <Input
               max={72}
               min={6}
               onChange={(event) =>
@@ -384,11 +484,11 @@ export function ConfigurationSettings({
                 }))
               }
               type="number"
-              value={draft.terminal.fontSize}
+              value={Number.isNaN(draft.terminal.fontSize) ? '' : draft.terminal.fontSize}
             />
           </Field>
           <Field label={messages.settings.fields.scrollback}>
-            <input
+            <Input
               max={1_000_000}
               min={100}
               onChange={(event) =>
@@ -398,7 +498,7 @@ export function ConfigurationSettings({
                 }))
               }
               type="number"
-              value={draft.terminal.scrollback}
+              value={Number.isNaN(draft.terminal.scrollback) ? '' : draft.terminal.scrollback}
             />
           </Field>
           <CheckField
@@ -411,12 +511,6 @@ export function ConfigurationSettings({
               }))
             }
           />
-          <SectionSave
-            busy={saving === 'terminal'}
-            onClick={() =>
-              void saveSection('terminal', (current) => ({ terminal: current.terminal }))
-            }
-          />
         </SettingsSection>
 
         <SettingsSection
@@ -426,16 +520,21 @@ export function ConfigurationSettings({
           title={messages.settings.browser}
         >
           <Field label={messages.settings.fields.profileName}>
-            <input disabled value={draft.browser.profileName} />
+            <Input disabled value={draft.browser.profileName} />
           </Field>
           <Field label={messages.settings.fields.profilePartition}>
-            <input disabled value={draft.browser.partition} />
+            <Input disabled value={draft.browser.partition} />
           </Field>
           <Field label={messages.settings.fields.privacy}>
-            <select disabled value={draft.browser.privacy}>
-              <option value="standard">{messages.settings.options.standard}</option>
-              <option value="strict">{messages.settings.options.strict}</option>
-            </select>
+            <Select disabled value={draft.browser.privacy}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="standard">{messages.settings.options.standard}</SelectItem>
+                <SelectItem value="strict">{messages.settings.options.strict}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
         </SettingsSection>
 
@@ -465,14 +564,6 @@ export function ConfigurationSettings({
               }))
             }
           />
-          <SectionSave
-            busy={saving === 'notifications'}
-            onClick={() =>
-              void saveSection('notifications', (current) => ({
-                notifications: current.notifications
-              }))
-            }
-          />
         </SettingsSection>
 
         <SettingsSection
@@ -481,35 +572,28 @@ export function ConfigurationSettings({
           title={messages.settings.logging}
         >
           <Field label={messages.settings.fields.logLevel}>
-            <select
-              ref={loggingSelectRef}
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 updateDraft((current) => ({
                   ...current,
-                  logging: { level: event.currentTarget.value as typeof current.logging.level }
+                  logging: { level: value as typeof current.logging.level }
                 }))
               }
               value={draft.logging.level}
             >
-              <option value="error">{messages.settings.options.error}</option>
-              <option value="warn">{messages.settings.options.warn}</option>
-              <option value="info">{messages.settings.options.info}</option>
-              <option value="debug">{messages.settings.options.debug}</option>
-              <option value="trace">{messages.settings.options.trace}</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="error">{messages.settings.options.error}</SelectItem>
+                <SelectItem value="warn">{messages.settings.options.warn}</SelectItem>
+                <SelectItem value="info">{messages.settings.options.info}</SelectItem>
+                <SelectItem value="debug">{messages.settings.options.debug}</SelectItem>
+                <SelectItem value="trace">{messages.settings.options.trace}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <DeferredNotice>{messages.settings.loggingBehavior}</DeferredNotice>
-          <SectionSave
-            busy={saving === 'logging'}
-            onClick={() =>
-              void saveSection('logging', (current) => ({
-                logging: {
-                  level: (loggingSelectRef.current?.value ??
-                    current.logging.level) as ConfigurationSnapshot['logging']['level']
-                }
-              }))
-            }
-          />
         </SettingsSection>
 
         <SettingsSection activeSection={activeSection} section="advanced" title="Diagnostics">
@@ -545,23 +629,25 @@ export function ConfigurationSettings({
           title={messages.settings.updates}
         >
           <Field label={messages.settings.fields.updateChannel}>
-            <select
-              ref={updateChannelSelectRef}
-              onChange={(event) =>
+            <Select
+              onValueChange={(value) =>
                 updateDraft((current) => ({
                   ...current,
                   updates: {
                     ...current.updates,
-                    channel: event.currentTarget.value as 'stable' | 'beta' | 'alpha'
+                    channel: value as 'alpha'
                   }
                 }))
               }
-              value={draft.updates.channel}
+              value={draft.updates.channel === 'alpha' ? 'alpha' : ''}
             >
-              <option value="stable">{messages.settings.options.stable}</option>
-              <option value="beta">{messages.settings.options.beta}</option>
-              <option value="alpha">{messages.settings.options.alpha}</option>
-            </select>
+              <SelectTrigger>
+                <SelectValue placeholder={messages.settings.updater.chooseAlpha} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="alpha">{messages.settings.options.alpha}</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <CheckField
             checked={draft.updates.automatic === true}
@@ -573,18 +659,7 @@ export function ConfigurationSettings({
               }))
             }
           />
-          <SectionSave
-            busy={saving === 'updates'}
-            onClick={() =>
-              void saveSection('updates', (current) => ({
-                updates: {
-                  ...current.updates,
-                  channel: (updateChannelSelectRef.current?.value ??
-                    current.updates.channel) as ConfigurationSnapshot['updates']['channel']
-                }
-              }))
-            }
-          />
+
           {updateState ? (
             <div className="configuration-update-status" role="status">
               {updateStateMessage(updateState)}
@@ -662,7 +737,9 @@ function SettingsSection({
 }): React.JSX.Element {
   return (
     <section className="configuration-section" hidden={activeSection !== section}>
-      <h3>{title}</h3>
+      {title !== messages.settings[section] ? (
+        <h3 className="configuration-section-title">{title}</h3>
+      ) : null}
       {note ? <DeferredNotice>{note}</DeferredNotice> : null}
       <div className="configuration-fields">{children}</div>
     </section>
@@ -671,16 +748,21 @@ function SettingsSection({
 
 function Field({
   children,
-  label
+  label,
+  description
 }: {
   children: React.ReactNode
   label: string
+  description?: string
 }): React.JSX.Element {
   return (
-    <label className="configuration-field">
-      <span>{label}</span>
+    <Label className="configuration-field">
+      <span className="configuration-field-label">
+        <strong>{label}</strong>
+        {description ? <small>{description}</small> : null}
+      </span>
       {children}
-    </label>
+    </Label>
   )
 }
 
@@ -696,26 +778,17 @@ function CheckField({
   onChange?: (checked: boolean) => void
 }): React.JSX.Element {
   return (
-    <label className="configuration-check">
-      <input
+    <Label className="configuration-check">
+      <Checkbox
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange(event.currentTarget.checked)}
-        type="checkbox"
+        onCheckedChange={(checked) => onChange(checked === true)}
       />
       <span>{label}</span>
-    </label>
+    </Label>
   )
 }
 
 function DeferredNotice({ children }: { children: React.ReactNode }): React.JSX.Element {
   return <p className="configuration-deferred">{children}</p>
-}
-
-function SectionSave({ busy, onClick }: { busy: boolean; onClick: () => void }): React.JSX.Element {
-  return (
-    <Button disabled={busy} onClick={onClick} size="small">
-      {busy ? messages.settings.saving : messages.settings.saveSection}
-    </Button>
-  )
 }

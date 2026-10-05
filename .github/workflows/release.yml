@@ -99,6 +99,14 @@ jobs:
           src/persistence/windows-private-state.test.ts
           src/http/child-ipc-stream.test.ts
           src/http/node-session-file.test.ts
+      - name: Run updater and shutdown regression tests
+        run: >-
+          pnpm --filter @agent-workspace/desktop exec vitest run
+          src/main/appimage-updater.test.ts
+          src/main/mac-alpha-installer.test.ts
+          src/main/mac-alpha-updater.test.ts
+          src/main/update-controller.test.ts
+          src/main/application-quit-orchestrator.test.ts
       - name: Build Node service and CLI
         run: pnpm build:node
       - name: Stage Linux Node runtime
@@ -303,6 +311,11 @@ jobs:
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
         run: bash scripts/release/sign-downloads.sh release-assets
+      - name: Prepare release notes
+        run: >-
+          node scripts/release/validate-release.mjs
+          --version "$(node -p 'require("./package.json").version')"
+          --mode candidate --notes-output release-notes.md
       - name: Create prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -315,4 +328,4 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists" >&2; exit 1; fi
           gh release create "$tag" release-assets/* --verify-tag --prerelease \
             --title "Ternline ${tag}" \
-            --notes 'Alpha desktop packages for Linux, macOS, and Windows. Downloads and SHA256SUMS have Minisign signatures; see the installation guide for verification. macOS and Windows packages do not have platform code signing or notarization.'
+            --notes-file release-notes.md

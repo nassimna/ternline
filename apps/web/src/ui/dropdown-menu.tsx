@@ -12,7 +12,7 @@ const DropdownMenuSub = DropdownMenuPrimitive.Sub
 const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 
 const menuContentClasses =
-  'min-w-44 overflow-hidden rounded-md border border-border-default bg-surface-overlay p-1 text-text-primary shadow-popup transition-[opacity,transform] data-[state=closed]:opacity-0 data-[state=open]:opacity-100 data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1 motion-reduce:transform-none motion-reduce:transition-none [z-index:var(--aw-z-dropdown)]'
+  'min-w-44 overflow-hidden rounded-md border border-border-default bg-surface-overlay p-1 text-text-primary shadow-popup transition-[opacity,transform] data-[state=closed]:opacity-0 data-[state=open]:opacity-100 data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1 motion-reduce:transform-none motion-reduce:transition-none [z-index:var(--aw-z-popover)]'
 
 const DropdownMenuSubTrigger = forwardRef<
   React.ComponentRef<typeof DropdownMenuPrimitive.SubTrigger>,
