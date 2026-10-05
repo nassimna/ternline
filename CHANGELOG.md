@@ -7,6 +7,22 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.3] - 2026-10-05
+
+### Changed
+
+- Unify desktop controls and surfaces with shared shadcn components and Basalt design tokens.
+- Keep folder and SSH creation visible as quiet sidebar actions; move saved-layout utilities
+  into menus while keeping Apply visible.
+- Add space between workspace-card headers and details in both comfortable and compact modes.
+- Offer only the available Alpha update channel in settings.
+
+### Status
+
+- Unsigned alpha packages for Linux, macOS, and Windows. Verify downloads against `SHA256SUMS`.
+- Existing repository quality failures and dependency-audit findings remain open; this release
+  does not claim stable qualification.
+
 ## [0.2.1-alpha.2] - 2026-10-05
 
 ### Fixed
