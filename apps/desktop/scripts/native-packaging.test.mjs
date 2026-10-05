@@ -66,6 +66,20 @@ test('macOS packages build and include the CLI for both architectures', async ()
   }
 })
 
+test('macOS disk images include readable first-launch instructions', async () => {
+  const configuration = await readBuilderConfiguration()
+  const dmg = section(configuration, 'dmg', 'win')
+  assert.match(dmg, /type: file\n\s+- x:/u)
+  assert.match(dmg, /type: link\n\s+path: \/Applications/u)
+  const instructionsPath = dmg.match(/path: (build\/First launch instructions\.txt)/u)?.[1]
+  assert.ok(instructionsPath, 'missing first-launch instructions in the DMG')
+  const instructions = await readFile(resolve(desktopDirectory, instructionsPath), 'utf8')
+  assert.match(instructions, /Drag Ternline\.app into Applications/u)
+  assert.match(instructions, /Open Ternline from Applications/u)
+  assert.match(instructions, /System Settings > Privacy & Security/u)
+  assert.match(instructions, /Click Open Anyway for Ternline, then confirm Open/u)
+})
+
 test(
   'the Mac CLI launcher uses the embedded runtime and preserves shell arguments',
   { skip: process.platform === 'win32' },

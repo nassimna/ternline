@@ -7,6 +7,22 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.4] - 2026-10-05
+
+### Added
+
+- Authenticate downloadable release files and SHA256SUMS with Minisign signatures and a stable public key.
+- Explain macOS first-launch approval before downloading and include instructions inside both DMGs.
+
+### Changed
+
+- Show a pointer cursor on enabled shadcn buttons and button controls.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; detached signatures do not remove operating-system warnings.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.3] - 2026-10-05
 
 ### Changed

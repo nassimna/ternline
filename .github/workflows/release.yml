@@ -145,6 +145,16 @@ jobs:
             --cli release-linux-x64/linux-unpacked/resources/node-linux/bin/node \
             --cli-entry release-linux-x64/linux-unpacked/resources/node-linux/bin/agent-workspace-node.mjs \
             --profile-root "$RUNNER_TEMP"
+      - name: Verify macOS first-launch guide
+        if: startsWith(matrix.label, 'macos-')
+        run: |
+          mountpoint=$(mktemp -d "$RUNNER_TEMP/ternline-dmg.XXXXXX")
+          trap 'hdiutil detach "$mountpoint"; rmdir "$mountpoint"' EXIT
+          hdiutil attach "release-${{ matrix.label }}/agent-workspace-${RELEASE_VERSION}-${{ matrix.label }}.dmg" \
+            -readonly -nobrowse -mountpoint "$mountpoint"
+          cmp "apps/desktop/build/First launch instructions.txt" "$mountpoint/First launch instructions.txt"
+          test -d "$mountpoint/Ternline.app"
+          test "$(readlink "$mountpoint/Applications")" = /Applications
       - name: Exercise packaged macOS service, CLI, and PTY
         if: startsWith(matrix.label, 'macos-')
         run: |
@@ -298,9 +308,19 @@ jobs:
             }
           }, null, 2))
           EOF
+      - name: Include the download verification key
+        run: cp apps/website/public/ternline.pub release-assets/ternline.pub
       - name: Create combined checksums
         working-directory: release-assets
         run: find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
+      - name: Install download signing tooling
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends minisign
+      - name: Test download signature verification
+        run: bash scripts/release/sign-downloads.test.sh
+      - name: Sign and verify release downloads
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: bash scripts/release/sign-downloads.sh release-assets
       - name: Prepare release notes
         run: >-
           node scripts/release/validate-release.mjs
