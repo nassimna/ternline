@@ -1,6 +1,7 @@
 import type * as Fs from 'node:fs'
 import type { AppAdapter } from 'electron-updater/out/AppAdapter'
 import { EventEmitter } from 'node:events'
+import { join } from 'node:path'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -112,7 +113,7 @@ describe('unsigned alpha updater', () => {
     app.emit('before-quit', { preventDefault() {} })
     expect(mocks.commit).not.toHaveBeenCalled()
     app.emit('quit')
-    expect(mocks.commit).toHaveBeenCalledWith('/stage/commit', '', { mode: 0o600 })
+    expect(mocks.commit).toHaveBeenCalledWith(join('/stage', 'commit'), '', { mode: 0o600 })
   })
 
   it('reports staging failure without quitting or scheduling replacement', async () => {
