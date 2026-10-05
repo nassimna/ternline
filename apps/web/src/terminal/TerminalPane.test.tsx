@@ -795,6 +795,116 @@ describe('TerminalPane', () => {
     expect(resizeTerminal).toHaveBeenCalledTimes(2)
   })
 
+  it('fits an exited snapshot without resizing its process or reporting it as connected', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    const resizeTerminal = vi.fn<DesktopBridge['resizeTerminal']>().mockResolvedValue(undefined)
+    terminalSpies.fit = () => {
+      if (terminalSpies.instance) terminalSpies.instance.cols = 80
+    }
+    window.desktopBridge = terminalBridge({
+      exited: true,
+      resizeTerminal,
+      restartTerminal: vi.fn().mockResolvedValue(mutationResult())
+    })
+
+    renderTerminalPane()
+
+    await screen.findByText('Process exited', { selector: '.terminal-statusbar span' })
+    expect(screen.getByText(messages.terminalPane.exit.withCode(1))).toBeVisible()
+    expect(terminalSpies.instance?.cols).toBe(80)
+    expect(resizeTerminal).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('stops queued and subsequent resizes when the process exits during a resize', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    let finishResize: (() => void) | undefined
+    let onTerminalEvent: Parameters<DesktopBridge['onTerminalEvent']>[0] | undefined
+    const resizeTerminal = vi.fn<DesktopBridge['resizeTerminal']>(
+      () =>
+        new Promise<void>((resolve) => {
+          finishResize = resolve
+        })
+    )
+    window.desktopBridge = terminalBridge({
+      onTerminalEvent: (listener) => {
+        onTerminalEvent = listener
+        return () => undefined
+      },
+      resizeTerminal,
+      restartTerminal: vi.fn().mockResolvedValue(mutationResult())
+    })
+
+    renderTerminalPane()
+    await screen.findByText('Connected', { selector: '.terminal-statusbar span' })
+    const terminal = terminalSpies.instance
+    if (!terminal) throw new Error('Expected the xterm instance')
+    terminal.cols = 121
+    terminalSpies.resizeObserver?.([], {} as ResizeObserver)
+    await waitFor(() => expect(resizeTerminal).toHaveBeenCalledOnce())
+    terminal.cols = 122
+    terminalSpies.resizeObserver?.([], {} as ResizeObserver)
+    await new Promise((resolve) => setTimeout(resolve, 75))
+
+    await act(async () => {
+      onTerminalEvent?.({
+        event: 'terminal.exited',
+        data: { terminalId, exitCode: 0, signal: null }
+      })
+      finishResize?.()
+      await Promise.resolve()
+    })
+    terminal.cols = 123
+    terminalSpies.resizeObserver?.([], {} as ResizeObserver)
+    await new Promise((resolve) => setTimeout(resolve, 75))
+
+    expect(resizeTerminal).toHaveBeenCalledOnce()
+    expect(
+      screen.getByText('Process exited', { selector: '.terminal-statusbar span' })
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Restart terminal' })).toBeEnabled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps an exit event that arrives before a stale live attachment snapshot', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    let onTerminalEvent: Parameters<DesktopBridge['onTerminalEvent']>[0] | undefined
+    let finishAttach: ((snapshot: ReturnType<typeof terminalAttachResult>) => void) | undefined
+    const attachTerminal = vi.fn<DesktopBridge['attachTerminal']>(
+      () =>
+        new Promise((resolve) => {
+          finishAttach = resolve
+        })
+    )
+    const resizeTerminal = vi.fn<DesktopBridge['resizeTerminal']>().mockResolvedValue(undefined)
+    window.desktopBridge = terminalBridge({
+      attachTerminal,
+      onTerminalEvent: (listener) => {
+        onTerminalEvent = listener
+        return () => undefined
+      },
+      resizeTerminal,
+      restartTerminal: vi.fn().mockResolvedValue(mutationResult())
+    })
+
+    renderTerminalPane()
+    await waitFor(() => expect(attachTerminal).toHaveBeenCalledOnce())
+    await act(async () => {
+      onTerminalEvent?.({
+        event: 'terminal.exited',
+        data: { terminalId, exitCode: 7, signal: null }
+      })
+      finishAttach?.(terminalAttachResult(false))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText(messages.terminalPane.exit.withCode(7))).toBeVisible()
+    expect(
+      screen.getByText('Process exited', { selector: '.terminal-statusbar span' })
+    ).toBeVisible()
+    expect(resizeTerminal).not.toHaveBeenCalled()
+  })
+
   it('corrects a late resize event that reports old service dimensions', async () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock)
     let onTerminalEvent: Parameters<DesktopBridge['onTerminalEvent']>[0] | undefined

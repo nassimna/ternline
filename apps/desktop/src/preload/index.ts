@@ -760,9 +760,23 @@ const desktopBridge = Object.freeze({
     }
     return invokeVoid(DESKTOP_IPC.terminalSend, parseTerminalId(terminalId), data)
   },
-  resizeTerminal: (terminalId, rows, cols) => {
+  resizeTerminal: async (terminalId, rows, cols) => {
     const size = terminalCreateParamsSchema.pick({ rows: true, cols: true }).parse({ rows, cols })
-    return invokeVoid(DESKTOP_IPC.terminalResize, parseTerminalId(terminalId), size.rows, size.cols)
+    try {
+      await invokeVoid(
+        DESKTOP_IPC.terminalResize,
+        parseTerminalId(terminalId),
+        size.rows,
+        size.cols
+      )
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        PROTOCOL_ERROR_PATTERN.exec(error.message)?.[1] === 'terminal_exited'
+      )
+        return
+      throw error
+    }
   },
   checkpointTerminal: (terminalId, checkpoint) =>
     invokeVoid(

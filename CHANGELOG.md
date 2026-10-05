@@ -7,6 +7,18 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.5] - 2026-10-05
+
+### Fixed
+
+- Keep exited terminal output readable when resizing a pane without showing a terminal resize error.
+- Preserve the process exit status when an attachment or resize finishes after the shell exits.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.4] - 2026-10-05
 
 ### Added
