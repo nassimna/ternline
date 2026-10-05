@@ -145,6 +145,16 @@ jobs:
             --cli release-linux-x64/linux-unpacked/resources/node-linux/bin/node \
             --cli-entry release-linux-x64/linux-unpacked/resources/node-linux/bin/agent-workspace-node.mjs \
             --profile-root "$RUNNER_TEMP"
+      - name: Verify macOS first-launch guide
+        if: startsWith(matrix.label, 'macos-')
+        run: |
+          mountpoint=$(mktemp -d "$RUNNER_TEMP/ternline-dmg.XXXXXX")
+          trap 'hdiutil detach "$mountpoint"; rmdir "$mountpoint"' EXIT
+          hdiutil attach "release-${{ matrix.label }}/agent-workspace-${RELEASE_VERSION}-${{ matrix.label }}.dmg" \
+            -readonly -nobrowse -mountpoint "$mountpoint"
+          cmp "apps/desktop/build/First launch instructions.txt" "$mountpoint/First launch instructions.txt"
+          test -d "$mountpoint/Ternline.app"
+          test "$(readlink "$mountpoint/Applications")" = /Applications
       - name: Exercise packaged macOS service, CLI, and PTY
         if: startsWith(matrix.label, 'macos-')
         run: |

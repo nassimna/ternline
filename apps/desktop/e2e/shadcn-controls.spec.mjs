@@ -35,7 +35,11 @@ test('shared surfaces, palette, and alpha settings work through the real desktop
     const environment = { ...process.env, ZDOTDIR: profileDirectory }
     delete environment.ELECTRON_RUN_AS_NODE
     application = await electron.launch({
-      args: [join(desktopDirectory, 'out/main/index.js'), `--user-data-dir=${profileDirectory}`],
+      args: [
+        join(desktopDirectory, 'out/main/index.js'),
+        `--user-data-dir=${profileDirectory}`,
+        '--mute-audio'
+      ],
       cwd: desktopDirectory,
       env: environment,
       timeout: 20_000
@@ -104,6 +108,10 @@ test('shared surfaces, palette, and alpha settings work through the real desktop
           .click()
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
         await page.keyboard.press('Escape')
+        await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toHaveCSS(
+          'cursor',
+          'pointer'
+        )
         const sidebar = page.getByRole('complementary', { name: 'Workspaces', exact: true })
         const detailsGap = await card.evaluate(
           (element) =>

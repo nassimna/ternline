@@ -425,7 +425,11 @@ const sessions = [
                 <ol class="list-decimal space-y-2 pl-5">
                   <li>
                     Download your installer and its matching <code>.sig</code> file from the{' '}
-                    <a data-release-files href={release} class="text-accent underline underline-offset-4">
+                    <a
+                      data-release-files
+                      href={release}
+                      class="text-accent underline underline-offset-4"
+                    >
                       release files
                     </a>
                     .
@@ -746,7 +750,9 @@ const sessions = [
             if (link) link.href = href
           }
           release.href = latest.url
-          document.querySelector<HTMLAnchorElement>('[data-release-files]')?.setAttribute('href', latest.url)
+          document
+            .querySelector<HTMLAnchorElement>('[data-release-files]')
+            ?.setAttribute('href', latest.url)
           release.textContent = `v${latest.version} · ${latest.prerelease ? 'Pre-release' : 'Release'}`
           suggestDownload(cpu.architecture, cpu.bitness)
         } catch {
