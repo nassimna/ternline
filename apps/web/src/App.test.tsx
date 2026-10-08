@@ -968,6 +968,33 @@ describe('App', () => {
     )
   })
 
+  it('keeps the workspace dropdown palette outside the parent menu clipping area', async () => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    fireEvent.pointerDown(
+      await screen.findByRole('button', {
+        name: messages.workspaceShell.sidebar.actions('Fixture workspace')
+      }),
+      { button: 0, ctrlKey: false }
+    )
+    const color = await screen.findByRole('menuitem', { name: 'Workspace color' })
+    const parentMenu = color.closest('[role="menu"]')!
+    color.focus()
+    fireEvent.keyDown(color, { key: 'ArrowRight' })
+    const blue = await screen.findByRole('menuitem', { name: 'Blue' })
+    expect(parentMenu).not.toContainElement(blue)
+    fireEvent.click(blue)
+
+    await waitFor(() =>
+      expect(bridge.updateWorkspace).toHaveBeenCalledWith({
+        workspaceId: projectionFixture.workspaces[0]!.id,
+        color: { value: '#5B8DEF' }
+      })
+    )
+  })
+
   it('bounds duplicate names and permits only canonical hex workspace colors', () => {
     expect([...duplicateWorkspaceName('x'.repeat(128))]).toHaveLength(128)
     expect(duplicateWorkspaceName('x'.repeat(128))).toMatch(/ copy$/u)

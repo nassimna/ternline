@@ -7,6 +7,17 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.7] - 2026-10-08
+
+### Fixed
+
+- Open the workspace color palette visibly from the three-dot menu and allow color selection.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.6] - 2026-10-08
 
 ### Changed
