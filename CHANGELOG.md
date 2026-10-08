@@ -7,6 +7,28 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.6] - 2026-10-08
+
+### Changed
+
+- Simplify workspace cards and terminal chrome while keeping workspace-colored selection rails.
+- Move Shell, Add tab, and Split into the workspace header, targeting the focused pane and saved SSH connection.
+- Keep terminal tab titles readable in narrow panes and remove the gap below the tab strip.
+- Hide internal browser profile identifiers and label saved-layout names clearly.
+
+### Fixed
+
+- Bundle terminal symbol fonts and wait for font loading before sizing terminals.
+- Show search result counts, no-match feedback, and invalid regular expressions; clear stale feedback when search options change.
+- Explain when applying a saved layout would remove an open workspace and preserve the existing protection.
+- Remove reserved macOS window-control spacing in native fullscreen, including after renderer reloads.
+- Show the hand cursor over shared buttons and tab controls.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.5] - 2026-10-05
 
 ### Fixed
