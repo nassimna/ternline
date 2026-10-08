@@ -1073,6 +1073,7 @@ export interface DesktopBridge {
 }
 
 export const DESKTOP_IPC = {
+  windowFullscreenChanged: 'window:fullscreen-changed',
   lifecycleGet: 'lifecycle:get',
   lifecycleChanged: 'lifecycle:changed',
   serviceRestart: 'service:restart',

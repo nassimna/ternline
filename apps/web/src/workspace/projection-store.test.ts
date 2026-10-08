@@ -1408,6 +1408,19 @@ describe('projection store', () => {
     })
   })
 
+  it('explains saved layouts that would remove open workspaces without exposing raw errors', () => {
+    useProjectionStore
+      .getState()
+      .reportMutationError(
+        new Error(
+          '[agent-workspace-protocol-error:policy_denied] Saved layout would remove a workspace required by the copy'
+        )
+      )
+    expect(useProjectionStore.getState().mutationError).toBe(
+      messages.workspaceProjection.errors.layoutRemovesOpenWorkspaces
+    )
+  })
+
   it('keeps shutdown errors terminal while clearing mutation errors on success', async () => {
     let serviceListener: Parameters<DesktopBridge['onServiceEvent']>[0] | undefined
     const bridge = createBridge()

@@ -1733,6 +1733,12 @@ async function createMainWindow(
       if (savedState?.maximized) window.maximize()
       if (!app.isPackaged) installDevelopmentLogging(window)
       window.setTitle(PRODUCT_NAME)
+      const publishFullscreen = (): void => {
+        window.webContents.send(DESKTOP_IPC.windowFullscreenChanged, window.isFullScreen())
+      }
+      window.on('enter-full-screen', publishFullscreen)
+      window.on('leave-full-screen', publishFullscreen)
+      window.webContents.on('did-finish-load', publishFullscreen)
       window.once('ready-to-show', () => window.show())
       window.webContents.setWindowOpenHandler(({ url }) => {
         if (isSafeExternalUrl(url)) void shell.openExternal(url)

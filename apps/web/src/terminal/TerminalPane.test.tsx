@@ -51,6 +51,8 @@ const terminalSpies = vi.hoisted(() => ({
   linkLeave: undefined as (() => void) | undefined,
   onData: undefined as ((data: string) => void) | undefined,
   onTitleChange: undefined as ((title: string) => void) | undefined,
+  onSearchResults: undefined as
+    ((result: { resultIndex: number; resultCount: number }) => void) | undefined,
   reset: vi.fn(),
   resizeObserver: undefined as ResizeObserverCallback | undefined,
   scrollToLine: vi.fn(),
@@ -128,6 +130,11 @@ vi.mock('@xterm/addon-fit', () => ({
 }))
 vi.mock('@xterm/addon-search', () => ({
   SearchAddon: class {
+    public onDidChangeResults(listener: typeof terminalSpies.onSearchResults): { dispose(): void } {
+      terminalSpies.onSearchResults = listener
+      return { dispose: () => undefined }
+    }
+    public clearDecorations(): void {}
     public findNext(): void {}
     public findPrevious(): void {}
   }
@@ -184,6 +191,7 @@ afterEach(() => {
   terminalSpies.linkLeave = undefined
   terminalSpies.onData = undefined
   terminalSpies.onTitleChange = undefined
+  terminalSpies.onSearchResults = undefined
   terminalSpies.reset.mockReset()
   terminalSpies.resizeObserver = undefined
   terminalSpies.scrollToLine.mockReset()
@@ -192,6 +200,33 @@ afterEach(() => {
 })
 
 describe('TerminalPane', () => {
+  it('announces search results, clears stale feedback and explains invalid patterns', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    window.desktopBridge = terminalBridge({
+      restartTerminal: vi.fn().mockResolvedValue(mutationResult())
+    })
+    renderTerminalPane()
+    await screen.findByText(messages.terminalPane.status.connected, {
+      selector: '.terminal-statusbar span'
+    })
+    const input = screen.getByRole('textbox', { name: messages.terminalPane.search.label })
+    fireEvent.change(input, { target: { value: 'fixture' } })
+    act(() => terminalSpies.onSearchResults?.({ resultIndex: 1, resultCount: 3 }))
+    expect(screen.getByRole('status', { name: 'Search results' })).toHaveTextContent('2 of 3')
+    fireEvent.change(input, { target: { value: 'absent' } })
+    expect(screen.getByRole('status', { name: 'Search results' })).toBeEmptyDOMElement()
+    act(() => terminalSpies.onSearchResults?.({ resultIndex: -1, resultCount: 0 }))
+    expect(screen.getByRole('status', { name: 'Search results' })).toHaveTextContent('No matches')
+    fireEvent.click(
+      screen.getByRole('button', { name: messages.terminalPane.search.useRegularExpression })
+    )
+    expect(screen.getByRole('status', { name: 'Search results' })).toBeEmptyDOMElement()
+    fireEvent.change(input, { target: { value: '[' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(screen.getByRole('status', { name: 'Search results' })).toHaveTextContent(
+      'Invalid regular expression'
+    )
+  })
   it('wires catalog copy to the pane, toolbar controls, process metadata, and link target', async () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock)
     window.desktopBridge = terminalBridge({

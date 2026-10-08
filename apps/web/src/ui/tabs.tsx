@@ -7,7 +7,7 @@ import { cn } from './cn'
 const Tabs = TabsPrimitive.Root
 
 const tabVariants = cva(
-  'inline-flex min-w-0 items-center justify-center gap-1.5 rounded-sm font-ui text-ui font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none',
+  'inline-flex min-w-0 cursor-pointer items-center justify-center gap-1.5 rounded-sm font-ui text-ui font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none',
   {
     variants: {
       variant: {

@@ -1282,10 +1282,134 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
                   'This computer'
                 )}
               </span>
+              <div className="workspace-toolbar-actions" aria-label="Workspace actions">
+                <Button
+                  size="small"
+                  variant="ghost"
+                  className="workspace-new-shell"
+                  aria-label="New terminal tab"
+                  onClick={() =>
+                    void runMutation(
+                      window.desktopBridge.openTerminalTab({
+                        workspaceId: workspace.id,
+                        paneId: workspace.selectedPaneId,
+                        launch: terminalLaunch(workspace.workingDirectory, activeSshProfile)
+                      })
+                    )
+                  }
+                >
+                  <Plus aria-hidden="true" size={14} />
+                  <span>Shell</span>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="iconSmall"
+                      variant="ghost"
+                      aria-label={messages.workspaceShell.pane.addTab}
+                      className="workspace-add-tab"
+                      type="button"
+                    >
+                      <ChevronDown aria-hidden="true" size={12} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        void runMutation(
+                          window.desktopBridge.openTerminalTab({
+                            workspaceId: workspace.id,
+                            paneId: workspace.selectedPaneId,
+                            launch: terminalLaunch(workspace.workingDirectory, activeSshProfile)
+                          })
+                        )
+                      }
+                    >
+                      <TerminalSquare aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.terminalTab}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!browserTabsEnabled}
+                      onSelect={() =>
+                        void runMutation(
+                          window.desktopBridge.openBrowserTab({
+                            workspaceId: workspace.id,
+                            paneId: workspace.selectedPaneId,
+                            metadata: { url: messages.workspaceShell.defaultBrowserUrl }
+                          })
+                        )
+                      }
+                    >
+                      <Globe2 aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.browserTab}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      aria-label="Split pane"
+                      className="workspace-split-menu"
+                    >
+                      <span>Split</span>
+                      <ChevronDown aria-hidden="true" size={12} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        void splitWithTerminal(
+                          workspace,
+                          workspace.selectedPaneId,
+                          'horizontal',
+                          runMutation,
+                          activeSshProfile
+                        )
+                      }
+                    >
+                      <SplitSquareHorizontal aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.splitRight}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        void splitWithTerminal(
+                          workspace,
+                          workspace.selectedPaneId,
+                          'vertical',
+                          runMutation,
+                          activeSshProfile
+                        )
+                      }
+                    >
+                      <SplitSquareVertical aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.splitDown}
+                    </DropdownMenuItem>
+                    {workspace.panes.length > 1 ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          destructive
+                          onSelect={() =>
+                            void runMutation(
+                              window.desktopBridge.closePane({
+                                workspaceId: workspace.id,
+                                paneId: workspace.selectedPaneId
+                              })
+                            )
+                          }
+                        >
+                          {messages.workspaceShell.pane.close}
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
             <div className="workspace-panes">
               <PaneWorkspace
-                browserTabsEnabled={browserTabsEnabled}
                 browserViewsVisible={
                   !createOpen &&
                   !notificationsOpen &&
@@ -1980,7 +2104,9 @@ function SavedLayoutsPanel({
       void showMessage('Select between 1 and 32 workspaces to save a layout.')
       return
     }
-    const name = (await requestText('Save selected workspaces as a layout'))?.trim()
+    const name = (
+      await requestText('Save selected workspaces as a layout', '', 'Layout name')
+    )?.trim()
     if (!name) return
     onLayoutMutation(
       window.desktopBridge.saveLayout({
@@ -2070,7 +2196,7 @@ function SavedLayoutsPanel({
                     if (legacyOverLimit || !window.desktopBridge.applyLayout) return
                     if (
                       !(await confirmAction(
-                        `Apply “${layout.name}” and replace the current workspace set?`
+                        `Apply “${layout.name}” to the current workspaces? Workspaces outside this layout must be closed first.`
                       ))
                     )
                       return
@@ -3171,14 +3297,12 @@ function safeWorkspaceColor(value: string | null | undefined): string | undefine
 }
 
 function PaneWorkspace({
-  browserTabsEnabled,
   browserViewsVisible,
   onMutation,
   onProcessTitleChange,
   sshProfile,
   workspace
 }: MutationOwner & {
-  browserTabsEnabled: boolean
   browserViewsVisible: boolean
   onProcessTitleChange: ProcessTitleHandler
   sshProfile: SavedSshWorkspace | undefined
@@ -3250,7 +3374,6 @@ function PaneWorkspace({
       sensors={sensors}
     >
       <PaneTree
-        browserTabsEnabled={browserTabsEnabled}
         browserViewsVisible={browserViewsVisible && draggedTab === null}
         draggedTab={draggedTab}
         node={workspace.layout}
@@ -3293,7 +3416,6 @@ function isDropZone(value: unknown): value is PaneDropZone {
 }
 
 function PaneTree({
-  browserTabsEnabled,
   browserViewsVisible,
   draggedTab,
   node,
@@ -3303,7 +3425,6 @@ function PaneTree({
   sshProfile,
   workspace
 }: MutationOwner & {
-  browserTabsEnabled: boolean
   browserViewsVisible: boolean
   draggedTab: TabMutationSource | null
   node: PaneTreeNode
@@ -3316,7 +3437,6 @@ function PaneTree({
     const pane = workspace.panes.find((candidate) => candidate.id === node.paneId)
     return pane ? (
       <PaneView
-        browserTabsEnabled={browserTabsEnabled}
         browserViewsVisible={browserViewsVisible}
         draggedTab={draggedTab}
         onMutation={onMutation}
@@ -3353,7 +3473,6 @@ function PaneTree({
     >
       <Panel id={firstId} minSize="12%">
         <PaneTree
-          browserTabsEnabled={browserTabsEnabled}
           browserViewsVisible={browserViewsVisible}
           draggedTab={draggedTab}
           node={node.first}
@@ -3369,7 +3488,6 @@ function PaneTree({
       </Separator>
       <Panel id={secondId} minSize="12%">
         <PaneTree
-          browserTabsEnabled={browserTabsEnabled}
           browserViewsVisible={browserViewsVisible}
           draggedTab={draggedTab}
           node={node.second}
@@ -3385,7 +3503,6 @@ function PaneTree({
 }
 
 function PaneView({
-  browserTabsEnabled,
   browserViewsVisible,
   draggedTab,
   onMutation,
@@ -3395,7 +3512,6 @@ function PaneView({
   sshProfile,
   workspace
 }: MutationOwner & {
-  browserTabsEnabled: boolean
   browserViewsVisible: boolean
   draggedTab: TabMutationSource | null
   onTabAction: TabActionHandler
@@ -3481,115 +3597,6 @@ function PaneView({
                 <Search size={14} />
               </IconButton>
             ) : null}
-            <Button
-              size="small"
-              variant="ghost"
-              className="pane-new-shell"
-              aria-label="New terminal tab"
-              onClick={() =>
-                void onMutation(
-                  window.desktopBridge.openTerminalTab({
-                    workspaceId: workspace.id,
-                    paneId: pane.id,
-                    launch: terminalLaunch(workspace.workingDirectory, sshProfile)
-                  })
-                )
-              }
-            >
-              <Plus aria-hidden="true" size={14} /> Shell
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="iconSmall"
-                  variant="ghost"
-                  aria-label={messages.workspaceShell.pane.addTab}
-                  className="pane-add-tab"
-                  type="button"
-                >
-                  <ChevronDown aria-hidden="true" size={12} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={() =>
-                    void onMutation(
-                      window.desktopBridge.openTerminalTab({
-                        workspaceId: workspace.id,
-                        paneId: pane.id,
-                        launch: terminalLaunch(workspace.workingDirectory, sshProfile)
-                      })
-                    )
-                  }
-                >
-                  <TerminalSquare aria-hidden="true" size={14} />
-                  {messages.workspaceShell.pane.terminalTab}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={!browserTabsEnabled}
-                  onSelect={() =>
-                    void onMutation(
-                      window.desktopBridge.openBrowserTab({
-                        workspaceId: workspace.id,
-                        paneId: pane.id,
-                        metadata: { url: messages.workspaceShell.defaultBrowserUrl }
-                      })
-                    )
-                  }
-                >
-                  <Globe2 aria-hidden="true" size={14} />
-                  {messages.workspaceShell.pane.browserTab}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="small"
-                  aria-label="Split pane"
-                  className="pane-split-menu"
-                >
-                  Split <ChevronDown aria-hidden="true" size={12} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={() =>
-                    void splitWithTerminal(workspace, pane.id, 'horizontal', onMutation, sshProfile)
-                  }
-                >
-                  <SplitSquareHorizontal aria-hidden="true" size={14} />
-                  {messages.workspaceShell.pane.splitRight}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() =>
-                    void splitWithTerminal(workspace, pane.id, 'vertical', onMutation, sshProfile)
-                  }
-                >
-                  <SplitSquareVertical aria-hidden="true" size={14} />
-                  {messages.workspaceShell.pane.splitDown}
-                </DropdownMenuItem>
-                {workspace.panes.length > 1 ? (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      destructive
-                      onSelect={() =>
-                        void onMutation(
-                          window.desktopBridge.closePane({
-                            workspaceId: workspace.id,
-                            paneId: pane.id
-                          })
-                        )
-                      }
-                    >
-                      {messages.workspaceShell.pane.close}
-                    </DropdownMenuItem>
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </div>
         <TabsContent asChild forceMount value={selectedTab?.id ?? ''}>

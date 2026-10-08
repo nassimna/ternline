@@ -1020,4 +1020,11 @@ function parseDomainResyncNotice(value: unknown): DomainResyncNotice {
   }
 }
 
+ipcRenderer.on(
+  DESKTOP_IPC.windowFullscreenChanged,
+  (_event: Electron.IpcRendererEvent, fullscreen: boolean) => {
+    document.documentElement.dataset.windowFullscreen = String(fullscreen)
+  }
+)
+
 contextBridge.exposeInMainWorld('desktopBridge', desktopBridge)

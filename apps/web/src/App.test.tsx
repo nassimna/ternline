@@ -232,6 +232,20 @@ describe('App', () => {
       })
     )
     vi.mocked(bridge.openTerminalTab).mockClear()
+    const workspaceActions = screen.getByLabelText('Workspace actions')
+    expect(within(workspaceActions).getByRole('button', { name: 'New terminal tab' })).toBeVisible()
+    expect(within(workspaceActions).getByRole('button', { name: 'Split pane' })).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'New terminal tab' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Split pane' })).toHaveLength(1)
+    fireEvent.click(within(workspaceActions).getByRole('button', { name: 'New terminal tab' }))
+    await waitFor(() =>
+      expect(bridge.openTerminalTab).toHaveBeenCalledWith({
+        workspaceId: workspace.id,
+        paneId: workspace.selectedPaneId,
+        launch
+      })
+    )
+    vi.mocked(bridge.openTerminalTab).mockClear()
 
     fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Add tab' })[0]!, {
       button: 0,
@@ -241,7 +255,7 @@ describe('App', () => {
     await waitFor(() =>
       expect(bridge.openTerminalTab).toHaveBeenCalledWith({
         workspaceId: workspace.id,
-        paneId: workspace.panes[0]!.id,
+        paneId: workspace.selectedPaneId,
         launch
       })
     )
@@ -1405,6 +1419,8 @@ describe('App', () => {
     const dialog = await screen.findByRole('dialog', {
       name: 'Save selected workspaces as a layout'
     })
+    expect(within(dialog).getByRole('textbox', { name: 'Layout name' })).toBeVisible()
+    expect(dialog).not.toHaveTextContent('Enter a value')
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'My setup' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Continue' }))
     await waitFor(() =>
