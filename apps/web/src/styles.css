@@ -2252,12 +2252,12 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
 }
 
 .settings-navigation-heading h2 {
-  font-size: 14px;
+  font-size: var(--aw-font-size-body);
   font-weight: 550;
 }
 
 .settings-navigation-heading p {
-  font-size: 10px;
+  font-size: var(--aw-font-size-xs);
 }
 
 .settings-mark {
@@ -2280,7 +2280,7 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
   margin: 0;
   padding: 0 8px;
   color: var(--aw-color-text-muted);
-  font-size: 10px;
+  font-size: var(--aw-font-size-xs);
 }
 
 .settings-search {
@@ -2330,14 +2330,14 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
 }
 
 .settings-content-heading h2 {
-  font-size: 21px;
+  font-size: 1.3125rem;
   font-weight: 550;
   letter-spacing: -0.4px;
 }
 
 .settings-content-heading p {
   color: var(--aw-color-text-muted);
-  font-size: 12px;
+  font-size: var(--aw-font-size-control);
 }
 
 .settings-empty-search {

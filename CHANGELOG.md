@@ -7,6 +7,17 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.8] - 2026-10-08
+
+### Changed
+
+- Use rem units for interface font sizes while preserving the current appearance and terminal font settings.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.7] - 2026-10-08
 
 ### Fixed
