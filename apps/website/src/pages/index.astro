@@ -17,7 +17,7 @@ const hasSignatures = process.env.RELEASE_SIGNATURES_AVAILABLE === 'true'
 const description =
   'Connect your servers. Keep terminals, local browser previews, and context together. Let your shell or agent app drive Ternline through the CLI.'
 const screenshotDescription =
-  'Ternline workspace with fictional Atlas Web, API Service, and Design System projects, development and CLI terminals, and a local browser preview.'
+  'Ternline in dark mode with fictional Atlas Web, API Service, Design System, and Release Tools workspaces selected in blue, green, purple, and amber, alongside development and workspace CLI terminals.'
 
 const facts = [
   { icon: 'remote', label: 'Saved SSH connections' },
@@ -157,7 +157,7 @@ const sessions = [
               class="block h-auto w-full rounded-[9px] border border-[#30303e] shadow-[0_25px_65px_#0004]"
             />
             <figcaption class="mt-3 flex items-center justify-between gap-4 text-[11px] text-muted">
-              <span>Real app · local browser preview</span>
+              <span>Real app · four colored workspaces</span>
               <button
                 type="button"
                 id="open-screenshot"
@@ -598,11 +598,11 @@ const sessions = [
           height={workspace.height}
           alt={screenshotDescription}
           loading="lazy"
-          class="block h-auto w-[1440px] max-w-none"
+          class="block h-auto max-w-none"
         />
       </div>
       <p class="mt-3 text-xs leading-relaxed text-muted">
-        Real app · local browser preview · fictional projects
+        Real app · four colored workspaces · fictional projects
       </p>
     </dialog>
 

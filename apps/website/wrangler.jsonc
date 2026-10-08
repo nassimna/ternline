@@ -1,0 +1,12 @@
+{
+  "name": "ternline-website",
+  "account_id": "666ee3e55d6cef8ebeb2804d959cad8e",
+  "compatibility_date": "2026-10-08",
+  "assets": {
+    "directory": "./dist"
+  },
+  "routes": [
+    { "pattern": "ternline.com", "custom_domain": true },
+    { "pattern": "www.ternline.com", "custom_domain": true }
+  ]
+}
