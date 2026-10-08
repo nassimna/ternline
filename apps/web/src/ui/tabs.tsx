@@ -15,7 +15,7 @@ const tabVariants = cva(
           'min-h-[var(--aw-size-control-sm)] px-2.5 data-[state=active]:bg-surface-interactive data-[state=active]:text-text-primary',
         navigation:
           'min-h-[var(--aw-size-control-md)] justify-start border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:bg-surface-interactive-hover data-[state=active]:border-accent data-[state=active]:bg-accent-subtle data-[state=active]:text-text-primary',
-        pane: 'h-full border-0 bg-transparent px-2 text-text-secondary data-[state=active]:text-text-primary'
+        pane: 'h-full rounded-none border-0 bg-transparent px-2 text-text-secondary data-[state=active]:text-text-primary'
       }
     },
     defaultVariants: { variant: 'default' }

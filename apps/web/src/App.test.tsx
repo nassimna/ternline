@@ -106,7 +106,12 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Browser content ready')).toBeInTheDocument()
-    expect(screen.getByText('protocol 1 · 0.1.0')).toBeInTheDocument()
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'More application actions' }), {
+      button: 0,
+      ctrlKey: false
+    })
+    expect(await screen.findByText('protocol 1 · 0.1.0')).toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     expect(screen.getAllByText('Fixture workspace').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('Working directory /tmp/fixture-workspace')).toHaveTextContent(
       'fixture-workspace'
@@ -210,6 +215,9 @@ describe('App', () => {
     const sshCard = screen
       .getByLabelText('SSH connection deploy@prod-alias:2222')
       .closest('.workspace-card')!
+    expect(screen.getByLabelText('Workspace machine')).toHaveTextContent(
+      'SSHdeploy@prod-alias:2222'
+    )
     expect(sshCard).toHaveTextContent('deploy@prod-alias:2222')
     expect(sshCard).toHaveTextContent('SSH · prod-alias:2222')
     expect(
@@ -246,7 +254,11 @@ describe('App', () => {
         launch
       })
     )
-    fireEvent.click(screen.getAllByRole('button', { name: 'Split pane right' })[0]!)
+    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Split pane' })[0]!, {
+      button: 0,
+      ctrlKey: false
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Split pane right' }))
     await waitFor(() =>
       expect(bridge.splitPane).toHaveBeenCalledWith(
         expect.objectContaining({ content: { kind: 'newTerminal', launch } })
@@ -261,9 +273,14 @@ describe('App', () => {
     await screen.findByText('Browser content ready')
 
     fireEvent.pointerDown(
-      screen.getByRole('button', { name: 'Open workspace with… Fixture workspace' }),
+      screen.getByRole('button', {
+        name: messages.workspaceShell.sidebar.actions('Fixture workspace')
+      }),
       { button: 0, ctrlKey: false }
     )
+    const openWith = await screen.findByRole('menuitem', { name: 'Open workspace with…' })
+    openWith.focus()
+    fireEvent.keyDown(openWith, { key: 'ArrowRight' })
     expect(await screen.findByRole('menuitem', { name: 'Open in File Explorer' })).toBeVisible()
     expect(
       await screen.findByRole('menuitem', { name: 'Open in Visual Studio Code' })
@@ -381,12 +398,7 @@ describe('App', () => {
         [...card.closest('.workspace-row-wrap')!.querySelectorAll('button')].map((button) =>
           button.getAttribute('data-workspace-action')
         )
-      ).toEqual([
-        'workspace.card.select',
-        'workspace.card.openPath',
-        'workspace.card.reorder',
-        'workspace.card.close'
-      ])
+      ).toEqual(['workspace.card.select', null])
 
       selection.focus()
       fireEvent.keyDown(selection, {
@@ -404,6 +416,7 @@ describe('App', () => {
       ).toEqual([
         ['Rename workspace…', 'workspace.card.rename'],
         ['Workspace color', 'workspace.card.color'],
+        ['Open workspace with…', 'workspace.card.openPath'],
         ['Duplicate workspace', 'workspace.card.duplicate'],
         ['Move up', 'workspace.card.move.up'],
         ['Move down', 'workspace.card.move.down'],
@@ -496,13 +509,7 @@ describe('App', () => {
       [...wrapper!.querySelectorAll<HTMLElement>('button, a[href]')].map((element) =>
         element.matches('a') ? 'workspace.card.details' : element.dataset.workspaceAction
       )
-    ).toEqual([
-      'workspace.card.select',
-      'workspace.card.details',
-      'workspace.card.openPath',
-      'workspace.card.reorder',
-      'workspace.card.close'
-    ])
+    ).toEqual(['workspace.card.select', 'workspace.card.details', undefined])
   })
 
   it('opens a native folder immediately and keeps manual path entry available', async () => {
@@ -1146,14 +1153,8 @@ describe('App', () => {
 
     const selected = await screen.findByRole('tab', { name: 'M2 tests' })
     const shell = screen.getByRole('tab', { name: 'Shell' })
-    const moveLeft = screen.getByRole('button', { name: 'Move M2 tests left' })
-    const moveRight = screen.getByRole('button', { name: 'Move M2 tests right' })
     expect(selected).toHaveAttribute('tabindex', '0')
     expect(shell).toHaveAttribute('tabindex', '-1')
-    expect(moveLeft.querySelector('svg')).not.toBeNull()
-    expect(moveRight.querySelector('svg')).not.toBeNull()
-    expect(moveLeft).not.toHaveTextContent('‹')
-    expect(moveRight).not.toHaveTextContent('›')
     const destinations = screen.getByRole('button', { name: 'Move or split M2 tests' })
     fireEvent.keyDown(destinations, { key: 'Enter' })
     const moveItem = await screen.findByRole('menuitem', { name: 'Move M2 tests left' })
@@ -2349,7 +2350,11 @@ describe('App', () => {
     })
     window.desktopBridge = bridge
     render(<App />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open update settings' }))
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'More application actions' }), {
+      button: 0,
+      ctrlKey: false
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open update settings' }))
     const channel = await screen.findByRole('combobox', { name: 'Update channel' })
     expect(channel).toHaveTextContent('Choose Alpha')
     await chooseSelectOption(channel, 'Alpha')
@@ -2369,7 +2374,11 @@ describe('App', () => {
     })
     window.desktopBridge = bridge
     render(<App />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open update settings' }))
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'More application actions' }), {
+      button: 0,
+      ctrlKey: false
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open update settings' }))
     expect(await screen.findByRole('combobox', { name: 'Update channel' })).toHaveTextContent(
       'Alpha'
     )
@@ -2401,7 +2410,11 @@ describe('App', () => {
     bridge.onUpdateState = vi.fn(() => () => undefined)
     window.desktopBridge = bridge
     render(<App />)
-    fireEvent.click(await screen.findByRole('button', { name: 'Open update settings' }))
+    fireEvent.pointerDown(await screen.findByRole('button', { name: 'More application actions' }), {
+      button: 0,
+      ctrlKey: false
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open update settings' }))
 
     const channel = await screen.findByRole('combobox', { name: 'Update channel' })
     const automatic = screen.getByRole('checkbox', {
