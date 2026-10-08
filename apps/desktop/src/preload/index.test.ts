@@ -26,6 +26,19 @@ vi.mock('electron', () => ({
 await import('./index')
 
 describe('notification preload bridge', () => {
+  it('updates native fullscreen styling state on entry and exit', () => {
+    const dataset: Record<string, string> = {}
+    vi.stubGlobal('document', { documentElement: { dataset } })
+    try {
+      const listener = electron.listeners.get(DESKTOP_IPC.windowFullscreenChanged)!
+      listener({}, true)
+      expect(dataset.windowFullscreen).toBe('true')
+      listener({}, false)
+      expect(dataset.windowFullscreen).toBe('false')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
   beforeEach(() => {
     electron.invoke.mockReset()
   })

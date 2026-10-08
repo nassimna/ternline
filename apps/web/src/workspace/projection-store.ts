@@ -160,6 +160,14 @@ function errorCode(error: unknown): string | undefined {
 function workspaceErrorMessage(error: unknown, context: WorkspaceErrorContext): string {
   const copy = messages.workspaceProjection.errors
   const code = errorCode(error)
+  if (
+    error instanceof Error &&
+    error.message.includes(
+      '[agent-workspace-protocol-error:policy_denied] Saved layout would remove a workspace required by the copy'
+    )
+  ) {
+    return copy.layoutRemovesOpenWorkspaces
+  }
   if (code === 'revision_conflict') return copy.revisionConflict
   if (code === 'service_shutting_down') return copy.shuttingDown('service_shutdown')
   if (code && TARGET_UNAVAILABLE_CODES.has(code)) return copy.targetUnavailable

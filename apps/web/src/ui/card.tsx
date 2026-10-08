@@ -9,6 +9,8 @@ const cardVariants = cva('min-w-0 rounded-card border text-text-primary', {
     variant: {
       default: 'grid gap-3 border-border-default bg-surface-raised p-4',
       compact: 'grid gap-2 border-border-default bg-surface-raised p-3',
+      paneTab:
+        'flex rounded-none border-0 bg-transparent p-0 text-text-muted transition-colors hover:bg-surface-interactive data-[selected=true]:text-text-primary data-[selected=true]:shadow-[var(--aw-shadow-selected-tab)] motion-reduce:transition-none',
       interactive:
         'block rounded-e-sm rounded-s-none border-0 border-s-[length:var(--aw-border-width-attention)] border-s-transparent bg-transparent p-0 text-text-secondary transition-colors hover:bg-surface-interactive data-[selected=true]:border-s-[var(--workspace-selection-color,var(--aw-color-accent))] data-[selected=true]:bg-[color-mix(in_srgb,var(--workspace-selection-color,var(--aw-color-accent))_8%,var(--aw-color-surface-sidebar))] data-[selected=true]:text-text-primary motion-reduce:transition-none data-[attention=informational]:outline data-[attention=informational]:outline-info data-[attention=informational]:outline-dotted data-[attention=completed]:outline data-[attention=completed]:outline-success data-[attention=waiting]:outline-2 data-[attention=waiting]:outline-warning data-[attention=waiting]:outline-dashed data-[attention=urgent]:outline-2 data-[attention=urgent]:outline-destructive -outline-offset-2'
     }

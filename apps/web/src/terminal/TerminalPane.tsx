@@ -138,6 +138,7 @@ export function TerminalPane({
   const [copyOnSelect, setCopyOnSelect] = useState(false)
   const [screenReaderMode, setScreenReaderMode] = useState(false)
   const [search, setSearch] = useState('')
+  const [searchFeedback, setSearchFeedback] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [wholeWord, setWholeWord] = useState(false)
   const [regularExpression, setRegularExpression] = useState(false)
@@ -242,6 +243,17 @@ export function TerminalPane({
     })
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
+    const searchResultsDisposable = searchAddon.onDidChangeResults(
+      ({ resultIndex, resultCount }) => {
+        setSearchFeedback(
+          resultCount === 0
+            ? messages.terminalPane.search.noMatches
+            : resultIndex >= 0
+              ? messages.terminalPane.search.result(resultIndex, resultCount)
+              : messages.terminalPane.search.matches(resultCount)
+        )
+      }
+    )
     const serializeAddon = new SerializeAddon()
     const unicodeAddon = new Unicode11Addon()
     terminal.loadAddon(fitAddon)
@@ -514,6 +526,7 @@ export function TerminalPane({
       dataDisposable.dispose()
       titleDisposable.dispose()
       selectionDisposable.dispose()
+      searchResultsDisposable.dispose()
       scheduler.dispose()
       const terminalId = terminalIdRef.current
       const projection = buildCheckpoint()
@@ -556,11 +569,25 @@ export function TerminalPane({
     if (!search) {
       return
     }
+    if (regularExpression) {
+      try {
+        new RegExp(search)
+      } catch {
+        setSearchFeedback(messages.terminalPane.search.invalidPattern)
+        return
+      }
+    }
     const options = {
       caseSensitive,
       incremental: true,
       regex: regularExpression,
-      wholeWord
+      wholeWord,
+      decorations: {
+        matchBorder: terminalTheme.blue,
+        activeMatchBorder: terminalTheme.blue,
+        matchOverviewRuler: terminalTheme.blue,
+        activeMatchColorOverviewRuler: terminalTheme.blue
+      }
     }
     if (direction === 'next') {
       searchRef.current?.findNext(search, options)
@@ -625,7 +652,11 @@ export function TerminalPane({
         <div className="terminal-search" role="search">
           <Input
             aria-label={messages.terminalPane.search.label}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setSearchFeedback('')
+              searchRef.current?.clearDecorations()
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 find(event.shiftKey ? 'previous' : 'next')
@@ -635,12 +666,24 @@ export function TerminalPane({
             ref={searchInputRef}
             value={search}
           />
+          <span
+            className="text-metadata text-text-muted"
+            role="status"
+            aria-label={messages.terminalPane.search.resultsLabel}
+            aria-live="polite"
+          >
+            {searchFeedback}
+          </span>
           <Button
             size="iconSmall"
             variant="ghost"
             aria-label={messages.terminalPane.search.matchCase}
             aria-pressed={caseSensitive}
-            onClick={() => setCaseSensitive((value) => !value)}
+            onClick={() => {
+              setCaseSensitive((value) => !value)
+              setSearchFeedback('')
+              searchRef.current?.clearDecorations()
+            }}
             type="button"
           >
             {messages.terminalPane.search.matchCaseIndicator}
@@ -650,7 +693,11 @@ export function TerminalPane({
             variant="ghost"
             aria-label={messages.terminalPane.search.matchWholeWord}
             aria-pressed={wholeWord}
-            onClick={() => setWholeWord((value) => !value)}
+            onClick={() => {
+              setWholeWord((value) => !value)
+              setSearchFeedback('')
+              searchRef.current?.clearDecorations()
+            }}
             type="button"
           >
             {messages.terminalPane.search.matchWholeWordIndicator}
@@ -660,7 +707,11 @@ export function TerminalPane({
             variant="ghost"
             aria-label={messages.terminalPane.search.useRegularExpression}
             aria-pressed={regularExpression}
-            onClick={() => setRegularExpression((value) => !value)}
+            onClick={() => {
+              setRegularExpression((value) => !value)
+              setSearchFeedback('')
+              searchRef.current?.clearDecorations()
+            }}
             type="button"
           >
             {messages.terminalPane.search.regularExpressionIndicator}

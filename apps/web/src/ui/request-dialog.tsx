@@ -1,14 +1,16 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { Button } from './button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from './dialog'
 import { Input } from './input'
+import { Label } from './label'
 
 type DialogRequest = {
   kind: 'confirm' | 'text' | 'message'
   message: string
   initialValue?: string
+  inputLabel?: string
 }
 
 // Serialize requests just as the native modal dialogs did, without blocking the renderer.
@@ -49,6 +51,7 @@ function RequestDialog({
   onComplete: (value: string | null) => void
 }): React.JSX.Element {
   const [value, setValue] = useState(request.initialValue ?? '')
+  const inputId = useId()
   const [open, setOpen] = useState(true)
   const [result, setResult] = useState<string | null>(null)
   const complete = (next: string | null): void => {
@@ -78,7 +81,11 @@ function RequestDialog({
               : 'Ternline'}
         </DialogTitle>
         <DialogDescription>
-          {request.kind === 'text' ? 'Enter a value to continue.' : request.message}
+          {request.kind === 'text'
+            ? request.inputLabel
+              ? `Enter ${request.inputLabel.toLowerCase()} to continue.`
+              : 'Enter a value to continue.'
+            : request.message}
         </DialogDescription>
         <form
           onSubmit={(event) => {
@@ -87,12 +94,16 @@ function RequestDialog({
           }}
         >
           {request.kind === 'text' ? (
-            <Input
-              aria-label={request.message}
-              autoFocus
-              value={value}
-              onChange={(event) => setValue(event.currentTarget.value)}
-            />
+            <>
+              {request.inputLabel ? <Label htmlFor={inputId}>{request.inputLabel}</Label> : null}
+              <Input
+                id={inputId}
+                aria-label={request.inputLabel ?? request.message}
+                autoFocus
+                value={value}
+                onChange={(event) => setValue(event.currentTarget.value)}
+              />
+            </>
           ) : null}
           <DialogFooter className="mt-4">
             {request.kind !== 'message' ? (
@@ -114,8 +125,17 @@ export async function confirmAction(message: string): Promise<boolean> {
   return (await requestDialog({ kind: 'confirm', message })) !== null
 }
 
-export function requestText(message: string, initialValue = ''): Promise<string | null> {
-  return requestDialog({ kind: 'text', message, initialValue })
+export function requestText(
+  message: string,
+  initialValue = '',
+  inputLabel?: string
+): Promise<string | null> {
+  return requestDialog({
+    kind: 'text',
+    message,
+    initialValue,
+    ...(inputLabel ? { inputLabel } : {})
+  })
 }
 
 export async function showMessage(message: string): Promise<void> {

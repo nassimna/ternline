@@ -238,6 +238,8 @@ export const messages = {
       initializationFailed: 'The workspace service could not be loaded. Try again.',
       refreshFailed: 'Workspace state could not be refreshed. Try again.',
       changeFailed: 'The workspace change could not be saved.',
+      layoutRemovesOpenWorkspaces:
+        'This layout does not include every open workspace. Close the workspaces outside this layout, or select all open workspaces and save a new layout before applying it.',
       revisionConflict: 'The workspace changed elsewhere. Try the action again.',
       targetUnavailable: 'The requested workspace item is no longer available.',
       invalidRequest: 'The workspace service could not apply that request.',
@@ -409,6 +411,7 @@ export const messages = {
       `Paste ${String(lineCount)} line${lineCount === 1 ? '' : 's'} into the terminal?`,
     search: {
       label: 'Find in terminal',
+      resultsLabel: 'Search results',
       placeholder: 'Find',
       matchCase: 'Match case',
       matchCaseIndicator: 'Aa',
@@ -419,7 +422,11 @@ export const messages = {
       previousMatch: 'Previous match',
       previousMatchIndicator: '↑',
       nextMatch: 'Next match',
-      nextMatchIndicator: '↓'
+      nextMatchIndicator: '↓',
+      noMatches: 'No matches',
+      invalidPattern: 'Invalid regular expression',
+      result: (index: number, count: number) => `${String(index + 1)} of ${String(count)}`,
+      matches: (count: number) => `${String(count)} matches`
     },
     controls: {
       terminalIcon: '›_',

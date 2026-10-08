@@ -29,16 +29,13 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   Bell,
-  Code2,
   Command,
   FolderOpen,
   GitBranch,
   Globe2,
-  GripVertical,
   Layers,
   LayoutPanelLeft,
   Keyboard,
@@ -140,6 +137,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger
@@ -1062,6 +1062,7 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [commandContext, overrides, platform, shortcutCommandRegistry])
 
+  const activeSshProfile = workspace ? sshWorkspaces[workspace.id] : undefined
   return (
     <main
       className={projection.sidebarOpen ? 'workspace-shell' : 'workspace-shell sidebar-collapsed'}
@@ -1116,36 +1117,46 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
               label={messages.workspaceShell.titlebar.notifications}
             />
           </IconButton>
-          <IconButton
+          <Button
+            variant="ghost"
+            size="small"
             aria-label={messages.workspaceShell.titlebar.openSettings}
             onClick={() => openSettings()}
             ref={settingsTriggerRef}
-            tooltip={commandTooltip('settings.open', messages.workspaceShell.titlebar.openSettings)}
+            title={commandTooltip('settings.open', messages.workspaceShell.titlebar.openSettings)}
           >
-            <Settings size={14} />
-          </IconButton>
-          <Button
-            variant="ghost"
-            aria-label={messages.settings.updater.open}
-            className="titlebar-update-button"
-            onClick={() => openSettings('updates')}
-            size="small"
-          >
-            <ArrowDown size={14} />
-            {updateState?.status === 'downloaded'
-              ? messages.settings.updater.readyButton
-              : updateState?.status === 'available'
-                ? messages.settings.updater.availableButton
-                : messages.settings.updater.button}
+            <Settings aria-hidden="true" size={14} /> Settings
           </Button>
-          <span className="service-version">
-            {messages.workspaceShell.titlebar.version(
-              projection.identity
-                ? String(projection.identity.protocolVersion)
-                : messages.workspaceShell.titlebar.unavailableVersion,
-              projection.identity?.version ?? messages.workspaceShell.titlebar.unavailableVersion
-            )}
-          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton aria-label="More application actions" tooltip="More application actions">
+                <MoreHorizontal size={14} />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                aria-label={messages.settings.updater.open}
+                onSelect={() => openSettings('updates')}
+              >
+                <ArrowDown aria-hidden="true" size={14} />
+                {updateState?.status === 'downloaded'
+                  ? messages.settings.updater.readyButton
+                  : updateState?.status === 'available'
+                    ? messages.settings.updater.availableButton
+                    : messages.settings.updater.button}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled>
+                {messages.workspaceShell.titlebar.version(
+                  projection.identity
+                    ? String(projection.identity.protocolVersion)
+                    : messages.workspaceShell.titlebar.unavailableVersion,
+                  projection.identity?.version ??
+                    messages.workspaceShell.titlebar.unavailableVersion
+                )}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -1257,20 +1268,162 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
         tabIndex={-1}
       >
         {workspace ? (
-          <PaneWorkspace
-            browserTabsEnabled={browserTabsEnabled}
-            browserViewsVisible={
-              !createOpen &&
-              !notificationsOpen &&
-              !windowMove &&
-              !projection.paletteOpen &&
-              !projection.settingsOpen
-            }
-            onMutation={runMutation}
-            onProcessTitleChange={recordProcessTitle}
-            sshProfile={sshWorkspaces[workspace.id]}
-            workspace={workspace}
-          />
+          <>
+            <div className="workspace-host" aria-label="Workspace machine">
+              <span className="workspace-host-kind">{activeSshProfile ? 'SSH' : 'Local'}</span>
+              <span className="workspace-host-target">
+                {activeSshProfile ? (
+                  <>
+                    {activeSshProfile.user ? `${activeSshProfile.user}@` : ''}
+                    {activeSshProfile.host}
+                    {activeSshProfile.port === 22 ? '' : `:${activeSshProfile.port}`}
+                  </>
+                ) : (
+                  'This computer'
+                )}
+              </span>
+              <div className="workspace-toolbar-actions" aria-label="Workspace actions">
+                <Button
+                  size="small"
+                  variant="ghost"
+                  className="workspace-new-shell"
+                  aria-label="New terminal tab"
+                  onClick={() =>
+                    void runMutation(
+                      window.desktopBridge.openTerminalTab({
+                        workspaceId: workspace.id,
+                        paneId: workspace.selectedPaneId,
+                        launch: terminalLaunch(workspace.workingDirectory, activeSshProfile)
+                      })
+                    )
+                  }
+                >
+                  <Plus aria-hidden="true" size={14} />
+                  <span>Shell</span>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="iconSmall"
+                      variant="ghost"
+                      aria-label={messages.workspaceShell.pane.addTab}
+                      className="workspace-add-tab"
+                      type="button"
+                    >
+                      <ChevronDown aria-hidden="true" size={12} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        void runMutation(
+                          window.desktopBridge.openTerminalTab({
+                            workspaceId: workspace.id,
+                            paneId: workspace.selectedPaneId,
+                            launch: terminalLaunch(workspace.workingDirectory, activeSshProfile)
+                          })
+                        )
+                      }
+                    >
+                      <TerminalSquare aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.terminalTab}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!browserTabsEnabled}
+                      onSelect={() =>
+                        void runMutation(
+                          window.desktopBridge.openBrowserTab({
+                            workspaceId: workspace.id,
+                            paneId: workspace.selectedPaneId,
+                            metadata: { url: messages.workspaceShell.defaultBrowserUrl }
+                          })
+                        )
+                      }
+                    >
+                      <Globe2 aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.browserTab}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="small"
+                      aria-label="Split pane"
+                      className="workspace-split-menu"
+                    >
+                      <span>Split</span>
+                      <ChevronDown aria-hidden="true" size={12} />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        void splitWithTerminal(
+                          workspace,
+                          workspace.selectedPaneId,
+                          'horizontal',
+                          runMutation,
+                          activeSshProfile
+                        )
+                      }
+                    >
+                      <SplitSquareHorizontal aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.splitRight}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        void splitWithTerminal(
+                          workspace,
+                          workspace.selectedPaneId,
+                          'vertical',
+                          runMutation,
+                          activeSshProfile
+                        )
+                      }
+                    >
+                      <SplitSquareVertical aria-hidden="true" size={14} />
+                      {messages.workspaceShell.pane.splitDown}
+                    </DropdownMenuItem>
+                    {workspace.panes.length > 1 ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          destructive
+                          onSelect={() =>
+                            void runMutation(
+                              window.desktopBridge.closePane({
+                                workspaceId: workspace.id,
+                                paneId: workspace.selectedPaneId
+                              })
+                            )
+                          }
+                        >
+                          {messages.workspaceShell.pane.close}
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            <div className="workspace-panes">
+              <PaneWorkspace
+                browserViewsVisible={
+                  !createOpen &&
+                  !notificationsOpen &&
+                  !windowMove &&
+                  !projection.paletteOpen &&
+                  !projection.settingsOpen
+                }
+                onMutation={runMutation}
+                onProcessTitleChange={recordProcessTitle}
+                sshProfile={activeSshProfile}
+                workspace={workspace}
+              />
+            </div>
+          </>
         ) : (
           <EmptyWorkspace
             onCreate={() => {
@@ -1951,7 +2104,9 @@ function SavedLayoutsPanel({
       void showMessage('Select between 1 and 32 workspaces to save a layout.')
       return
     }
-    const name = (await requestText('Save selected workspaces as a layout'))?.trim()
+    const name = (
+      await requestText('Save selected workspaces as a layout', '', 'Layout name')
+    )?.trim()
     if (!name) return
     onLayoutMutation(
       window.desktopBridge.saveLayout({
@@ -2041,7 +2196,7 @@ function SavedLayoutsPanel({
                     if (legacyOverLimit || !window.desktopBridge.applyLayout) return
                     if (
                       !(await confirmAction(
-                        `Apply “${layout.name}” and replace the current workspace set?`
+                        `Apply “${layout.name}” to the current workspaces? Workspaces outside this layout must be closed first.`
                       ))
                     )
                       return
@@ -2341,7 +2496,7 @@ function SortableWorkspace({
   tabStop: boolean
   workspace: WorkspaceSnapshot
 }): React.JSX.Element {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: workspace.id
   })
   const activity = workspaceActivity(cardSlots, cardSlotsV2)
@@ -2503,8 +2658,157 @@ function SortableWorkspace({
       .openWorkspacePath({ workspaceId: workspace.id, openerId })
       .catch(() => void showMessage(messages.workspaceContextMenu.openFailed))
   }
+  const renderActions = (context: boolean): React.JSX.Element => {
+    const ActionItem = context ? ContextMenuItem : DropdownMenuItem
+    const ActionSub = context ? ContextMenuSub : DropdownMenuSub
+    const ActionSubTrigger = context ? ContextMenuSubTrigger : DropdownMenuSubTrigger
+    const ActionSubContent = context ? ContextMenuSubContent : DropdownMenuSubContent
+    const ActionSeparator = context ? ContextMenuSeparator : DropdownMenuSeparator
+    return (
+      <>
+        {sshProfile ? (
+          <>
+            <ActionItem onSelect={newSshShell}>New SSH shell</ActionItem>
+            <ActionItem onSelect={() => onEditSsh(workspace.id)}>Edit SSH connection</ActionItem>
+            <ActionItem onSelect={() => onForgetSsh(workspace.id)}>
+              Forget SSH connection
+            </ActionItem>
+          </>
+        ) : null}
+        {organization ? (
+          <>
+            <ActionItem
+              data-workspace-action={workspaceCardActionRegistry.resolve('pin').actionId}
+              onSelect={togglePin}
+            >
+              {pinned ? 'Unpin' : 'Pin'}
+            </ActionItem>
+            <ActionSub>
+              <ActionSubTrigger
+                data-workspace-action={workspaceCardActionRegistry.resolve('assignGroup').actionId}
+              >
+                Move to group
+              </ActionSubTrigger>
+              <ActionSubContent>
+                <ActionItem onSelect={() => assignGroup(undefined)}>Ungrouped</ActionItem>
+                {organization.groups
+                  .slice()
+                  .sort((left, right) => left.order - right.order)
+                  .map((group) => (
+                    <ActionItem key={group.id} onSelect={() => assignGroup(group.id)}>
+                      {group.name}
+                    </ActionItem>
+                  ))}
+              </ActionSubContent>
+            </ActionSub>
+            <ActionSeparator />
+          </>
+        ) : null}
+        <ActionItem
+          data-workspace-action={workspaceCardActionRegistry.resolve('rename').actionId}
+          onSelect={() => void rename()}
+        >
+          {messages.workspaceContextMenu.rename}
+        </ActionItem>
+        <ActionSub>
+          <ActionSubTrigger
+            data-workspace-action={workspaceCardActionRegistry.resolve('color').actionId}
+          >
+            {messages.workspaceContextMenu.color}
+          </ActionSubTrigger>
+          <ActionSubContent>
+            {WORKSPACE_COLOR_PALETTE.map(({ label, value }) => (
+              <ActionItem
+                data-workspace-action={workspaceCardActionRegistry.resolve('colorSet').actionId}
+                key={value}
+                onSelect={() => setColor(value)}
+              >
+                <span
+                  aria-hidden="true"
+                  className="workspace-color-swatch"
+                  style={{ background: value }}
+                />
+                {label}
+              </ActionItem>
+            ))}
+            <ActionSeparator />
+            <ActionItem
+              data-workspace-action={workspaceCardActionRegistry.resolve('colorChoose').actionId}
+              onSelect={() => void chooseCustomColor()}
+            >
+              {messages.workspaceContextMenu.chooseColor}
+            </ActionItem>
+            <ActionItem
+              data-workspace-action={workspaceCardActionRegistry.resolve('colorClear').actionId}
+              disabled={!workspace.color}
+              onSelect={() => setColor(null)}
+            >
+              {messages.workspaceContextMenu.clearColor}
+            </ActionItem>
+          </ActionSubContent>
+        </ActionSub>
+        <ActionSub>
+          <ActionSubTrigger
+            disabled={!window.desktopBridge.openWorkspacePath}
+            data-workspace-action={workspaceCardActionRegistry.resolve('openPath').actionId}
+          >
+            {messages.workspaceContextMenu.openWith}
+          </ActionSubTrigger>
+          <ActionSubContent>
+            {pathOpeners.map((opener) => (
+              <ActionItem key={opener.id} onSelect={() => openWorkspacePath(opener.id)}>
+                {opener.kind === 'fileManager'
+                  ? messages.workspaceContextMenu.openInFileExplorer
+                  : messages.workspaceContextMenu.openInIde(opener.label)}
+              </ActionItem>
+            ))}
+            {pathOpenerStatus === 'loading' ? (
+              <ActionItem disabled>{messages.workspaceContextMenu.detectingIdes}</ActionItem>
+            ) : null}
+            {pathOpenerStatus === 'ready' && pathOpeners.length === 1 ? (
+              <ActionItem disabled>{messages.workspaceContextMenu.noIdes}</ActionItem>
+            ) : null}
+            {pathOpenerStatus === 'failed' ? (
+              <ActionItem disabled>
+                {messages.workspaceContextMenu.openerDetectionFailed}
+              </ActionItem>
+            ) : null}
+          </ActionSubContent>
+        </ActionSub>
+        <ActionItem
+          data-workspace-action={workspaceCardActionRegistry.resolve('duplicate').actionId}
+          onSelect={duplicate}
+        >
+          {messages.workspaceContextMenu.duplicate}
+        </ActionItem>
+        <ActionSeparator />
+        <ActionItem
+          data-workspace-action={workspaceCardActionRegistry.resolve('moveUp').actionId}
+          disabled={index === 0}
+          onSelect={() => move(index - 1)}
+        >
+          {messages.workspaceContextMenu.moveUp}
+        </ActionItem>
+        <ActionItem
+          data-workspace-action={workspaceCardActionRegistry.resolve('moveDown').actionId}
+          disabled={index >= count - 1}
+          onSelect={() => move(index + 1)}
+        >
+          {messages.workspaceContextMenu.moveDown}
+        </ActionItem>
+        <ActionSeparator />
+        <ActionItem
+          data-workspace-action={workspaceCardActionRegistry.resolve('close').actionId}
+          destructive
+          onSelect={() => void close()}
+        >
+          {messages.workspaceContextMenu.close}
+        </ActionItem>
+      </>
+    )
+  }
   return (
-    <ContextMenu>
+    <ContextMenu onOpenChange={loadPathOpeners}>
       <ContextMenuTrigger asChild>
         <div
           ref={setNodeRef}
@@ -2760,97 +3064,28 @@ function SortableWorkspace({
               <Button
                 size="iconSmall"
                 variant="ghost"
-                aria-label={`${messages.workspaceContextMenu.openWith} ${workspace.name}`}
-                className="workspace-open-path"
-                data-workspace-action={workspaceCardActionRegistry.resolve('openPath').actionId}
-                disabled={!window.desktopBridge.openWorkspacePath}
-                title={messages.workspaceContextMenu.openWith}
-                type="button"
+                className="workspace-actions-menu"
+                aria-label={messages.workspaceShell.sidebar.actions(workspace.name)}
+                title="Workspace actions · Alt+Up/Down to reorder"
+                onKeyDown={(event) => {
+                  if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown'))
+                    return
+                  event.preventDefault()
+                  move(index + (event.key === 'ArrowUp' ? -1 : 1))
+                }}
               >
-                <FolderOpen aria-hidden="true" size={13} />
+                <MoreHorizontal aria-hidden="true" size={14} />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" side="right" sideOffset={6}>
-              <DropdownMenuItem onSelect={() => openWorkspacePath('fileManager')}>
-                <FolderOpen aria-hidden="true" size={14} />
-                {messages.workspaceContextMenu.openInFileExplorer}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {pathOpeners
-                .filter(({ kind }) => kind === 'ide')
-                .map((opener) => (
-                  <DropdownMenuItem key={opener.id} onSelect={() => openWorkspacePath(opener.id)}>
-                    <Code2 aria-hidden="true" size={14} />
-                    {messages.workspaceContextMenu.openInIde(opener.label)}
-                  </DropdownMenuItem>
-                ))}
-              {pathOpenerStatus === 'loading' ? (
-                <DropdownMenuItem disabled>
-                  {messages.workspaceContextMenu.detectingIdes}
-                </DropdownMenuItem>
-              ) : null}
-              {pathOpenerStatus === 'ready' && pathOpeners.length === 1 ? (
-                <DropdownMenuItem disabled>{messages.workspaceContextMenu.noIdes}</DropdownMenuItem>
-              ) : null}
-              {pathOpenerStatus === 'failed' ? (
-                <DropdownMenuItem disabled>
-                  {messages.workspaceContextMenu.openerDetectionFailed}
-                </DropdownMenuItem>
-              ) : null}
+            <DropdownMenuContent
+              align="end"
+              side="right"
+              sideOffset={6}
+              aria-label={messages.workspaceShell.sidebar.actions(workspace.name)}
+            >
+              {renderActions(false)}
             </DropdownMenuContent>
           </DropdownMenu>
-          {organization ? (
-            <Button
-              size="iconSmall"
-              variant="ghost"
-              aria-label={`${pinned ? 'Unpin' : 'Pin'} ${workspace.name}`}
-              aria-pressed={pinned}
-              className="workspace-pin"
-              data-pinned={pinned}
-              onClick={togglePin}
-              title={pinned ? 'Unpin workspace' : 'Pin workspace'}
-              type="button"
-            >
-              <Pin aria-hidden="true" size={13} />
-            </Button>
-          ) : null}
-          <Button
-            size="iconSmall"
-            variant="ghost"
-            className="workspace-drag"
-            aria-label={messages.workspaceShell.sidebar.reorder(workspace.name)}
-            data-workspace-action={workspaceCardActionRegistry.resolve('reorder').actionId}
-            {...attributes}
-            {...listeners}
-            title={messages.workspaceShell.sidebar.reorderTitle}
-            onKeyDown={(event) => {
-              if (!event.altKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
-              event.preventDefault()
-              move(index + (event.key === 'ArrowUp' ? -1 : 1))
-            }}
-            type="button"
-          >
-            <GripVertical size={13} />
-          </Button>
-          <Button
-            size="iconSmall"
-            variant="ghost"
-            className="workspace-remove"
-            aria-label={messages.workspaceShell.sidebar.close(workspace.name)}
-            data-workspace-action={
-              workspaceCardActionRegistry.resolve(
-                organization &&
-                  organization.selection.length > 1 &&
-                  organization.selection.includes(workspace.id)
-                  ? 'closeSelected'
-                  : 'close'
-              ).actionId
-            }
-            onClick={() => void close()}
-            type="button"
-          >
-            <X size={12} />
-          </Button>
           {organization && attention && attention.state !== 'none' ? (
             <Button
               size="iconSmall"
@@ -2867,118 +3102,7 @@ function SortableWorkspace({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent aria-label={messages.workspaceShell.sidebar.actions(workspace.name)}>
-        {sshProfile ? (
-          <>
-            <ContextMenuItem onSelect={newSshShell}>New SSH shell</ContextMenuItem>
-            <ContextMenuItem onSelect={() => onEditSsh(workspace.id)}>
-              Edit SSH connection
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => onForgetSsh(workspace.id)}>
-              Forget SSH connection
-            </ContextMenuItem>
-          </>
-        ) : null}
-        {organization ? (
-          <>
-            <ContextMenuItem
-              data-workspace-action={workspaceCardActionRegistry.resolve('pin').actionId}
-              onSelect={togglePin}
-            >
-              {pinned ? 'Unpin' : 'Pin'}
-            </ContextMenuItem>
-            <ContextMenuSub>
-              <ContextMenuSubTrigger
-                data-workspace-action={workspaceCardActionRegistry.resolve('assignGroup').actionId}
-              >
-                Move to group
-              </ContextMenuSubTrigger>
-              <ContextMenuSubContent>
-                <ContextMenuItem onSelect={() => assignGroup(undefined)}>Ungrouped</ContextMenuItem>
-                {organization.groups
-                  .slice()
-                  .sort((left, right) => left.order - right.order)
-                  .map((group) => (
-                    <ContextMenuItem key={group.id} onSelect={() => assignGroup(group.id)}>
-                      {group.name}
-                    </ContextMenuItem>
-                  ))}
-              </ContextMenuSubContent>
-            </ContextMenuSub>
-            <ContextMenuSeparator />
-          </>
-        ) : null}
-        <ContextMenuItem
-          data-workspace-action={workspaceCardActionRegistry.resolve('rename').actionId}
-          onSelect={() => void rename()}
-        >
-          {messages.workspaceContextMenu.rename}
-        </ContextMenuItem>
-        <ContextMenuSub>
-          <ContextMenuSubTrigger
-            data-workspace-action={workspaceCardActionRegistry.resolve('color').actionId}
-          >
-            {messages.workspaceContextMenu.color}
-          </ContextMenuSubTrigger>
-          <ContextMenuSubContent>
-            {WORKSPACE_COLOR_PALETTE.map(({ label, value }) => (
-              <ContextMenuItem
-                data-workspace-action={workspaceCardActionRegistry.resolve('colorSet').actionId}
-                key={value}
-                onSelect={() => setColor(value)}
-              >
-                <span
-                  aria-hidden="true"
-                  className="workspace-color-swatch"
-                  style={{ background: value }}
-                />
-                {label}
-              </ContextMenuItem>
-            ))}
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              data-workspace-action={workspaceCardActionRegistry.resolve('colorChoose').actionId}
-              onSelect={() => void chooseCustomColor()}
-            >
-              {messages.workspaceContextMenu.chooseColor}
-            </ContextMenuItem>
-            <ContextMenuItem
-              data-workspace-action={workspaceCardActionRegistry.resolve('colorClear').actionId}
-              disabled={!workspace.color}
-              onSelect={() => setColor(null)}
-            >
-              {messages.workspaceContextMenu.clearColor}
-            </ContextMenuItem>
-          </ContextMenuSubContent>
-        </ContextMenuSub>
-        <ContextMenuItem
-          data-workspace-action={workspaceCardActionRegistry.resolve('duplicate').actionId}
-          onSelect={duplicate}
-        >
-          {messages.workspaceContextMenu.duplicate}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          data-workspace-action={workspaceCardActionRegistry.resolve('moveUp').actionId}
-          disabled={index === 0}
-          onSelect={() => move(index - 1)}
-        >
-          {messages.workspaceContextMenu.moveUp}
-        </ContextMenuItem>
-        <ContextMenuItem
-          data-workspace-action={workspaceCardActionRegistry.resolve('moveDown').actionId}
-          disabled={index >= count - 1}
-          onSelect={() => move(index + 1)}
-        >
-          {messages.workspaceContextMenu.moveDown}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          data-workspace-action={workspaceCardActionRegistry.resolve('close').actionId}
-          destructive
-          onSelect={() => void close()}
-        >
-          {messages.workspaceContextMenu.close}
-        </ContextMenuItem>
+        {renderActions(true)}
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -3173,14 +3297,12 @@ function safeWorkspaceColor(value: string | null | undefined): string | undefine
 }
 
 function PaneWorkspace({
-  browserTabsEnabled,
   browserViewsVisible,
   onMutation,
   onProcessTitleChange,
   sshProfile,
   workspace
 }: MutationOwner & {
-  browserTabsEnabled: boolean
   browserViewsVisible: boolean
   onProcessTitleChange: ProcessTitleHandler
   sshProfile: SavedSshWorkspace | undefined
@@ -3252,7 +3374,6 @@ function PaneWorkspace({
       sensors={sensors}
     >
       <PaneTree
-        browserTabsEnabled={browserTabsEnabled}
         browserViewsVisible={browserViewsVisible && draggedTab === null}
         draggedTab={draggedTab}
         node={workspace.layout}
@@ -3295,7 +3416,6 @@ function isDropZone(value: unknown): value is PaneDropZone {
 }
 
 function PaneTree({
-  browserTabsEnabled,
   browserViewsVisible,
   draggedTab,
   node,
@@ -3305,7 +3425,6 @@ function PaneTree({
   sshProfile,
   workspace
 }: MutationOwner & {
-  browserTabsEnabled: boolean
   browserViewsVisible: boolean
   draggedTab: TabMutationSource | null
   node: PaneTreeNode
@@ -3318,7 +3437,6 @@ function PaneTree({
     const pane = workspace.panes.find((candidate) => candidate.id === node.paneId)
     return pane ? (
       <PaneView
-        browserTabsEnabled={browserTabsEnabled}
         browserViewsVisible={browserViewsVisible}
         draggedTab={draggedTab}
         onMutation={onMutation}
@@ -3355,7 +3473,6 @@ function PaneTree({
     >
       <Panel id={firstId} minSize="12%">
         <PaneTree
-          browserTabsEnabled={browserTabsEnabled}
           browserViewsVisible={browserViewsVisible}
           draggedTab={draggedTab}
           node={node.first}
@@ -3371,7 +3488,6 @@ function PaneTree({
       </Separator>
       <Panel id={secondId} minSize="12%">
         <PaneTree
-          browserTabsEnabled={browserTabsEnabled}
           browserViewsVisible={browserViewsVisible}
           draggedTab={draggedTab}
           node={node.second}
@@ -3387,7 +3503,6 @@ function PaneTree({
 }
 
 function PaneView({
-  browserTabsEnabled,
   browserViewsVisible,
   draggedTab,
   onMutation,
@@ -3397,7 +3512,6 @@ function PaneView({
   sshProfile,
   workspace
 }: MutationOwner & {
-  browserTabsEnabled: boolean
   browserViewsVisible: boolean
   draggedTab: TabMutationSource | null
   onTabAction: TabActionHandler
@@ -3483,85 +3597,6 @@ function PaneView({
                 <Search size={14} />
               </IconButton>
             ) : null}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="iconSmall"
-                  variant="ghost"
-                  aria-label={messages.workspaceShell.pane.addTab}
-                  className="pane-add-tab"
-                  type="button"
-                >
-                  <Plus aria-hidden="true" size={14} />
-                  <span>{messages.workspaceShell.pane.addTab}</span>
-                  <ChevronDown aria-hidden="true" size={12} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={() =>
-                    void onMutation(
-                      window.desktopBridge.openTerminalTab({
-                        workspaceId: workspace.id,
-                        paneId: pane.id,
-                        launch: terminalLaunch(workspace.workingDirectory, sshProfile)
-                      })
-                    )
-                  }
-                >
-                  <TerminalSquare aria-hidden="true" size={14} />
-                  {messages.workspaceShell.pane.terminalTab}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={!browserTabsEnabled}
-                  onSelect={() =>
-                    void onMutation(
-                      window.desktopBridge.openBrowserTab({
-                        workspaceId: workspace.id,
-                        paneId: pane.id,
-                        metadata: { url: messages.workspaceShell.defaultBrowserUrl }
-                      })
-                    )
-                  }
-                >
-                  <Globe2 aria-hidden="true" size={14} />
-                  {messages.workspaceShell.pane.browserTab}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <IconButton
-              aria-label={messages.workspaceShell.pane.splitRight}
-              className="pane-split-action"
-              onClick={() =>
-                void splitWithTerminal(workspace, pane.id, 'horizontal', onMutation, sshProfile)
-              }
-              tooltip={`${messages.workspaceShell.pane.splitRight} · Ctrl+D`}
-            >
-              <SplitSquareHorizontal size={14} />
-            </IconButton>
-            <IconButton
-              aria-label={messages.workspaceShell.pane.splitDown}
-              className="pane-split-action"
-              onClick={() =>
-                void splitWithTerminal(workspace, pane.id, 'vertical', onMutation, sshProfile)
-              }
-              tooltip={`${messages.workspaceShell.pane.splitDown} · Ctrl+Shift+D`}
-            >
-              <SplitSquareVertical size={14} />
-            </IconButton>
-            {workspace.panes.length > 1 ? (
-              <IconButton
-                aria-label={messages.workspaceShell.pane.close}
-                onClick={() =>
-                  void onMutation(
-                    window.desktopBridge.closePane({ workspaceId: workspace.id, paneId: pane.id })
-                  )
-                }
-                tooltip={messages.workspaceShell.pane.close}
-              >
-                <Trash2 size={13} />
-              </IconButton>
-            ) : null}
           </div>
         </div>
         <TabsContent asChild forceMount value={selectedTab?.id ?? ''}>
@@ -3635,139 +3670,142 @@ function PaneTab({
       )
   }
   return (
-    <div
-      ref={setNodeRef}
-      className={selected ? 'pane-tab active' : 'pane-tab'}
-      role="presentation"
-      {...pointerDragListeners(listeners)}
-      style={{
-        transform: transform
-          ? `translate3d(${String(transform.x)}px, ${String(transform.y)}px, 0)`
-          : undefined,
-        transition,
-        opacity: isDragging ? 0.55 : 1
-      }}
-    >
-      {renaming ? (
-        <Input
-          controlSize="small"
-          aria-label={messages.workspaceShell.tab.rename}
-          autoFocus
-          className="pane-tab-rename"
-          defaultValue={title}
-          onBlur={(event) => commitRename(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            event.stopPropagation()
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              commitRename(event.currentTarget.value)
-            } else if (event.key === 'Escape') {
-              event.preventDefault()
-              setRenaming(false)
-            }
-          }}
-          type="text"
-        />
-      ) : (
-        <>
-          <TabsTrigger
-            value={tab.id}
-            variant="pane"
-            aria-controls={panePanelDomId(pane.id)}
-            className="pane-tab-select"
-            data-selected={selected ? 'true' : 'false'}
-            data-tab-id={tab.id}
-            id={tabDomId(tab.id)}
-            onClick={() => {
-              if (!selected)
-                void onMutation(
-                  window.desktopBridge
-                    .selectTab({ workspaceId: workspace.id, tabId: tab.id })
-                    .catch(async (error: unknown) => {
-                      if (
-                        !(error instanceof Error) ||
-                        !error.message.includes(
-                          '[agent-workspace-protocol-error:tab_already_selected]'
-                        )
-                      )
-                        throw error
-                      const { snapshot } = await window.desktopBridge.listWorkspaces()
-                      const current = snapshot.workspaces.find(({ id }) => id === workspace.id)
-                      const currentPane = current?.panes.find(({ id }) => id === pane.id)
-                      if (
-                        current?.selectedPaneId !== pane.id ||
-                        currentPane?.selectedTabId !== tab.id
-                      )
-                        throw error
-                      return { revision: snapshot.revision, snapshot }
-                    })
-                )
-            }}
-            onDoubleClick={() => {
-              setRenaming(true)
-            }}
+    <Card asChild variant="paneTab">
+      <div
+        ref={setNodeRef}
+        className={selected ? 'pane-tab active' : 'pane-tab'}
+        data-selected={selected}
+        role="presentation"
+        {...pointerDragListeners(listeners)}
+        style={{
+          transform: transform
+            ? `translate3d(${String(transform.x)}px, ${String(transform.y)}px, 0)`
+            : undefined,
+          transition,
+          opacity: isDragging ? 0.55 : 1
+        }}
+      >
+        {renaming ? (
+          <Input
+            controlSize="small"
+            aria-label={messages.workspaceShell.tab.rename}
+            autoFocus
+            className="pane-tab-rename"
+            defaultValue={title}
+            onBlur={(event) => commitRename(event.currentTarget.value)}
             onKeyDown={(event) => {
-              const action =
-                event.key === 'ArrowRight'
-                  ? 'next'
-                  : event.key === 'ArrowLeft'
-                    ? 'previous'
-                    : event.key === 'Home'
-                      ? 'home'
-                      : event.key === 'End'
-                        ? 'end'
-                        : undefined
-              if (!action) return
-              const tabs = [
-                ...(event.currentTarget
-                  .closest('[role="tablist"]')
-                  ?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
-              ]
-              const nextIndex = rovingFocusIndex(
-                tabs.indexOf(event.currentTarget),
-                tabs.length,
-                action
-              )
-              const next = tabs[nextIndex]
-              if (!next) return
-              event.preventDefault()
-              next.focus()
-              next.click()
+              event.stopPropagation()
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                commitRename(event.currentTarget.value)
+              } else if (event.key === 'Escape') {
+                event.preventDefault()
+                setRenaming(false)
+              }
             }}
+            type="text"
+          />
+        ) : (
+          <>
+            <TabsTrigger
+              value={tab.id}
+              variant="pane"
+              aria-controls={panePanelDomId(pane.id)}
+              className="pane-tab-select"
+              data-selected={selected ? 'true' : 'false'}
+              data-tab-id={tab.id}
+              id={tabDomId(tab.id)}
+              onClick={() => {
+                if (!selected)
+                  void onMutation(
+                    window.desktopBridge
+                      .selectTab({ workspaceId: workspace.id, tabId: tab.id })
+                      .catch(async (error: unknown) => {
+                        if (
+                          !(error instanceof Error) ||
+                          !error.message.includes(
+                            '[agent-workspace-protocol-error:tab_already_selected]'
+                          )
+                        )
+                          throw error
+                        const { snapshot } = await window.desktopBridge.listWorkspaces()
+                        const current = snapshot.workspaces.find(({ id }) => id === workspace.id)
+                        const currentPane = current?.panes.find(({ id }) => id === pane.id)
+                        if (
+                          current?.selectedPaneId !== pane.id ||
+                          currentPane?.selectedTabId !== tab.id
+                        )
+                          throw error
+                        return { revision: snapshot.revision, snapshot }
+                      })
+                  )
+              }}
+              onDoubleClick={() => {
+                setRenaming(true)
+              }}
+              onKeyDown={(event) => {
+                const action =
+                  event.key === 'ArrowRight'
+                    ? 'next'
+                    : event.key === 'ArrowLeft'
+                      ? 'previous'
+                      : event.key === 'Home'
+                        ? 'home'
+                        : event.key === 'End'
+                          ? 'end'
+                          : undefined
+                if (!action) return
+                const tabs = [
+                  ...(event.currentTarget
+                    .closest('[role="tablist"]')
+                    ?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
+                ]
+                const nextIndex = rovingFocusIndex(
+                  tabs.indexOf(event.currentTarget),
+                  tabs.length,
+                  action
+                )
+                const next = tabs[nextIndex]
+                if (!next) return
+                event.preventDefault()
+                next.focus()
+                next.click()
+              }}
 
-            aria-selected={selected}
-            tabIndex={selected ? 0 : -1}
-            type="button"
-          >
-            {tab.content.kind === 'terminal' ? (
-              <TerminalSquare size={12} />
-            ) : (
-              <Globe2 aria-hidden="true" data-tab-kind-icon="browser" size={12} />
-            )}
-            <span className="pane-tab-title">{title}</span>
-            <AttentionBadge announce={false} attention={tab.attention} compact label={title} />
-          </TabsTrigger>
-          {/* Mouse affordance only: the accessible close control lives in the
-              tab utilities toolbar, because a tablist may only own tabs. */}
-          <Button
-            size="iconSmall"
-            variant="ghost"
-            aria-hidden="true"
-            className="tab-close"
-            onClick={() =>
-              void onMutation(
-                window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
-              )
-            }
-            tabIndex={-1}
-            title={messages.workspaceShell.tab.close(title)}
-            type="button"
-          >
-            <X size={11} />
-          </Button>
-        </>
-      )}
-    </div>
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              type="button"
+            >
+              {tab.content.kind === 'terminal' ? (
+                <TerminalSquare size={12} />
+              ) : (
+                <Globe2 aria-hidden="true" data-tab-kind-icon="browser" size={12} />
+              )}
+              <span className="pane-tab-title">{title}</span>
+              <AttentionBadge announce={false} attention={tab.attention} compact label={title} />
+            </TabsTrigger>
+            {/* Mouse affordance only: the accessible close control lives in the
+              tab actions menu, because a tablist may only own tabs. */}
+            <Button
+              size="iconSmall"
+              variant="ghost"
+              aria-hidden="true"
+              className="tab-close"
+              onClick={() =>
+                void onMutation(
+                  window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
+                )
+              }
+              tabIndex={-1}
+              title={messages.workspaceShell.tab.close(title)}
+              type="button"
+            >
+              <X size={11} />
+            </Button>
+          </>
+        )}
+      </div>
+    </Card>
   )
 }
 
@@ -3821,26 +3859,6 @@ function PaneTabUtilities({
       className="pane-tab-utilities"
       role="toolbar"
     >
-      <Button
-        size="iconSmall"
-        variant="ghost"
-        aria-label={messages.workspaceShell.tab.moveLeft(title)}
-        className="tab-keyboard-move"
-        onClick={() => move(-1)}
-        type="button"
-      >
-        <ChevronLeft aria-hidden="true" size={14} />
-      </Button>
-      <Button
-        size="iconSmall"
-        variant="ghost"
-        aria-label={messages.workspaceShell.tab.moveRight(title)}
-        className="tab-keyboard-move"
-        onClick={() => move(1)}
-        type="button"
-      >
-        <ChevronRight aria-hidden="true" size={14} />
-      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -3886,22 +3904,18 @@ function PaneTabUtilities({
                   </DropdownMenuItem>
                 ))
           )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() =>
+              void onMutation(
+                window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
+              )
+            }
+          >
+            {messages.workspaceShell.tab.close(title)}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Button
-        size="iconSmall"
-        variant="ghost"
-        aria-label={messages.workspaceShell.tab.close(title)}
-        className="tab-close"
-        onClick={() =>
-          void onMutation(
-            window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
-          )
-        }
-        type="button"
-      >
-        <X size={11} />
-      </Button>
     </div>
   )
 }

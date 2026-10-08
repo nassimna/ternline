@@ -47,9 +47,6 @@ export function BrowserPane({
       />
       <div className="browser-status" aria-live="polite">
         <span>{messages.pane.status(state.loading)}</span>
-        <span title={messages.pane.profilePartitionLabel(state.profilePartition)}>
-          {state.profilePartition}
-        </span>
       </div>
     </section>
   )
