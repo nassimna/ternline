@@ -112,6 +112,12 @@ syntax, including quoted values. Explicit `--env` assignments override file valu
 assignment to the same key wins. These values are stored with the workspace and inherited by
 its terminals, including after restart. The environment file is read by the CLI; only its
 parsed values are sent to the service. Variables must have POSIX names and NUL-free values.
+Use `workspace create --name Production --working-directory "$PWD" --ssh-host prod-alias`
+for a saved SSH workspace. Optional `--ssh-user`, `--ssh-port`, and `--ssh-key` select the
+username, port, and private key path. Every ordinary terminal or split created in that
+workspace uses the connection, including after restart. Omit the key option for normal
+OpenSSH defaults. Do not combine SSH options with `--command`.
+
 Example: `workspace create --name Review --working-directory /home/user/project --env-file
 ./review.env --env MODE=review`. Put these options before the trailing `--command`.
 

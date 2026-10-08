@@ -231,7 +231,14 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
   const projection = useProjectionStore()
   const [createOpen, setCreateOpen] = useState(false)
   const [createMode, setCreateMode] = useState<'folder' | 'ssh'>('folder')
-  const [sshWorkspaces, setSshWorkspaces] = useState(readSshWorkspaces)
+  const [localSshWorkspaces, setSshWorkspaces] = useState(readSshWorkspaces)
+  const sshWorkspaces = useMemo(() => {
+    const saved: Record<string, SavedSshWorkspace> = { ...localSshWorkspaces }
+    for (const savedWorkspace of projection.snapshot?.workspaces ?? []) {
+      if (savedWorkspace.ssh) saved[savedWorkspace.id] = savedWorkspace.ssh
+    }
+    return saved
+  }, [localSshWorkspaces, projection.snapshot?.workspaces])
   const [editingSshWorkspaceId, setEditingSshWorkspaceId] = useState<string | null>(null)
   useEffect(() => {
     const syncSshWorkspaces = (): void => setSshWorkspaces(readSshWorkspaces())
@@ -549,6 +556,7 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
       const result = await window.desktopBridge.createWorkspace({
         name,
         workingDirectory: directory,
+        ssh: profile,
         initialTerminal: terminalLaunch(directory, profile)
       })
       projection.applyMutation(result)
@@ -578,8 +586,29 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
     }
   }
 
-  const updateSshWorkspace = (workspaceId: string, profile: SavedSshWorkspace): boolean => {
+  const updateSshWorkspace = async (
+    workspaceId: string,
+    profile: SavedSshWorkspace
+  ): Promise<boolean> => {
     try {
+      const savedProfile = projection.snapshot?.workspaces.find(
+        (item) => item.id === workspaceId
+      )?.ssh
+      if (
+        savedProfile &&
+        savedProfile.host === profile.host &&
+        savedProfile.user === profile.user &&
+        savedProfile.port === profile.port &&
+        savedProfile.identityFile === profile.identityFile
+      )
+        return true
+      if (
+        savedProfile &&
+        !(await runMutation(
+          window.desktopBridge.updateWorkspace({ workspaceId, ssh: { value: profile } })
+        ))
+      )
+        return false
       const next = { ...readSshWorkspaces(), [workspaceId]: profile }
       saveSshWorkspaces(next)
       setSshWorkspaces(next)
@@ -599,6 +628,14 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
       return
     }
     try {
+      const savedWorkspace = projection.snapshot?.workspaces.find((item) => item.id === workspaceId)
+      if (
+        savedWorkspace?.ssh &&
+        !(await runMutation(
+          window.desktopBridge.updateWorkspace({ workspaceId, ssh: { value: null } })
+        ))
+      )
+        return
       const next = { ...readSshWorkspaces() }
       delete next[workspaceId]
       saveSshWorkspaces(next)
@@ -4204,6 +4241,7 @@ function CreateWorkspaceDialog({
   const [sshHost, setSshHost] = useState('')
   const [sshUser, setSshUser] = useState('')
   const [sshPort, setSshPort] = useState('22')
+  const [sshIdentityFile, setSshIdentityFile] = useState('')
   const [sshError, setSshError] = useState<string | null>(null)
   const [choosingDirectory, setChoosingDirectory] = useState(false)
   const closedSshWorkspaces = Object.entries(savedSshWorkspaces).filter(
@@ -4239,7 +4277,7 @@ function CreateWorkspaceDialog({
     event.preventDefault()
     if (mode === 'ssh') {
       try {
-        const profile = parseSshWorkspace(sshHost, sshUser, Number(sshPort))
+        const profile = parseSshWorkspace(sshHost, sshUser, Number(sshPort), sshIdentityFile)
         const name = sshName.trim() || profile.host
         if (name.length > MAX_WORKSPACE_NAME_CHARS) {
           throw new Error('Workspace name is too long.')
@@ -4250,6 +4288,7 @@ function CreateWorkspaceDialog({
           setSshHost('')
           setSshUser('')
           setSshPort('22')
+          setSshIdentityFile('')
           onOpenChange(false)
         }
       } catch (error) {
@@ -4321,6 +4360,7 @@ function CreateWorkspaceDialog({
                   value={sshPort}
                 />
               </Label>
+              <SshIdentityFileField value={sshIdentityFile} onChange={setSshIdentityFile} />
               {sshError ? (
                 <Alert asChild variant="destructive">
                   <p role="alert">{sshError}</p>
@@ -4416,6 +4456,54 @@ function CreateWorkspaceDialog({
   )
 }
 
+function SshIdentityFileField({
+  value,
+  onChange
+}: {
+  value: string
+  onChange: (value: string) => void
+}): React.JSX.Element {
+  const [choosing, setChoosing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const chooseKey = async (): Promise<void> => {
+    if (!window.desktopBridge.pickSshIdentityFile || choosing) return
+    setChoosing(true)
+    setError(null)
+    try {
+      const selected = await window.desktopBridge.pickSshIdentityFile()
+      if (selected) onChange(selected)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not select an SSH key.')
+    } finally {
+      setChoosing(false)
+    }
+  }
+  return (
+    <>
+      <Label>
+        <span>SSH key (optional)</span>
+        <Input
+          autoComplete="off"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Use default SSH keys and config"
+          spellCheck={false}
+          value={value}
+        />
+      </Label>
+      <Button
+        disabled={choosing || !window.desktopBridge.pickSshIdentityFile}
+        onClick={() => void chooseKey()}
+        type="button"
+      >
+        <FolderOpen size={16} />
+        {choosing ? 'Selecting key…' : 'Select SSH key'}
+      </Button>
+      <p>Leave blank to use your SSH agent, ~/.ssh keys, and SSH config.</p>
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
+    </>
+  )
+}
+
 function EditSshWorkspaceDialog({
   onOpenChange,
   onSave,
@@ -4424,7 +4512,7 @@ function EditSshWorkspaceDialog({
   workspaceId
 }: {
   onOpenChange: (open: boolean) => void
-  onSave: (workspaceId: string, profile: SavedSshWorkspace) => boolean
+  onSave: (workspaceId: string, profile: SavedSshWorkspace) => Promise<boolean>
   open: boolean
   profile: SavedSshWorkspace | undefined
   workspaceId: string | null
@@ -4432,16 +4520,21 @@ function EditSshWorkspaceDialog({
   const [host, setHost] = useState(profile?.host ?? '')
   const [user, setUser] = useState(profile?.user ?? '')
   const [port, setPort] = useState(String(profile?.port ?? 22))
+  const [identityFile, setIdentityFile] = useState(profile?.identityFile ?? '')
   const [error, setError] = useState<string | null>(null)
-  const submit = (event: React.FormEvent): void => {
+  const [saving, setSaving] = useState(false)
+  const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
-    if (!workspaceId) return
+    if (!workspaceId || saving) return
+    setSaving(true)
     try {
-      const next = parseSshWorkspace(host, user, Number(port))
+      const next = parseSshWorkspace(host, user, Number(port), identityFile)
       setError(null)
-      if (onSave(workspaceId, next)) onOpenChange(false)
+      if (await onSave(workspaceId, next)) onOpenChange(false)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Invalid SSH connection')
+    } finally {
+      setSaving(false)
     }
   }
   return (
@@ -4454,7 +4547,7 @@ function EditSshWorkspaceDialog({
             command.
           </DialogDescription>
         </DialogHeader>
-        <form className="dialog-form" onSubmit={submit}>
+        <form className="dialog-form" onSubmit={(event) => void submit(event)}>
           <Label>
             <span>SSH host or alias</span>
             <Input
@@ -4487,6 +4580,7 @@ function EditSshWorkspaceDialog({
               value={port}
             />
           </Label>
+          <SshIdentityFileField value={identityFile} onChange={setIdentityFile} />
           {error ? (
             <Alert asChild variant="destructive">
               <p role="alert">{error}</p>
@@ -4496,7 +4590,7 @@ function EditSshWorkspaceDialog({
             <Button onClick={() => onOpenChange(false)} type="button">
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
+            <Button disabled={saving} type="submit" variant="primary">
               Save connection
             </Button>
           </DialogFooter>

@@ -260,6 +260,18 @@ describe('notification preload bridge', () => {
     ).rejects.toMatchObject({ code: 'revision_conflict', message: 'Use a fresh revision' })
   })
 
+  it('validates native SSH key selection and cancellation', async () => {
+    electron.invoke.mockResolvedValueOnce('/home/alex/.ssh/id_ed25519')
+    await expect(electron.exposed?.pickSshIdentityFile?.()).resolves.toBe(
+      '/home/alex/.ssh/id_ed25519'
+    )
+    expect(electron.invoke).toHaveBeenCalledWith('ssh:pickIdentityFile')
+    electron.invoke.mockResolvedValueOnce(null)
+    await expect(electron.exposed?.pickSshIdentityFile?.()).resolves.toBeNull()
+    electron.invoke.mockResolvedValueOnce('unsafe\npath')
+    await expect(electron.exposed?.pickSshIdentityFile?.()).rejects.toThrow()
+  })
+
   it('validates the native workspace directory result', async () => {
     electron.invoke.mockResolvedValue('/home/alex/project')
     await expect(electron.exposed?.pickWorkspaceDirectory?.()).resolves.toBe('/home/alex/project')

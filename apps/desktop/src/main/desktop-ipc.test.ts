@@ -1004,6 +1004,32 @@ describe('desktop IPC boundary', () => {
     expect(listNode).toHaveBeenCalledTimes(1)
   })
 
+  it('selects an SSH key through the trusted native picker and handles cancellation', async () => {
+    electron.showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: ['/home/alex/.ssh/id_ed25519']
+    })
+    registerDesktopHandlers(window, {} as ControlClient, browserViews)
+    const event = { sender: webContents, senderFrame: mainFrame }
+    await expect(electron.handlers.get(DESKTOP_IPC.sshPickIdentityFile)?.(event)).resolves.toBe(
+      '/home/alex/.ssh/id_ed25519'
+    )
+    expect(electron.showOpenDialog).toHaveBeenCalledWith(
+      window,
+      expect.objectContaining({ properties: ['openFile', 'showHiddenFiles'] })
+    )
+    electron.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    await expect(
+      electron.handlers.get(DESKTOP_IPC.sshPickIdentityFile)?.(event)
+    ).resolves.toBeNull()
+    expect(() =>
+      electron.handlers.get(DESKTOP_IPC.sshPickIdentityFile)?.({
+        sender: webContents,
+        senderFrame: {}
+      })
+    ).toThrow('Unauthorized desktop IPC sender')
+  })
+
   it('returns one directory selected through the trusted native picker', async () => {
     electron.showOpenDialog.mockResolvedValueOnce({
       canceled: false,

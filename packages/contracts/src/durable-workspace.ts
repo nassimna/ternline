@@ -1,6 +1,10 @@
 import { z } from 'zod'
 
-import { absolutePathSchema, workspaceEnvironmentSchema } from '@agent-workspace/protocol-client'
+import {
+  absolutePathSchema,
+  workspaceEnvironmentSchema,
+  sshWorkspaceSchema
+} from '@agent-workspace/protocol-client'
 
 // The Rust SQLite snapshot stores keyed pane and tab records. This is distinct
 // from the array-based application snapshot sent to renderers.
@@ -60,6 +64,7 @@ const workspace = z.strictObject({
   color: normalizedText(64).nullable(),
   workingDirectory: absolutePathSchema,
   environment: workspaceEnvironmentSchema.optional(),
+  ssh: sshWorkspaceSchema.optional(),
   layout: z.unknown(),
   selectedPaneId: id,
   panes: z.record(id, pane),
