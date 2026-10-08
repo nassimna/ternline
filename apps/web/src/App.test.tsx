@@ -201,17 +201,35 @@ describe('App', () => {
     render(<App />)
     await screen.findByText('Browser content ready')
 
-    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Add tab' })[0]!, {
-      button: 0,
-      ctrlKey: false
-    })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Terminal' }))
     const launch = {
       cwd: workspace.workingDirectory,
       rows: 30,
       cols: 120,
       command: ['ssh', '-p', '2222', 'deploy@prod-alias']
     }
+    const sshCard = screen
+      .getByLabelText('SSH connection deploy@prod-alias:2222')
+      .closest('.workspace-card')!
+    expect(sshCard).toHaveTextContent('deploy@prod-alias:2222')
+    expect(sshCard).toHaveTextContent('SSH · prod-alias:2222')
+    expect(
+      within(sshCard as HTMLElement).queryByLabelText('Working directory /tmp/fixture-workspace')
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: `New SSH shell in ${workspace.name}` }))
+    await waitFor(() =>
+      expect(bridge.openTerminalTab).toHaveBeenCalledWith({
+        workspaceId: workspace.id,
+        paneId: workspace.selectedPaneId,
+        launch
+      })
+    )
+    vi.mocked(bridge.openTerminalTab).mockClear()
+
+    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Add tab' })[0]!, {
+      button: 0,
+      ctrlKey: false
+    })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Terminal' }))
     await waitFor(() =>
       expect(bridge.openTerminalTab).toHaveBeenCalledWith({
         workspaceId: workspace.id,

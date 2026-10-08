@@ -2524,6 +2524,11 @@ function SortableWorkspace({
               data-attention={attention?.state ?? 'none'}
               data-selected={selected ? 'true' : 'false'}
               data-workspace-id={workspace.id}
+              style={
+                {
+                  '--workspace-selection-color': safeWorkspaceColor(workspace.color)
+                } as React.CSSProperties
+              }
               {...pointerDragListeners(listeners)}
               onClick={(event) => {
                 const target = event.target
@@ -2539,7 +2544,7 @@ function SortableWorkspace({
               }}
             >
               <Button
-                variant="ghost"
+                variant="workspace"
                 aria-current={focused ? 'page' : undefined}
                 aria-label={messages.workspaceShell.sidebar.cardAccessibleName(
                   workspace.name,
@@ -2611,15 +2616,7 @@ function SortableWorkspace({
                 type="button"
               >
                 <span className="workspace-name-line">
-                  <span
-                    className="workspace-indicator"
-                    style={
-                      attention?.state === 'waiting' || attention?.state === 'urgent'
-                        ? undefined
-                        : { background: safeWorkspaceColor(workspace.color) }
-                    }
-                    aria-hidden="true"
-                  />
+                  <span className="workspace-indicator" aria-hidden="true" />
                   <strong>{workspace.name}</strong>
                   <WorkspaceActivityBadge activity={activity} workspaceName={workspace.name} />
                   {attention ? (
@@ -2643,91 +2640,98 @@ function SortableWorkspace({
               </Button>
               <div className="workspace-copy workspace-details">
                 <small
-                  aria-label={messages.workspaceRuntimeMetadata.workingDirectory(
-                    workspace.workingDirectory
-                  )}
+                  aria-label={
+                    sshProfile
+                      ? `SSH connection ${sshProfile.user ? `${sshProfile.user}@` : ''}${sshProfile.host}${sshProfile.port === 22 ? '' : `:${sshProfile.port}`}`
+                      : messages.workspaceRuntimeMetadata.workingDirectory(
+                          workspace.workingDirectory
+                        )
+                  }
                   className="workspace-directory"
-                  title={workspace.workingDirectory}
+                  title={sshProfile ? sshProfile.host : workspace.workingDirectory}
                 >
-                  <FolderOpen aria-hidden="true" size={11} />
+                  {sshProfile ? null : <FolderOpen aria-hidden="true" size={11} />}
                   <span className="workspace-meta-value">
-                    {workspaceDirectoryDisplayPath(workspace.workingDirectory)}
+                    {sshProfile
+                      ? `${sshProfile.user ? `${sshProfile.user}@` : ''}${sshProfile.host}${sshProfile.port === 22 ? '' : `:${sshProfile.port}`}`
+                      : workspaceDirectoryDisplayPath(workspace.workingDirectory)}
                   </span>
-                  {metadata?.gitBranch ? (
+                  {!sshProfile && metadata?.gitBranch ? (
                     <span className="workspace-branch" title={metadata.gitBranch}>
                       <GitBranch aria-hidden="true" size={11} />
                       <span>{metadata.gitBranch}</span>
                     </span>
                   ) : null}
                 </small>
-                <small
-                  aria-label={messages.workspaceRuntimeMetadata.accessibilityLabel(
-                    metadata?.gitBranch ?? messages.workspaceRuntimeMetadata.unavailable,
-                    workspaceGitStatusLabel(metadata?.gitStatus),
-                    processTitle,
-                    workspaceListeningPortsAccessibilityLabel(listeningPorts)
-                  )}
-                  className="workspace-runtime-metadata"
-                  tabIndex={0}
-                >
-                  {workspaceGitStatusDirty(metadata?.gitStatus) ? (
-                    <span
-                      className="workspace-git-status"
-                      title={workspaceGitStatusLabel(metadata?.gitStatus)}
-                    >
-                      {workspaceGitStatusLabel(metadata?.gitStatus)}
-                    </span>
-                  ) : null}
-                  <span className="workspace-chips">
-                    <Badge
-                      size="small"
-                      variant="outline"
-                      className="workspace-chip"
-                      title={processTitle}
-                    >
-                      <span className="workspace-runtime-metadata-label">
-                        {messages.workspaceRuntimeMetadata.process}:{' '}
-                      </span>
-                      {processTitle}
-                    </Badge>
-                    <span
-                      className="workspace-runtime-metadata-label"
-                      title={workspaceListeningPortsTitle(listeningPorts)}
-                    >
-                      {messages.workspaceRuntimeMetadata.ports}:{' '}
-                      {workspaceListeningPortsLabel(listeningPorts)}
-                    </span>
-                    {listeningPorts.map((port) => (
-                      <Badge
-                        size="small"
-                        variant="outline"
-                        aria-hidden="true"
-                        className="workspace-chip workspace-chip-port"
-                        key={port}
+                {sshProfile ? null : (
+                  <small
+                    aria-label={messages.workspaceRuntimeMetadata.accessibilityLabel(
+                      metadata?.gitBranch ?? messages.workspaceRuntimeMetadata.unavailable,
+                      workspaceGitStatusLabel(metadata?.gitStatus),
+                      processTitle,
+                      workspaceListeningPortsAccessibilityLabel(listeningPorts)
+                    )}
+                    className="workspace-runtime-metadata"
+                    tabIndex={0}
+                  >
+                    {workspaceGitStatusDirty(metadata?.gitStatus) ? (
+                      <span
+                        className="workspace-git-status"
+                        title={workspaceGitStatusLabel(metadata?.gitStatus)}
                       >
-                        :{port}
-                      </Badge>
-                    ))}
-                    {workspaceBrowserHosts(workspace).map((host) => (
+                        {workspaceGitStatusLabel(metadata?.gitStatus)}
+                      </span>
+                    ) : null}
+                    <span className="workspace-chips">
                       <Badge
                         size="small"
                         variant="outline"
                         className="workspace-chip"
-                        key={host}
-                        title={host}
+                        title={processTitle}
                       >
-                        <Globe2 aria-hidden="true" size={10} />
-                        {host}
+                        <span className="workspace-runtime-metadata-label">
+                          {messages.workspaceRuntimeMetadata.process}:{' '}
+                        </span>
+                        {processTitle}
                       </Badge>
-                    ))}
-                  </span>
-                </small>
+                      <span
+                        className="workspace-runtime-metadata-label"
+                        title={workspaceListeningPortsTitle(listeningPorts)}
+                      >
+                        {messages.workspaceRuntimeMetadata.ports}:{' '}
+                        {workspaceListeningPortsLabel(listeningPorts)}
+                      </span>
+                      {listeningPorts.map((port) => (
+                        <Badge
+                          size="small"
+                          variant="outline"
+                          aria-hidden="true"
+                          className="workspace-chip workspace-chip-port"
+                          key={port}
+                        >
+                          :{port}
+                        </Badge>
+                      ))}
+                      {workspaceBrowserHosts(workspace).map((host) => (
+                        <Badge
+                          size="small"
+                          variant="outline"
+                          className="workspace-chip"
+                          key={host}
+                          title={host}
+                        >
+                          <Globe2 aria-hidden="true" size={10} />
+                          {host}
+                        </Badge>
+                      ))}
+                    </span>
+                  </small>
+                )}
                 <WorkspaceCardSlots slots={cardSlots} />
                 {sshProfile ? (
                   <div className="workspace-ssh-target">
                     <small title={sshProfile.host}>
-                      SSH · {sshProfile.user ? `${sshProfile.user}@` : ''}
-                      {sshProfile.host}
+                      SSH · {sshProfile.host}
                       {sshProfile.port === 22 ? '' : `:${sshProfile.port}`}
                     </small>
                     <Button
@@ -2738,7 +2742,7 @@ function SortableWorkspace({
                       title="Open a fresh SSH shell; existing remote processes are not resumed"
                       type="button"
                     >
-                      New shell
+                      + Shell
                     </Button>
                   </div>
                 ) : null}

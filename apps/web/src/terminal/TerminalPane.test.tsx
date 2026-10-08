@@ -25,7 +25,7 @@ import { messages } from '../messages'
 import { TerminalPane } from './TerminalPane'
 
 const terminalFontStack = (fontFamily: string): string =>
-  `${fontFamily}, "JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "Symbols Nerd Font Mono", "Symbols Nerd Font", "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji"`
+  `${fontFamily}, "Ternline Symbols", "JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "Symbols Nerd Font Mono", "Symbols Nerd Font", "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji"`
 
 const terminalSpies = vi.hoisted(() => ({
   constructorOptions: undefined as Record<string, unknown> | undefined,
