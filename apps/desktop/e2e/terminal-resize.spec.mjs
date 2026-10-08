@@ -40,6 +40,78 @@ test.beforeAll(async () => {
   if (evidenceDirectory) await mkdir(evidenceDirectory, { recursive: true })
 })
 
+test('keeps exited output readable through resizes and restarts a working shell', async () => {
+  test.setTimeout(90_000)
+  execFileSync('pnpm', ['build:node'], { cwd: repositoryDirectory, stdio: 'pipe' })
+  const profileDirectory = await mkdtemp(join(tmpdir(), 'ternline-exit-resize-e2e-'))
+  await writeFile(join(profileDirectory, '.zshrc'), '# Isolated exit and resize test shell.\n')
+  let application
+
+  try {
+    const environment = { ...process.env, ZDOTDIR: profileDirectory }
+    delete environment.ELECTRON_RUN_AS_NODE
+    application = await electron.launch({
+      args: [mainEntry, `--user-data-dir=${profileDirectory}`, '--mute-audio', '--automation'],
+      cwd: desktopDirectory,
+      env: environment
+    })
+    const page = await application.firstWindow()
+    const terminal = page.locator('.terminal-pane')
+    const output = page.locator('.xterm-rows')
+    const input = page.locator('.xterm-helper-textarea')
+    const send = async (command) => {
+      await input.focus()
+      await page.keyboard.type(command)
+      await page.keyboard.press('Enter')
+    }
+    await expect(terminal.locator('.terminal-statusbar')).toContainText('Connected')
+    const previousTerminalId = await terminal.getAttribute('data-terminal-id')
+    await send("printf 'EXIT_RESIZE_OUTPUT\\n'; exit 0")
+    await expect(terminal.getByRole('button', { name: 'Restart terminal' })).toBeVisible()
+    await page.evaluate(async (terminalId) => {
+      await globalThis.desktopBridge.resizeTerminal(terminalId, 30, 80)
+    }, previousTerminalId)
+
+    for (const theme of ['light', 'dark']) {
+      await page.getByRole('button', { name: 'Open settings', exact: true }).click()
+      const settings = page.getByRole('dialog', { name: 'Settings' })
+      await settings
+        .getByRole('button', { name: theme === 'light' ? 'Light' : 'Dark', exact: true })
+        .click()
+      await page.keyboard.press('Escape')
+      for (const width of [700, 1200]) {
+        await application.evaluate(({ BrowserWindow }, width) => {
+          BrowserWindow.getAllWindows()[0]?.setContentSize(width, 800)
+        }, width)
+        await page.setViewportSize({ width, height: 800 })
+        await page.waitForTimeout(150)
+        await expect(terminal.getByRole('alert')).toHaveCount(0)
+        await expect(terminal.locator('.terminal-exit')).toContainText('Process exited with code 0')
+        await expect(terminal.locator('.terminal-statusbar')).toContainText('Process exited')
+        await expect(output).toContainText('EXIT_RESIZE_OUTPUT')
+        if (evidenceDirectory) {
+          await page.screenshot({
+            path: join(evidenceDirectory, `terminal-exit-${theme}-${width}.png`)
+          })
+        }
+      }
+    }
+
+    await terminal.getByRole('button', { name: 'Restart terminal' }).click()
+    await expect(terminal).not.toHaveAttribute('data-terminal-id', previousTerminalId)
+    await expect(terminal.locator('.terminal-statusbar')).toContainText('Connected')
+    await send("printf 'RESTART_AFTER_EXIT_OK\\n'")
+    await expect(output).toContainText('RESTART_AFTER_EXIT_OK')
+    await expect(terminal.getByRole('alert')).toHaveCount(0)
+  } finally {
+    try {
+      await closeElectronApplication(application, { gracefulTimeoutMs: 10_000 })
+    } finally {
+      await rm(profileDirectory, { recursive: true, force: true, maxRetries: 3 })
+    }
+  }
+})
+
 test('retains output and synchronizes the PTY through narrow and wide resizes', async () => {
   test.setTimeout(90_000)
   const profileDirectory = await mkdtemp(join(tmpdir(), 'agent-workspace-resize-e2e-'))

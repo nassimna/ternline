@@ -43,6 +43,23 @@ describe('notification preload bridge', () => {
     electron.invoke.mockReset()
   })
 
+  it('treats a resize racing terminal exit as complete while preserving other failures', async () => {
+    const terminalId = '10000000-0000-4000-8000-000000000001'
+    electron.invoke.mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'terminal:resize': Error: [agent-workspace-protocol-error:terminal_exited] Terminal has exited"
+      )
+    )
+    await expect(electron.exposed?.resizeTerminal(terminalId, 30, 80)).resolves.toBeUndefined()
+    expect(electron.invoke).toHaveBeenCalledWith(DESKTOP_IPC.terminalResize, terminalId, 30, 80)
+
+    const failure = new Error(
+      '[agent-workspace-protocol-error:terminal_not_found] Terminal does not exist'
+    )
+    electron.invoke.mockRejectedValueOnce(failure)
+    await expect(electron.exposed?.resizeTerminal(terminalId, 30, 80)).rejects.toBe(failure)
+  })
+
   it.runIf(process.platform === 'darwin')(
     'exposes fixed CLI actions and validates installation state',
     async () => {

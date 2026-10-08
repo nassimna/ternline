@@ -35,4 +35,8 @@
     color: inherit;
     font: inherit;
   }
+
+  :is(button, [role='button']):not(:disabled):not([aria-disabled='true']) {
+    cursor: pointer;
+  }
 }

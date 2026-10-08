@@ -293,6 +293,7 @@ export function TerminalPane({
     let restoring: Promise<void> | undefined
     let serviceRows = terminal.rows
     let serviceCols = terminal.cols
+    let terminalExited = false
     let resizeQueue: Promise<void> = Promise.resolve()
     let inputQueue: Promise<void> = Promise.resolve()
 
@@ -360,13 +361,13 @@ export function TerminalPane({
       fitAddon.fit()
       restoreScrollAnchor(terminal, scrollAnchor)
       const resize = resizeQueue.then(async () => {
-        if (!isCurrent()) return false
+        if (!isCurrent() || terminalExited) return false
         const rows = terminal.rows
         const cols = terminal.cols
         if (rows === serviceRows && cols === serviceCols) return true
         try {
           await window.desktopBridge.resizeTerminal(terminalId, rows, cols)
-          if (!isCurrent()) return false
+          if (!isCurrent() || terminalExited) return false
           serviceRows = rows
           serviceCols = cols
           if (checkpointAfterResize) scheduler.afterResize()
@@ -402,6 +403,12 @@ export function TerminalPane({
         )
         serviceRows = snapshot.terminal.rows
         serviceCols = snapshot.terminal.cols
+        terminalExited ||= snapshot.terminal.exited
+        if (snapshot.terminal.exited) {
+          setExit({ code: snapshot.terminal.exitCode ?? 1, signal: null })
+        } else if (!terminalExited) {
+          setExit(null)
+        }
         if (snapshot.checkpoint) {
           terminal.resize(snapshot.checkpoint.cols, snapshot.checkpoint.rows)
         }
@@ -416,10 +423,9 @@ export function TerminalPane({
         // Establish a recovery boundary immediately. This also converts a deliberately
         // reset, incomplete projection into a safe checkpoint at the latest sequence.
         void serializeAttachmentTransition(terminalId, captureCheckpoint).catch(() => undefined)
-        setExit(
-          snapshot.terminal.exited ? { code: snapshot.terminal.exitCode ?? 1, signal: null } : null
-        )
-        if (sizeSynced) {
+        if (terminalExited) {
+          setStatus(messages.terminalPane.status.processExited)
+        } else if (sizeSynced) {
           setStatus(
             snapshot.reconstructionComplete
               ? messages.terminalPane.status.connected
@@ -459,6 +465,7 @@ export function TerminalPane({
       } else if (event.event === 'terminal.checkpointRequested') {
         scheduler.request()
       } else if (event.event === 'terminal.exited') {
+        terminalExited = true
         setExit({ code: event.data.exitCode, signal: event.data.signal })
         setStatus(messages.terminalPane.status.processExited)
       }
