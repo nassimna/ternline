@@ -4,6 +4,7 @@ import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { describe, expect, it } from 'vitest'
 
 import { createWorkspace } from './workspace-mutations'
+import { projectApplicationSnapshot } from './application-projection'
 import { saveLayout } from './layout-mutations'
 
 import { TerminalService, type PtyProcess } from '../terminal/terminal-service'
@@ -114,6 +115,64 @@ function snapshot() {
 }
 
 describe('WorkspaceTerminalRuntime', () => {
+  it('persists SSH profiles and restores every terminal on the SSH machine', async () => {
+    const fixture = snapshot()
+    const browser = fixture.state.workspaces[0]!.tabs[fixture.browserId]!.content
+    if (browser.kind === 'browser') browser.metadata.browserSessionId = randomUUID()
+    const ssh = {
+      host: 'prod-alias',
+      user: 'deploy',
+      port: 2222,
+      identityFile: '/home/alex/.ssh/deploy key'
+    }
+    const ids = { workspaceId: randomUUID(), paneId: randomUUID(), tabId: randomUUID() }
+    const state = createWorkspace(
+      fixture.state,
+      {
+        name: 'SSH',
+        workingDirectory: '/tmp',
+        ssh,
+        initialTerminal: { cwd: '/tmp', rows: 24, cols: 80 }
+      },
+      ids,
+      2
+    )
+    const restored = durableApplicationStateSchema.parse(JSON.parse(JSON.stringify(state)))
+    expect(restored.workspaces.find((item) => item.id === ids.workspaceId)?.ssh).toEqual(ssh)
+    expect(
+      projectApplicationSnapshot(restored).workspaces.find((item) => item.id === ids.workspaceId)
+        ?.ssh
+    ).toEqual(ssh)
+    const launches: Array<{ command: string; args: string[] }> = []
+    const service = new TerminalService({
+      spawn: (command, args) => {
+        launches.push({ command, args })
+        return Promise.resolve(new FakePty())
+      }
+    })
+    try {
+      const runtime = new WorkspaceTerminalRuntime(service)
+      await runtime.restore(restored)
+      expect(launches.filter((item) => item.command === 'ssh')).toEqual([
+        {
+          command: 'ssh',
+          args: ['-i', '/home/alex/.ssh/deploy key', '-p', '2222', 'deploy@prod-alias']
+        }
+      ])
+      const prepared = await runtime.recentlyClosedAdapter().prepare({
+        workspaceId: ids.workspaceId,
+        paneId: ids.paneId,
+        tabId: randomUUID(),
+        launch: { cwd: '/tmp', rows: 24, cols: 80 },
+        ssh: { host: 'prod-alias', user: '', port: 22 }
+      })
+      expect(launches.at(-1)).toEqual({ command: 'ssh', args: ['prod-alias'] })
+      prepared.close()
+    } finally {
+      service.dispose()
+    }
+  })
+
   it('persists workspace environment across durable snapshots and saved layouts', () => {
     const fixture = snapshot()
     const ids = { workspaceId: randomUUID(), paneId: randomUUID(), tabId: randomUUID() }

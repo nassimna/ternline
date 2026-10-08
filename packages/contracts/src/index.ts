@@ -687,3 +687,6 @@ export const diagnosticExportResultSchema = z.strictObject({
 
 export type TerminalInput = z.infer<typeof terminalInputSchema>
 export type TerminalResize = z.infer<typeof terminalResizeSchema>
+
+export { sshWorkspaceSchema, sshCommand } from '@agent-workspace/protocol-client'
+export type { SshWorkspace } from '@agent-workspace/protocol-client'

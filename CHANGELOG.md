@@ -7,6 +7,18 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.9] - 2026-10-08
+
+### Added
+
+- Select an optional SSH identity file in the create and edit connection dialogs; leaving it blank uses the normal SSH configuration and agent.
+- Create saved SSH workspaces from the CLI with `--ssh-host`, optional user, port, and key flags. New terminals, splits, and restored sessions use the saved connection.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.8] - 2026-10-08
 
 ### Changed

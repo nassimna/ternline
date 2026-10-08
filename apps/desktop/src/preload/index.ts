@@ -638,6 +638,20 @@ const desktopBridge = Object.freeze({
     }
     return result
   },
+  pickSshIdentityFile: async () => {
+    const result: unknown = await ipcRenderer.invoke(DESKTOP_IPC.sshPickIdentityFile)
+    if (result === null) return null
+    if (
+      typeof result !== 'string' ||
+      result.length < 1 ||
+      result.length > 4096 ||
+      result !== result.trim() ||
+      /[\p{Cc}\p{Cf}]/u.test(result)
+    ) {
+      throw new Error('Invalid SSH key selection')
+    }
+    return result
+  },
   listWorkspacePathOpeners: async () =>
     desktopWorkspacePathOpenersSchema.parse(
       await ipcRenderer.invoke(DESKTOP_IPC.workspacePathOpeners)

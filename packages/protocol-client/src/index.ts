@@ -1,3 +1,9 @@
+import type { ApplicationSnapshot as GeneratedApplicationSnapshot } from './generated/ApplicationSnapshot'
+import type { WorkspaceCreateParams as GeneratedWorkspaceCreateParams } from './generated/WorkspaceCreateParams'
+import type { WorkspaceSnapshot as GeneratedWorkspaceSnapshot } from './generated/WorkspaceSnapshot'
+import type { SshWorkspace } from './ssh-workspace'
+import type { WorkspaceUpdateParams as GeneratedWorkspaceUpdateParams } from './generated/WorkspaceUpdateParams'
+
 export type { AuthEnvelope } from './generated/AuthEnvelope'
 export type { AuthPayload } from './generated/AuthPayload'
 export type { ActionAuthorizationClass } from './generated/ActionAuthorizationClass'
@@ -176,7 +182,9 @@ export type { WindowStateUpdateParams } from './generated/WindowStateUpdateParam
 export type { DiagnosticBundleEntry } from './generated/DiagnosticBundleEntry'
 export type { DiagnosticBundlePreview } from './generated/DiagnosticBundlePreview'
 export type { RecoveryExportResult } from './generated/RecoveryExportResult'
-export type { ApplicationSnapshot } from './generated/ApplicationSnapshot'
+export type ApplicationSnapshot = Omit<GeneratedApplicationSnapshot, 'workspaces'> & {
+  workspaces: WorkspaceSnapshot[]
+}
 export type { AttentionAcknowledgementMode } from './generated/AttentionAcknowledgementMode'
 export type { AttentionAcknowledgementParams } from './generated/AttentionAcknowledgementParams'
 export type { AttentionAcknowledgementResult } from './generated/AttentionAcknowledgementResult'
@@ -308,15 +316,19 @@ export type { TerminalLaunchRequest } from './generated/TerminalLaunchRequest'
 export type { TerminalRestartParams } from './generated/TerminalRestartParams'
 export type { WorkspaceChangedEvent } from './generated/WorkspaceChangedEvent'
 export type { WorkspaceCloseParams } from './generated/WorkspaceCloseParams'
-export type { WorkspaceCreateParams } from './generated/WorkspaceCreateParams'
+export type WorkspaceCreateParams = GeneratedWorkspaceCreateParams & {
+  ssh?: SshWorkspace | undefined
+}
 export type { WorkspaceListResult } from './generated/WorkspaceListResult'
 export type { WorkspaceMoveParams } from './generated/WorkspaceMoveParams'
 export type { WorkspaceSelectParams } from './generated/WorkspaceSelectParams'
 export type { WorkspaceSelectionChangedEvent } from './generated/WorkspaceSelectionChangedEvent'
-export type { WorkspaceSnapshot } from './generated/WorkspaceSnapshot'
+export type WorkspaceSnapshot = GeneratedWorkspaceSnapshot & { ssh?: SshWorkspace | undefined }
 export type { WorkspaceSnapshotParams } from './generated/WorkspaceSnapshotParams'
 export type { WorkspaceSnapshotResult } from './generated/WorkspaceSnapshotResult'
-export type { WorkspaceUpdateParams } from './generated/WorkspaceUpdateParams'
+export type WorkspaceUpdateParams = GeneratedWorkspaceUpdateParams & {
+  ssh?: { value: SshWorkspace | null } | undefined
+}
 export type { WorkspaceGroupSnapshot } from './generated/WorkspaceGroupSnapshot'
 export type { LegacyLimitDimension } from './generated/LegacyLimitDimension'
 export type { LegacyOverLimitSnapshot } from './generated/LegacyOverLimitSnapshot'
@@ -944,3 +956,6 @@ export {
   windowStateGetForResultSchema,
   windowStateUpdateForParamsSchema
 } from './schemas'
+
+export { sshWorkspaceSchema, sshCommand } from './ssh-workspace'
+export type { SshWorkspace } from './ssh-workspace'

@@ -968,6 +968,7 @@ export interface DesktopBridge {
   getWorkspaceRuntimeMetadata?(params: WorkspaceSnapshotParams): Promise<WorkspaceRuntimeMetadata>
   /** Optional only so older renderer test doubles remain source-compatible. The preload always provides it. */
   pickWorkspaceDirectory?(): Promise<string | null>
+  pickSshIdentityFile?(): Promise<string | null>
   /** Optional only so older renderer test doubles remain source-compatible. The preload always provides it. */
   listWorkspacePathOpeners?(): Promise<readonly DesktopWorkspacePathOpener[]>
   /** Main resolves the trusted directory from workspaceId; renderer paths are never accepted. */
@@ -1153,6 +1154,7 @@ export const DESKTOP_IPC = {
   attentionAcknowledge: 'attention:acknowledge',
   workspaceRuntimeMetadata: 'workspace:runtimeMetadata',
   workspacePickDirectory: 'workspace:pickDirectory',
+  sshPickIdentityFile: 'ssh:pickIdentityFile',
   workspacePathOpeners: 'workspace:pathOpeners',
   workspacePathOpen: 'workspace:pathOpen',
   workspaceCreate: 'workspace:create',

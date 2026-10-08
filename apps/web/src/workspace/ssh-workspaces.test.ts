@@ -22,6 +22,20 @@ describe('saved SSH workspaces', () => {
     ])
   })
 
+  it('passes the selected key as one argument and preserves it in saved connections', () => {
+    const profile = parseSshWorkspace('prod', 'deploy', 22, '/home/alex/.ssh/my key')
+    expect(sshCommand(profile)).toEqual(['ssh', '-i', '/home/alex/.ssh/my key', 'deploy@prod'])
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value)
+    })
+    saveSshWorkspaces({ [id]: profile })
+    expect(readSshWorkspaces()).toEqual({ [id]: profile })
+    expect(parseSshWorkspace('prod', '', 22, '   ')).toEqual({ host: 'prod', user: '', port: 22 })
+    expect(() => parseSshWorkspace('prod', '', 22, 'bad\npath')).toThrow()
+  })
+
   it('rejects option and whitespace injection before launching a terminal', () => {
     expect(() => parseSshWorkspace('-oProxyCommand=evil', '', 22)).toThrow()
     expect(() => parseSshWorkspace('host; rm -rf ~', '', 22)).toThrow()

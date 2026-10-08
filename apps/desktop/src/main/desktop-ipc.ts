@@ -2,6 +2,7 @@ import { constants } from 'node:fs'
 import { access, lstat, open, rename, stat, unlink } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 
 import { dialog, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } from 'electron'
 import type { UpdateConfiguration } from '@agent-workspace/protocol-client'
@@ -620,6 +621,7 @@ export const DESKTOP_INVOKE_CHANNELS = [
   DESKTOP_IPC.attentionAcknowledge,
   DESKTOP_IPC.workspaceRuntimeMetadata,
   DESKTOP_IPC.workspacePickDirectory,
+  DESKTOP_IPC.sshPickIdentityFile,
   DESKTOP_IPC.workspacePathOpeners,
   DESKTOP_IPC.workspacePathOpen,
   DESKTOP_IPC.workspaceCreate,
@@ -973,6 +975,7 @@ export function registerDesktopHandlers(
         entry.binding.isNodeExclusive &&
         dependencies.isNodeCoreEnabled?.() &&
         (channel === DESKTOP_IPC.workspacePickDirectory ||
+          channel === DESKTOP_IPC.sshPickIdentityFile ||
           channel === DESKTOP_IPC.workspacePathOpeners ||
           channel === DESKTOP_IPC.workspacePathOpen)
       ) {
@@ -1062,13 +1065,20 @@ async function invokeNodeWorkspacePathChannel(
     }
   }
   current()
-  if (channel === DESKTOP_IPC.workspacePickDirectory) {
+  if (
+    channel === DESKTOP_IPC.workspacePickDirectory ||
+    channel === DESKTOP_IPC.sshPickIdentityFile
+  ) {
+    const selectingKey = channel === DESKTOP_IPC.sshPickIdentityFile
     const chosen = await (dependencies.showOpenDialog ?? dialog.showOpenDialog.bind(dialog))(
       entry.window,
       {
-        title: 'Open a folder as a workspace',
-        buttonLabel: 'Open workspace',
-        properties: ['openDirectory', 'createDirectory']
+        title: selectingKey ? 'Select an SSH private key' : 'Open a folder as a workspace',
+        ...(selectingKey ? { defaultPath: join(homedir(), '.ssh') } : {}),
+        buttonLabel: selectingKey ? 'Select key' : 'Open workspace',
+        properties: selectingKey
+          ? ['openFile', 'showHiddenFiles']
+          : ['openDirectory', 'createDirectory']
       }
     )
     current()
@@ -1908,6 +1918,17 @@ function collectDesktopHandlers(
       title: 'Open a folder as a workspace',
       buttonLabel: 'Open workspace',
       properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length !== 1) return null
+    return result.filePaths[0] ?? null
+  })
+  host.handle(DESKTOP_IPC.sshPickIdentityFile, async (event) => {
+    validate(event)
+    const result = await showOpenDialog(window, {
+      title: 'Select an SSH private key',
+      defaultPath: join(homedir(), '.ssh'),
+      buttonLabel: 'Select key',
+      properties: ['openFile', 'showHiddenFiles']
     })
     if (result.canceled || result.filePaths.length !== 1) return null
     return result.filePaths[0] ?? null

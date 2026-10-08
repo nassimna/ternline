@@ -169,6 +169,7 @@ export function projectApplicationSnapshot(
       color: workspace.color,
       workingDirectory: workspace.workingDirectory,
       ...(workspace.environment === undefined ? {} : { environment: workspace.environment }),
+      ...(workspace.ssh === undefined ? {} : { ssh: workspace.ssh }),
       layout,
       selectedPaneId: workspace.selectedPaneId,
       panes,

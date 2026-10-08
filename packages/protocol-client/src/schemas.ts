@@ -1,3 +1,4 @@
+import { sshWorkspaceSchema } from './ssh-workspace'
 import { z } from 'zod'
 import type { AgentAttentionTarget } from './generated/AgentAttentionTarget'
 import type { AgentHibernationPreflightResult } from './generated/AgentHibernationPreflightResult'
@@ -1189,6 +1190,7 @@ export const workspaceSnapshotSchema = z
     color: normalizedString(64).nullable(),
     workingDirectory: absolutePathSchema,
     environment: workspaceEnvironmentSchema.optional(),
+    ssh: sshWorkspaceSchema.optional(),
     layout: paneTreeNodeSchema,
     selectedPaneId: uuidSchema,
     panes: z.array(paneSnapshotSchema).min(1),
@@ -1335,6 +1337,7 @@ export const workspaceCreateParamsSchema = z.strictObject({
   color: normalizedString(64).optional(),
   workingDirectory: absolutePathSchema,
   environment: workspaceEnvironmentSchema.optional(),
+  ssh: sshWorkspaceSchema.optional(),
   initialTerminal: terminalLaunchRequestSchema
 })
 
@@ -1714,7 +1717,8 @@ export const workspaceUpdateParamsSchema = z.strictObject({
   name: normalizedString(128).optional(),
   description: nullableDescriptionUpdateSchema.optional(),
   color: nullableColorUpdateSchema.optional(),
-  workingDirectory: absolutePathSchema.optional()
+  workingDirectory: absolutePathSchema.optional(),
+  ssh: z.strictObject({ value: sshWorkspaceSchema.nullable() }).optional()
 })
 
 export const tabUpdateParamsSchema = z.strictObject({

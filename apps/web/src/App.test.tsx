@@ -195,90 +195,104 @@ describe('App', () => {
     )
   })
 
-  it('uses the saved SSH connection for new terminal tabs, shortcuts and splits', async () => {
-    const workspace = projectionFixture.workspaces[0]!
-    localStorage.setItem(
-      'agent-workspace.ssh-workspaces.v1',
-      JSON.stringify({ [workspace.id]: { host: 'prod-alias', user: 'deploy', port: 2222 } })
-    )
-    const bridge = createBridge()
-    window.desktopBridge = bridge
-    render(<App />)
-    await screen.findByText('Browser content ready')
+  it.each(['renderer', 'service'])(
+    'uses the saved SSH connection for new terminal tabs, shortcuts and splits (%s)',
+    async (source) => {
+      const workspace = projectionFixture.workspaces[0]!
+      const snapshot = structuredClone(projectionFixture)
+      const ssh = {
+        host: 'prod-alias',
+        user: 'deploy',
+        port: 2222,
+        identityFile: '/home/alex/.ssh/deploy key'
+      }
+      if (source === 'service') snapshot.workspaces[0]!.ssh = ssh
+      else
+        localStorage.setItem(
+          'agent-workspace.ssh-workspaces.v1',
+          JSON.stringify({ [workspace.id]: ssh })
+        )
+      const bridge = createBridge(undefined, snapshot)
+      window.desktopBridge = bridge
+      render(<App />)
+      await screen.findByText('Browser content ready')
 
-    const launch = {
-      cwd: workspace.workingDirectory,
-      rows: 30,
-      cols: 120,
-      command: ['ssh', '-p', '2222', 'deploy@prod-alias']
-    }
-    const sshCard = screen
-      .getByLabelText('SSH connection deploy@prod-alias:2222')
-      .closest('.workspace-card')!
-    expect(screen.getByLabelText('Workspace machine')).toHaveTextContent(
-      'SSHdeploy@prod-alias:2222'
-    )
-    expect(sshCard).toHaveTextContent('deploy@prod-alias:2222')
-    expect(sshCard).toHaveTextContent('SSH · prod-alias:2222')
-    expect(
-      within(sshCard as HTMLElement).queryByLabelText('Working directory /tmp/fixture-workspace')
-    ).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: `New SSH shell in ${workspace.name}` }))
-    await waitFor(() =>
-      expect(bridge.openTerminalTab).toHaveBeenCalledWith({
-        workspaceId: workspace.id,
-        paneId: workspace.selectedPaneId,
-        launch
-      })
-    )
-    vi.mocked(bridge.openTerminalTab).mockClear()
-    const workspaceActions = screen.getByLabelText('Workspace actions')
-    expect(within(workspaceActions).getByRole('button', { name: 'New terminal tab' })).toBeVisible()
-    expect(within(workspaceActions).getByRole('button', { name: 'Split pane' })).toBeVisible()
-    expect(screen.getAllByRole('button', { name: 'New terminal tab' })).toHaveLength(1)
-    expect(screen.getAllByRole('button', { name: 'Split pane' })).toHaveLength(1)
-    fireEvent.click(within(workspaceActions).getByRole('button', { name: 'New terminal tab' }))
-    await waitFor(() =>
-      expect(bridge.openTerminalTab).toHaveBeenCalledWith({
-        workspaceId: workspace.id,
-        paneId: workspace.selectedPaneId,
-        launch
-      })
-    )
-    vi.mocked(bridge.openTerminalTab).mockClear()
-
-    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Add tab' })[0]!, {
-      button: 0,
-      ctrlKey: false
-    })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Terminal' }))
-    await waitFor(() =>
-      expect(bridge.openTerminalTab).toHaveBeenCalledWith({
-        workspaceId: workspace.id,
-        paneId: workspace.selectedPaneId,
-        launch
-      })
-    )
-    vi.mocked(bridge.openTerminalTab).mockClear()
-    fireEvent.keyDown(document, { key: 't', ctrlKey: true, shiftKey: true })
-    await waitFor(() =>
-      expect(bridge.openTerminalTab).toHaveBeenCalledWith({
-        workspaceId: workspace.id,
-        paneId: workspace.selectedPaneId,
-        launch
-      })
-    )
-    fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Split pane' })[0]!, {
-      button: 0,
-      ctrlKey: false
-    })
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Split pane right' }))
-    await waitFor(() =>
-      expect(bridge.splitPane).toHaveBeenCalledWith(
-        expect.objectContaining({ content: { kind: 'newTerminal', launch } })
+      const launch = {
+        cwd: workspace.workingDirectory,
+        rows: 30,
+        cols: 120,
+        command: ['ssh', '-i', '/home/alex/.ssh/deploy key', '-p', '2222', 'deploy@prod-alias']
+      }
+      const sshCard = screen
+        .getByLabelText('SSH connection deploy@prod-alias:2222')
+        .closest('.workspace-card')!
+      expect(screen.getByLabelText('Workspace machine')).toHaveTextContent(
+        'SSHdeploy@prod-alias:2222'
       )
-    )
-  })
+      expect(sshCard).toHaveTextContent('deploy@prod-alias:2222')
+      expect(sshCard).toHaveTextContent('SSH · prod-alias:2222')
+      expect(
+        within(sshCard as HTMLElement).queryByLabelText('Working directory /tmp/fixture-workspace')
+      ).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: `New SSH shell in ${workspace.name}` }))
+      await waitFor(() =>
+        expect(bridge.openTerminalTab).toHaveBeenCalledWith({
+          workspaceId: workspace.id,
+          paneId: workspace.selectedPaneId,
+          launch
+        })
+      )
+      vi.mocked(bridge.openTerminalTab).mockClear()
+      const workspaceActions = screen.getByLabelText('Workspace actions')
+      expect(
+        within(workspaceActions).getByRole('button', { name: 'New terminal tab' })
+      ).toBeVisible()
+      expect(within(workspaceActions).getByRole('button', { name: 'Split pane' })).toBeVisible()
+      expect(screen.getAllByRole('button', { name: 'New terminal tab' })).toHaveLength(1)
+      expect(screen.getAllByRole('button', { name: 'Split pane' })).toHaveLength(1)
+      fireEvent.click(within(workspaceActions).getByRole('button', { name: 'New terminal tab' }))
+      await waitFor(() =>
+        expect(bridge.openTerminalTab).toHaveBeenCalledWith({
+          workspaceId: workspace.id,
+          paneId: workspace.selectedPaneId,
+          launch
+        })
+      )
+      vi.mocked(bridge.openTerminalTab).mockClear()
+
+      fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Add tab' })[0]!, {
+        button: 0,
+        ctrlKey: false
+      })
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Terminal' }))
+      await waitFor(() =>
+        expect(bridge.openTerminalTab).toHaveBeenCalledWith({
+          workspaceId: workspace.id,
+          paneId: workspace.selectedPaneId,
+          launch
+        })
+      )
+      vi.mocked(bridge.openTerminalTab).mockClear()
+      fireEvent.keyDown(document, { key: 't', ctrlKey: true, shiftKey: true })
+      await waitFor(() =>
+        expect(bridge.openTerminalTab).toHaveBeenCalledWith({
+          workspaceId: workspace.id,
+          paneId: workspace.selectedPaneId,
+          launch
+        })
+      )
+      fireEvent.pointerDown(screen.getAllByRole('button', { name: 'Split pane' })[0]!, {
+        button: 0,
+        ctrlKey: false
+      })
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Split pane right' }))
+      await waitFor(() =>
+        expect(bridge.splitPane).toHaveBeenCalledWith(
+          expect.objectContaining({ content: { kind: 'newTerminal', launch } })
+        )
+      )
+    }
+  )
 
   it('offers the file explorer and detected IDEs from each workspace card', async () => {
     const bridge = createBridge()

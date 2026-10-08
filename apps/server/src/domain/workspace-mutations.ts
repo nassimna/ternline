@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 import { isAbsolute, relative } from 'node:path'
 
 import {
@@ -184,6 +185,7 @@ function workspaceFromParams(
     color: request.color ?? null,
     workingDirectory: request.workingDirectory,
     ...(request.environment === undefined ? {} : { environment: request.environment }),
+    ...(request.ssh === undefined ? {} : { ssh: request.ssh }),
     layout: { kind: 'leaf', paneId: ids.paneId },
     selectedPaneId: ids.paneId,
     panes: {
@@ -1340,6 +1342,10 @@ export function updateWorkspace(
   }
   const next = structuredClone(state)
   const workspace = next.workspaces.find((item) => item.id === request.workspaceId)!
+  if (request.ssh !== undefined) {
+    if (request.ssh.value === null) delete workspace.ssh
+    else workspace.ssh = request.ssh.value
+  }
   if (request.name !== undefined) workspace.name = request.name
   if (request.description !== undefined) workspace.description = request.description.value
   if (request.color !== undefined) workspace.color = request.color.value
@@ -1348,7 +1354,8 @@ export function updateWorkspace(
     workspace.name === original.name &&
     workspace.description === original.description &&
     workspace.color === original.color &&
-    workspace.workingDirectory === original.workingDirectory
+    workspace.workingDirectory === original.workingDirectory &&
+    isDeepStrictEqual(workspace.ssh, original.ssh)
   ) {
     throw new WorkspaceMutationError('workspace_unchanged', 'Workspace metadata is unchanged')
   }

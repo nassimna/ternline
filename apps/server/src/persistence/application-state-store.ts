@@ -227,6 +227,7 @@ function workspaceCreateParams(request: WorkspaceCreateRequest) {
     workingDirectory: request.workingDirectory,
     initialTerminal: request.initialTerminal,
     ...(request.environment === undefined ? {} : { environment: request.environment }),
+    ...(request.ssh === undefined ? {} : { ssh: request.ssh }),
     ...(request.description === undefined ? {} : { description: request.description }),
     ...(request.color === undefined ? {} : { color: request.color })
   }

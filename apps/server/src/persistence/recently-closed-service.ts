@@ -1,3 +1,4 @@
+import type { SshWorkspace } from '@agent-workspace/protocol-client'
 import { randomUUID } from 'node:crypto'
 
 import type { DurableApplicationState } from '@agent-workspace/contracts'
@@ -39,6 +40,7 @@ export interface TerminalReopenAdapter {
     tabId: string
     launch: { cwd: string; rows: number; cols: number }
     environment?: { [key: string]: string } | undefined
+    ssh?: SshWorkspace | undefined
   }): Promise<{
     terminalId: string
     /** This synchronous mapping step must finish before the durable commit. */
@@ -279,7 +281,8 @@ export class RecentlyClosedService {
       paneId: tab.paneId,
       tabId: tab.id,
       launch: tab.content.launch,
-      environment: workspace.environment
+      environment: workspace.environment,
+      ssh: workspace.ssh
     })
     try {
       prepared.adopt()

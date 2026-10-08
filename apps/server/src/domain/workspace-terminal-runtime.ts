@@ -1,3 +1,4 @@
+import { sshCommand, type SshWorkspace } from '@agent-workspace/protocol-client'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { TabDuplicateParams, WindowCloseParams } from '@agent-workspace/protocol-client'
@@ -47,6 +48,24 @@ export class WorkspaceTerminalRuntime {
     private readonly now: () => number = Date.now
   ) {}
 
+  private createWorkspaceTerminal(
+    launch: WorkspaceCreateRequest['initialTerminal'],
+    binding: Parameters<TerminalService['create']>[1],
+    workspace: { environment?: Record<string, string> | undefined; ssh?: SshWorkspace | undefined }
+  ): ReturnType<TerminalService['create']> {
+    const command = workspace.ssh ? sshCommand(workspace.ssh) : launch.command
+    return this.terminals.create(
+      {
+        cwd: launch.cwd,
+        rows: launch.rows,
+        cols: launch.cols,
+        ...(command === undefined ? {} : { command })
+      },
+      binding,
+      workspace.environment
+    )
+  }
+
   public uses(terminals: TerminalService): boolean {
     return this.terminals === terminals
   }
@@ -64,14 +83,14 @@ export class WorkspaceTerminalRuntime {
       for (const workspace of state.workspaces) {
         for (const tab of Object.values(workspace.tabs).sort((a, b) => a.id.localeCompare(b.id))) {
           if (tab.content.kind !== 'terminal') continue
-          const { terminal } = await this.terminals.create(
+          const { terminal } = await this.createWorkspaceTerminal(
             tab.content.launch,
             {
               workspaceId: workspace.id,
               paneId: tab.paneId,
               tabId: tab.id
             },
-            workspace.environment
+            workspace
           )
           created.push(terminal.id)
           this.sessions.set(tab.id, terminal.id)
@@ -135,14 +154,14 @@ export class WorkspaceTerminalRuntime {
       const source = store
         .readSnapshot()
         .workspaces.find((workspace) => workspace.id === request.source.workspaceId)!
-      const { terminal } = await this.terminals.create(
+      const { terminal } = await this.createWorkspaceTerminal(
         { cwd: source.workingDirectory, rows: 24, cols: 80 },
         {
           workspaceId: source.id,
           paneId: request.source.paneId,
           tabId: ids.replacementTabId
         },
-        source.environment
+        source
       )
       replacementSessionId = terminal.id
     }
@@ -280,13 +299,13 @@ export class WorkspaceTerminalRuntime {
   /** Supplies the runtime-first terminal half of a recently closed tab reopen. */
   public recentlyClosedAdapter(): TerminalReopenAdapter {
     return {
-      prepare: async ({ workspaceId, paneId, tabId, launch, environment }) => {
+      prepare: async ({ workspaceId, paneId, tabId, launch, environment, ssh }) => {
         if (!this.started) throw new Error('Workspace terminals have not been restored')
         if (this.sessions.has(tabId)) throw new Error('Terminal tab already has a live session')
-        const { terminal } = await this.terminals.create(
+        const { terminal } = await this.createWorkspaceTerminal(
           launch,
           { workspaceId, paneId, tabId },
-          environment
+          { environment, ssh }
         )
         let adopted = false
         let closed = false
@@ -362,19 +381,23 @@ export class WorkspaceTerminalRuntime {
                 plan.before.workspaces.find((workspace) => workspace.tabs[tab.id])?.environment,
                 workspace.environment
               ) &&
+              isDeepStrictEqual(
+                plan.before.workspaces.find((workspace) => workspace.tabs[tab.id])?.ssh,
+                workspace.ssh
+              ) &&
               oldSessionId
             ) {
               preserved.set(tab.id, oldSessionId)
               continue
             }
-            const { terminal } = await this.terminals.create(
+            const { terminal } = await this.createWorkspaceTerminal(
               tab.content.launch,
               {
                 workspaceId: workspace.id,
                 paneId: tab.paneId,
                 tabId: tab.id
               },
-              workspace.environment
+              workspace
             )
             created.set(tab.id, terminal.id)
           }
@@ -427,15 +450,10 @@ export class WorkspaceTerminalRuntime {
       if (replay) return { ...replay, terminalId: this.sessionForTab(replay.tabId) ?? null }
 
       const launch = request.initialTerminal
-      const { terminal } = await this.terminals.create(
-        {
-          cwd: launch.cwd,
-          rows: launch.rows,
-          cols: launch.cols,
-          ...(launch.command === undefined ? {} : { command: launch.command })
-        },
+      const { terminal } = await this.createWorkspaceTerminal(
+        launch,
         { workspaceId: ids.workspaceId, paneId: ids.paneId, tabId: ids.tabId },
-        request.environment
+        request
       )
       let result
       try {
@@ -471,16 +489,10 @@ export class WorkspaceTerminalRuntime {
       const replay = store.preflightTabOpenTerminal(request, tabId, createdAt)
       if (replay) return { ...replay, terminalId: this.sessionForTab(replay.tabId) ?? null }
 
-      const { terminal } = await this.terminals.create(
-        {
-          cwd: request.launch.cwd,
-          rows: request.launch.rows,
-          cols: request.launch.cols,
-          ...(request.launch.command === undefined ? {} : { command: request.launch.command })
-        },
+      const { terminal } = await this.createWorkspaceTerminal(
+        request.launch,
         { workspaceId: request.workspaceId, paneId: request.paneId, tabId },
         store.readSnapshot().workspaces.find((workspace) => workspace.id === request.workspaceId)!
-          .environment
       )
       let result
       try {
@@ -524,7 +536,7 @@ export class WorkspaceTerminalRuntime {
         if (!binding.isCurrent()) throw new RecentlyClosedError('unauthorized')
         return store.commitTabDuplicate(request, ids, createdAt)
       }
-      const { terminal } = await this.terminals.create(
+      const { terminal } = await this.createWorkspaceTerminal(
         source.content.launch,
         {
           workspaceId: request.target.workspaceId,
@@ -532,7 +544,6 @@ export class WorkspaceTerminalRuntime {
           tabId: ids.tabId
         },
         snapshot.workspaces.find((workspace) => workspace.id === request.target.workspaceId)!
-          .environment
       )
       try {
         if (!binding.isCurrent()) throw new RecentlyClosedError('unauthorized')
@@ -570,16 +581,10 @@ export class WorkspaceTerminalRuntime {
       let terminalId: string | null = null
       if (request.content.kind === 'newTerminal') {
         const launch = request.content.launch
-        const { terminal } = await this.terminals.create(
-          {
-            cwd: launch.cwd,
-            rows: launch.rows,
-            cols: launch.cols,
-            ...(launch.command === undefined ? {} : { command: launch.command })
-          },
+        const { terminal } = await this.createWorkspaceTerminal(
+          launch,
           { workspaceId: request.workspaceId, paneId: ids.paneId, tabId: ids.tabId },
           store.readSnapshot().workspaces.find((workspace) => workspace.id === request.workspaceId)!
-            .environment
         )
         terminalId = terminal.id
       }
@@ -642,14 +647,14 @@ export class WorkspaceTerminalRuntime {
           replacementTabId
         ]!
         if (tab.content.kind !== 'terminal') throw new Error('Replacement must be a terminal')
-        const { terminal } = await this.terminals.create(
+        const { terminal } = await this.createWorkspaceTerminal(
           tab.content.launch,
           {
             workspaceId: request.workspaceId,
             paneId: request.paneId,
             tabId: replacementTabId
           },
-          workspace.environment
+          workspace
         )
         replacementSessionId = terminal.id
       }
@@ -724,14 +729,14 @@ export class WorkspaceTerminalRuntime {
         const replacement = candidate.workspaces[0]!
         const tab = replacement.tabs[replacementIds.tabId]!
         if (tab.content.kind !== 'terminal') throw new Error('Replacement must contain a terminal')
-        const { terminal } = await this.terminals.create(
+        const { terminal } = await this.createWorkspaceTerminal(
           tab.content.launch,
           {
             workspaceId: replacementIds.workspaceId,
             paneId: replacementIds.paneId,
             tabId: replacementIds.tabId
           },
-          replacement.environment
+          replacement
         )
         replacementSessionId = terminal.id
       }
@@ -837,10 +842,10 @@ export class WorkspaceTerminalRuntime {
         const tab = candidate.workspaces[0]!.tabs[ids.tabId]!
         if (tab.content.kind !== 'terminal') throw new Error('Replacement must contain a terminal')
         const command = request.replacement.initialTerminal.command
-        const { terminal } = await this.terminals.create(
+        const { terminal } = await this.createWorkspaceTerminal(
           { ...tab.content.launch, ...(command === undefined ? {} : { command }) },
           { workspaceId: ids.workspaceId, paneId: ids.paneId, tabId: ids.tabId },
-          candidate.workspaces[0]!.environment
+          candidate.workspaces[0]!
         )
         replacementSessionId = terminal.id
       }
@@ -920,14 +925,14 @@ export class WorkspaceTerminalRuntime {
         const replacement = candidate.workspaces.find((item) => item.id === request.workspaceId)!
         const tab = replacement.tabs[replacementTabId]!
         if (tab.content.kind !== 'terminal') throw new Error('Replacement must be a terminal')
-        const { terminal } = await this.terminals.create(
+        const { terminal } = await this.createWorkspaceTerminal(
           tab.content.launch,
           {
             workspaceId: request.workspaceId,
             paneId: tab.paneId,
             tabId: tab.id
           },
-          replacement.environment
+          replacement
         )
         replacementSessionId = terminal.id
       }
@@ -991,14 +996,14 @@ export class WorkspaceTerminalRuntime {
         .workspaces.find((item) => item.id === request.workspaceId)!
       const tab = workspace.tabs[request.tabId]!
       if (tab.content.kind !== 'terminal') throw new Error('Validated tab is not a terminal')
-      const { terminal } = await this.terminals.create(
+      const { terminal } = await this.createWorkspaceTerminal(
         tab.content.launch,
         {
           workspaceId: request.workspaceId,
           paneId: tab.paneId,
           tabId: tab.id
         },
-        workspace.environment
+        workspace
       )
       let result
       try {

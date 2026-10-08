@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { sshWorkspaceSchema, type SshWorkspace } from '@agent-workspace/contracts'
 
 import { randomUUID } from 'node:crypto'
 
@@ -89,7 +90,7 @@ Usage:
   ternline-cli [--session-file PATH] request notification.publish|notification.markRead|notification.markUnread|notification.clear --params-json JSON
   ternline-cli [--session-file PATH] workspace list
   ternline-cli [--session-file PATH] workspace organization
-  ternline-cli [--session-file PATH] workspace create --name NAME --working-directory PATH [--terminal-cwd PATH] [--description TEXT] [--color COLOR] [--env KEY=VALUE ...] [--env-file PATH] [--rows N] [--cols N] [--expected-revision N] [--idempotency-key UUID] [--command PROGRAM ARG...]
+  ternline-cli [--session-file PATH] workspace create --name NAME --working-directory PATH [--terminal-cwd PATH] [--ssh-host HOST] [--ssh-user USER] [--ssh-port PORT] [--ssh-key PATH] [--description TEXT] [--color COLOR] [--env KEY=VALUE ...] [--env-file PATH] [--rows N] [--cols N] [--expected-revision N] [--idempotency-key UUID] [--command PROGRAM ARG...]
   ternline-cli [--session-file PATH] workspace close --workspace-id UUID [--expected-revision N] [--idempotency-key UUID]
   ternline-cli [--session-file PATH] workspace pin --workspace-id UUID --pinned true|false --expected-revision N [--idempotency-key UUID]
   ternline-cli [--session-file PATH] workspace reorder --workspace-id UUID --destination-index N --expected-revision N [--idempotency-key UUID]
@@ -216,6 +217,7 @@ interface WorkspaceCreateOptions {
   idempotencyKey?: string
   command?: string[]
   environment?: Record<string, string>
+  ssh?: SshWorkspace
 }
 
 interface RevisionOptions {
@@ -406,6 +408,10 @@ function parseWorkspaceCreate(args: string[]): WorkspaceCreateOptions {
   const { values, command } = flags(
     env.args,
     [
+      '--ssh-host',
+      '--ssh-user',
+      '--ssh-port',
+      '--ssh-key',
       '--name',
       '--working-directory',
       '--terminal-cwd',
@@ -421,7 +427,22 @@ function parseWorkspaceCreate(args: string[]): WorkspaceCreateOptions {
   if (values.has('--idempotency-key') && !values.has('--expected-revision')) {
     throw new Error('--idempotency-key requires --expected-revision for safe retries')
   }
+  const sshHost = values.get('--ssh-host')
+  if (!sshHost && ['--ssh-user', '--ssh-port', '--ssh-key'].some((flag) => values.has(flag))) {
+    throw new Error('SSH options require --ssh-host')
+  }
+  if (sshHost && command) throw new Error('--ssh-host cannot be combined with --command')
+  const ssh =
+    sshHost === undefined
+      ? undefined
+      : sshWorkspaceSchema.parse({
+          host: sshHost.trim(),
+          user: (values.get('--ssh-user') ?? '').trim(),
+          port: integerOption(values.get('--ssh-port') ?? '22', '--ssh-port', 1),
+          ...(values.has('--ssh-key') ? { identityFile: values.get('--ssh-key')!.trim() } : {})
+        })
   return {
+    ...(ssh === undefined ? {} : { ssh }),
     name: required(values, '--name'),
     ...(env.environment === undefined ? {} : { environment: env.environment }),
     workingDirectory: required(values, '--working-directory'),
@@ -1034,6 +1055,7 @@ async function main(): Promise<void> {
         ...(options.description === undefined ? {} : { description: options.description }),
         ...(options.color === undefined ? {} : { color: options.color }),
         ...(options.environment === undefined ? {} : { environment: options.environment }),
+        ...(options.ssh === undefined ? {} : { ssh: options.ssh }),
         initialTerminal: {
           cwd: options.terminalCwd ?? options.workingDirectory,
           rows: options.rows,
