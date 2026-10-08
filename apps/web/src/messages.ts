@@ -622,7 +622,7 @@ export const messages = {
     shellBehavior:
       'Applies to new and restarted terminals. Existing terminal processes keep their current shell.',
     interfaceFontBehavior:
-      'Geist and JetBrains Mono Variable are bundled for every platform. Other fonts must be installed on each device.',
+      'Geist, JetBrains Mono Variable, and Nerd Font symbols are bundled for every platform. Other fonts must be installed on each device.',
     loggingBehavior: 'Applies immediately to subsequent service log events.',
     deferred: {
       browser:

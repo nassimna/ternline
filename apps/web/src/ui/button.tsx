@@ -14,6 +14,8 @@ const buttonVariants = cva(
           'border-border-default bg-surface-interactive text-text-primary hover:bg-surface-interactive-hover active:bg-surface-interactive-active',
         ghost:
           'bg-transparent text-text-secondary hover:bg-surface-interactive-hover hover:text-text-primary active:bg-surface-interactive-active aria-pressed:bg-surface-interactive-active aria-pressed:text-text-primary aria-[current=page]:bg-surface-interactive-active aria-[current=page]:text-text-primary',
+        workspace:
+          'rounded-none bg-transparent text-text-secondary hover:text-text-primary aria-pressed:text-text-primary aria-[current=page]:text-text-primary',
         destructive:
           'bg-destructive text-text-on-accent hover:bg-destructive-hover active:bg-destructive-hover'
       },

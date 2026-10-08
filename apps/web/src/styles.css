@@ -1176,13 +1176,13 @@ body {
   display: block;
   width: 100%;
   min-height: 0;
-  padding: 7px 9px 0;
+  padding: 10px 12px 0;
   text-align: left;
 }
 
 .workspace-copy.workspace-details {
-  padding: calc(2 * var(--aw-space-unit)) 9px 8px;
-  gap: calc(1.5 * var(--aw-space-unit));
+  padding: var(--aw-space-unit) 12px 8px;
+  gap: var(--aw-space-unit);
 }
 
 .workspace-indicator {
@@ -1222,7 +1222,7 @@ body {
   align-items: center;
   min-width: 0;
   color: var(--aw-color-text-muted);
-  font-family: var(--aw-font-ui);
+  font-family: var(--aw-font-mono);
   font-size: var(--aw-font-size-label);
 }
 
@@ -1531,6 +1531,7 @@ body {
 }
 
 .workspace-ssh-target small {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3256,11 +3257,11 @@ body {
 }
 /* Card semantics and action order stay fixed; density only changes presentation. */
 [data-density='compact'] .workspace-row {
-  padding: 5px 7px 0;
+  padding: 8px 10px 0;
 }
 
 [data-density='compact'] .workspace-copy.workspace-details {
-  padding: var(--aw-space-unit) 7px 6px;
+  padding: var(--aw-space-unit) 10px 6px;
   gap: var(--aw-space-unit);
 }
 
