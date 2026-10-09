@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, link, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, link, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -60,9 +60,10 @@ it.skipIf(process.platform !== 'linux')(
 it.skipIf(process.platform !== 'linux')(
   'rejects replaced, linked, or unnormalized backups',
   async () => {
-    const { proof } = await fixture()
-    await rm(proof.backupStatePath)
-    await writeFile(proof.backupStatePath, 'live state', { mode: 0o600 })
+    const { directory, proof } = await fixture()
+    const replacementPath = join(directory, 'replacement.sqlite3')
+    await writeFile(replacementPath, 'live state', { mode: 0o600 })
+    await rename(replacementPath, proof.backupStatePath)
     expect(() => verifyLiveCredentialStateProof(proof)).toThrow()
     await rm(proof.backupStatePath)
     await link(proof.liveStatePath, proof.backupStatePath)

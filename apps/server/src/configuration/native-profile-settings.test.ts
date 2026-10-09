@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -6,9 +14,12 @@ import { describe, expect, it } from 'vitest'
 import { ApplicationStateStore } from '../persistence/application-state-store'
 import { stageNativeProfileSettings } from './native-profile-settings'
 
+const fixtureDirectory = join(process.cwd(), '../../target')
+
 describe('native profile settings migration', () => {
   it('copies qualified legacy settings exactly once and leaves the source untouched', async () => {
-    const root = mkdtempSync(join(process.cwd(), '../../target/native-profile-settings-'))
+    mkdirSync(fixtureDirectory, { recursive: true })
+    const root = mkdtempSync(join(realpathSync(fixtureDirectory), 'native-profile-settings-'))
     const stateDirectory = join(root, 'state')
     const configurationDirectory = join(root, 'configuration')
     mkdirSync(stateDirectory, { mode: 0o700 })
@@ -37,7 +48,8 @@ describe('native profile settings migration', () => {
   })
 
   it('refuses legacy settings that disagree with durable runtime settings', async () => {
-    const root = mkdtempSync(join(process.cwd(), '../../target/native-profile-settings-'))
+    mkdirSync(fixtureDirectory, { recursive: true })
+    const root = mkdtempSync(join(realpathSync(fixtureDirectory), 'native-profile-settings-'))
     const stateDirectory = join(root, 'state')
     const configurationDirectory = join(root, 'configuration')
     mkdirSync(stateDirectory, { mode: 0o700 })
