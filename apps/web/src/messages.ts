@@ -387,6 +387,8 @@ export const messages = {
   terminalPane: {
     defaultTitle: 'Terminal',
     label: 'Terminal pane',
+    jumpToLatest: 'Jump to latest ↓',
+    newOutput: 'New output ↓',
     status: {
       startingShell: 'Starting shell…',
       webglUnavailable: 'WebGL unavailable · canvas renderer active',
