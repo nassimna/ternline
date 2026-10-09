@@ -127,7 +127,10 @@ export function organizationRequest(parsed: OrganizationCommand, idempotencyEpoc
         ...identity
       })
     case 'group.delete':
-      return groupDeleteRequestSchema.parse({ groupId: required(values, '--group-id'), ...identity })
+      return groupDeleteRequestSchema.parse({
+        groupId: required(values, '--group-id'),
+        ...identity
+      })
     case 'group.move':
       return groupMoveRequestSchema.parse({
         groupId: required(values, '--group-id'),

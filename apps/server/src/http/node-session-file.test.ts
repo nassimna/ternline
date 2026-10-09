@@ -54,7 +54,9 @@ it.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
 it.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
   'recovers a stale CLI session without replacing a reachable service',
   async () => {
-    const directory = await mkdtemp(join(await realpath(tmpdir()), 'agent-workspace-stale-session-'))
+    const directory = await mkdtemp(
+      join(await realpath(tmpdir()), 'agent-workspace-stale-session-')
+    )
     const path = join(directory, 'session.json')
     const server = createServer((socket) => socket.end())
     try {
@@ -64,7 +66,9 @@ it.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
       const previous = { ...record(), baseUrl: `http://127.0.0.1:${address.port}/` }
       const oldGuard = await createNodeSessionFile(path, previous)
 
-      await expect(createNodeSessionFile(path, record(), { recoverStale: true })).rejects.toMatchObject({
+      await expect(
+        createNodeSessionFile(path, record(), { recoverStale: true })
+      ).rejects.toMatchObject({
         code: 'EEXIST'
       })
       expect(await readNodeSessionFile(path)).toEqual(previous)
@@ -77,7 +81,8 @@ it.skipIf(process.platform !== 'linux' && process.platform !== 'darwin')(
       await newGuard.remove()
       await expect(lstat(path)).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
-      if (server.listening) await new Promise<void>((resolveClose) => server.close(() => resolveClose()))
+      if (server.listening)
+        await new Promise<void>((resolveClose) => server.close(() => resolveClose()))
       await rm(directory, { recursive: true, force: true })
     }
   }

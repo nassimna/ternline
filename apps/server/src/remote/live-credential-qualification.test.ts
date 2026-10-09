@@ -11,7 +11,7 @@ it('marks only exact present Rust credentials and leaves missing targets unmarke
     expect(revision).toBe(4)
     states.set(id, 'v1_eligible')
   })
-  const probeRustCredentialForCutover = vi.fn(async (id: string) => id === first)
+  const probeRustCredentialForCutover = vi.fn((id: string) => Promise.resolve(id === first))
   const result = await qualifyLiveCredentialOrigins(
     [
       { remoteTargetId: first, revision: 4 },

@@ -14,9 +14,20 @@ const nodeHeaders = [
 ].find((candidate) => existsSync(resolve(candidate, 'node_api.h')))
 if (!nodeHeaders) throw new Error('Node API headers are required to build content.save')
 mkdirSync(resolve(root, 'dist'), { recursive: true })
-execFileSync('cc', [
-  '-std=c11', '-O2', '-fPIC', '-shared', '-Wall', '-Wextra', '-Werror',
-  `-I${nodeHeaders}`,
-  resolve(root, 'src/content/rename-exchange.c'),
-  '-o', resolve(root, 'dist/rename-exchange.node')
-], { stdio: 'inherit' })
+execFileSync(
+  'cc',
+  [
+    '-std=c11',
+    '-O2',
+    '-fPIC',
+    '-shared',
+    '-Wall',
+    '-Wextra',
+    '-Werror',
+    `-I${nodeHeaders}`,
+    resolve(root, 'src/content/rename-exchange.c'),
+    '-o',
+    resolve(root, 'dist/rename-exchange.node')
+  ],
+  { stdio: 'inherit' }
+)

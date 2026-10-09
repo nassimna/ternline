@@ -28,3 +28,14 @@ are renderer-only dependencies without native addons. `cmdk` resolves to the
 existing Radix Dialog version rather than a second focus/dismissal stack.
 
 The manifests are authoritative for exact direct dependencies. Build and test tools, including TypeScript, esbuild, Vite, Vitest, Playwright, ESLint, Prettier, and Electron Builder, are declared separately. New production dependencies require a documented purpose, license review, locked version, native-package compatibility check where applicable, and updated SBOM and vulnerability evidence before release.
+
+`http-cache-semantics` 4.3.0 (BSD-2-Clause) carries a local backport of the reuse and
+revalidation repair in [upstream PR #63](https://github.com/kornelski/http-cache-semantics/pull/63),
+at commit `609bbde04df50f40d31ec5f84800774bc3f963fb`. The checked-in pnpm patch
+prevents stale directives from bypassing required validation and prevents error fallback
+for a different request. Three focused release tests exercise the installed patched package.
+As of 2026-10-09, this PR is unmerged; the patch is not a released upstream security fix.
+The maintainer disputes [GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch52-4w7c-c8xp)
+in [issue #56](https://github.com/kornelski/http-cache-semantics/issues/56).
+Updating to 4.3.0 alone leaves the stale-reuse behavior unchanged; the local patch supplies
+the repair. No advisory exemptions are configured.

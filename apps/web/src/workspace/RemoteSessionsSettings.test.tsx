@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopBridge } from '@agent-workspace/contracts/desktop/desktop-bridge'
+import { messages } from '../messages'
 import { RemoteSessionsSettings } from './RemoteSessionsSettings'
 
 afterEach(() => {
@@ -21,6 +22,28 @@ describe('RemoteSessionsSettings', () => {
       listRemoteTargets,
       listRemoteSessions: vi.fn().mockResolvedValue({ sessions: [] })
     } as unknown as DesktopBridge
+  })
+
+  it('shows loading again on reopen and reports a failed reload', async () => {
+    const { rerender } = render(<RemoteSessionsSettings context={null} open />)
+    expect(await screen.findByText(messages.remoteSessions.noTargets)).toBeVisible()
+    rerender(<RemoteSessionsSettings context={null} open={false} />)
+    let rejectReload!: (error: Error) => void
+    listRemoteTargets.mockImplementationOnce(
+      () =>
+        new Promise<never>((_, reject) => {
+          rejectReload = reject
+        })
+    )
+    rerender(<RemoteSessionsSettings context={null} open />)
+    expect(screen.getByText(messages.remoteSessions.loading)).toBeVisible()
+    expect(screen.queryByText(messages.remoteSessions.noTargets)).not.toBeInTheDocument()
+    await act(() => {
+      rejectReload(new Error('Offline'))
+      return Promise.resolve()
+    })
+    expect(screen.getByText(messages.remoteSessions.loadFailed)).toBeVisible()
+    expect(screen.queryByText(messages.remoteSessions.loading)).not.toBeInTheDocument()
   })
 
   it('refreshes a visible session after its transport changes state', async () => {
@@ -53,7 +76,7 @@ describe('RemoteSessionsSettings', () => {
     render(<RemoteSessionsSettings context={null} open />)
     expect(await screen.findByRole('group', { name: 'Session connected' })).toBeVisible()
     await act(async () => {
-      vi.advanceTimersByTime(2_500)
+      await vi.advanceTimersByTimeAsync(2_500)
     })
     expect(await screen.findByRole('group', { name: 'Session failed' })).toBeVisible()
   })

@@ -20,73 +20,188 @@ function parse(args: string[]) {
   return parsed
 }
 
-test('multiselection keeps order and uses exact revision and retry key', async () => {
+await test('multiselection keeps order and uses exact revision and retry key', async () => {
   const parsed = parse([
-    'workspace', 'select-many', '--workspace-id', second, '--workspace-id', first,
-    '--focused-workspace-id', first, '--expected-revision', '12', '--idempotency-key', key
+    'workspace',
+    'select-many',
+    '--workspace-id',
+    second,
+    '--workspace-id',
+    first,
+    '--focused-workspace-id',
+    first,
+    '--expected-revision',
+    '12',
+    '--idempotency-key',
+    key
   ])
   assert.deepEqual(organizationRequest(parsed, epoch), {
-    selection: [second, first], focusedWorkspaceId: first,
-    expectedRevision: 12, idempotencyEpoch: epoch, idempotencyKey: key
+    selection: [second, first],
+    focusedWorkspaceId: first,
+    expectedRevision: 12,
+    idempotencyEpoch: epoch,
+    idempotencyKey: key
   })
   const seen: unknown[] = []
   const client = {
-    selectWorkspaces: (request: unknown) => { seen.push(request); return Promise.resolve({ revision: 13 }) }
+    selectWorkspaces: (request: unknown) => {
+      seen.push(request)
+      return Promise.resolve({ revision: 13 })
+    }
   } as unknown as AgentWorkspaceClient
   assert.deepEqual(await runOrganizationCommand(client, parsed, epoch), { revision: 13 })
   assert.deepEqual(seen, [organizationRequest(parsed, epoch)])
 })
 
-test('group assignment omits group ID to unassign and dispatches to Node client', async () => {
+await test('group assignment omits group ID to unassign and dispatches to Node client', async () => {
   const parsed = parse([
-    'group', 'assign', '--workspace-id', first, '--expected-revision', '8', '--idempotency-key', key
+    'group',
+    'assign',
+    '--workspace-id',
+    first,
+    '--expected-revision',
+    '8',
+    '--idempotency-key',
+    key
   ])
   const seen: unknown[] = []
   const client = {
-    assignGroup: (request: unknown) => { seen.push(request); return Promise.resolve({ revision: 9 }) }
+    assignGroup: (request: unknown) => {
+      seen.push(request)
+      return Promise.resolve({ revision: 9 })
+    }
   } as unknown as AgentWorkspaceClient
   await runOrganizationCommand(client, parsed, epoch)
-  assert.deepEqual(seen, [{
-    workspaceId: first, expectedRevision: 8, idempotencyEpoch: epoch, idempotencyKey: key
-  }])
+  assert.deepEqual(seen, [
+    {
+      workspaceId: first,
+      expectedRevision: 8,
+      idempotencyEpoch: epoch,
+      idempotencyKey: key
+    }
+  ])
 })
 
-test('all group verbs dispatch through their matching client operation', async () => {
+await test('all group verbs dispatch through their matching client operation', async () => {
   const cases = [
     { verb: 'create', options: ['--group-id', group, '--name', 'Build'], method: 'createGroup' },
     { verb: 'rename', options: ['--group-id', group, '--name', 'Review'], method: 'renameGroup' },
     { verb: 'delete', options: ['--group-id', group], method: 'deleteGroup' },
-    { verb: 'move', options: ['--group-id', group, '--destination-index', '0'], method: 'moveGroup' },
-    { verb: 'assign', options: ['--workspace-id', first, '--group-id', group], method: 'assignGroup' },
-    { verb: 'collapse', options: ['--group-id', group, '--collapsed', 'false'], method: 'collapseGroup' }
+    {
+      verb: 'move',
+      options: ['--group-id', group, '--destination-index', '0'],
+      method: 'moveGroup'
+    },
+    {
+      verb: 'assign',
+      options: ['--workspace-id', first, '--group-id', group],
+      method: 'assignGroup'
+    },
+    {
+      verb: 'collapse',
+      options: ['--group-id', group, '--collapsed', 'false'],
+      method: 'collapseGroup'
+    }
   ]
   for (const { verb, options, method } of cases) {
-    const parsed = parse(['group', verb, ...options, '--expected-revision', '4', '--idempotency-key', key])
+    const parsed = parse([
+      'group',
+      verb,
+      ...options,
+      '--expected-revision',
+      '4',
+      '--idempotency-key',
+      key
+    ])
     const seen: unknown[] = []
-    const client = { [method]: (request: unknown) => {
-      seen.push(request)
-      return Promise.resolve({ revision: 5 })
-    } } as unknown as AgentWorkspaceClient
+    const client = {
+      [method]: (request: unknown) => {
+        seen.push(request)
+        return Promise.resolve({ revision: 5 })
+      }
+    } as unknown as AgentWorkspaceClient
     assert.deepEqual(await runOrganizationCommand(client, parsed, epoch), { revision: 5 })
     assert.equal(seen.length, 1)
     assert.deepEqual(seen[0], organizationRequest(parsed, epoch))
   }
 })
 
-test('group flags reject invalid booleans and revisions before sending', () => {
-  assert.throws(() => parse(['group', 'create', '--group-id', group, '--expected-revision', '1']), /--name is required/)
-  assert.throws(() => parse(['workspace', 'select-many', '--focused-workspace-id', first, '--expected-revision', '1']), /--workspace-id is required/)
-  assert.throws(() => organizationRequest(parse([
-    'group', 'collapse', '--group-id', group, '--collapsed', 'yes', '--expected-revision', '1'
-  ]), epoch), /--collapsed must be true or false/)
-  assert.throws(() => organizationRequest(parse([
-    'group', 'move', '--group-id', group, '--destination-index', '1e3', '--expected-revision', '1'
-  ]), epoch), /--destination-index must be a nonnegative safe integer/)
-  assert.throws(() => organizationRequest(parse([
-    'workspace', 'select-many', '--workspace-id', first, '--workspace-id', first,
-    '--focused-workspace-id', first, '--expected-revision', '1'
-  ]), epoch), /workspace selection must be unique/)
-  assert.throws(() => organizationRequest(parse([
-    'group', 'delete', '--group-id', group, '--expected-revision', '-1'
-  ]), epoch), /--expected-revision must be a nonnegative safe integer/)
+await test('group flags reject invalid booleans and revisions before sending', () => {
+  assert.throws(
+    () => parse(['group', 'create', '--group-id', group, '--expected-revision', '1']),
+    /--name is required/
+  )
+  assert.throws(
+    () =>
+      parse([
+        'workspace',
+        'select-many',
+        '--focused-workspace-id',
+        first,
+        '--expected-revision',
+        '1'
+      ]),
+    /--workspace-id is required/
+  )
+  assert.throws(
+    () =>
+      organizationRequest(
+        parse([
+          'group',
+          'collapse',
+          '--group-id',
+          group,
+          '--collapsed',
+          'yes',
+          '--expected-revision',
+          '1'
+        ]),
+        epoch
+      ),
+    /--collapsed must be true or false/
+  )
+  assert.throws(
+    () =>
+      organizationRequest(
+        parse([
+          'group',
+          'move',
+          '--group-id',
+          group,
+          '--destination-index',
+          '1e3',
+          '--expected-revision',
+          '1'
+        ]),
+        epoch
+      ),
+    /--destination-index must be a nonnegative safe integer/
+  )
+  assert.throws(
+    () =>
+      organizationRequest(
+        parse([
+          'workspace',
+          'select-many',
+          '--workspace-id',
+          first,
+          '--workspace-id',
+          first,
+          '--focused-workspace-id',
+          first,
+          '--expected-revision',
+          '1'
+        ]),
+        epoch
+      ),
+    /workspace selection must be unique/
+  )
+  assert.throws(
+    () =>
+      organizationRequest(
+        parse(['group', 'delete', '--group-id', group, '--expected-revision', '-1']),
+        epoch
+      ),
+    /--expected-revision must be a nonnegative safe integer/
+  )
 })

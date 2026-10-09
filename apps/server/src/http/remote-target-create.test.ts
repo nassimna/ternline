@@ -71,18 +71,22 @@ it('creates targets through the authenticated native API with catalog replay sem
       })
       expect(await client.createRemoteTarget(request)).toEqual(created)
       expect(await client.getRemoteTarget(payload.remoteTargetId)).toEqual(created)
-      await expect(client.createRemoteTarget({
-        ...request,
-        mutation: { ...request.mutation, requestHash: 'b'.repeat(64) }
-      })).rejects.toMatchObject({ status: 409, code: 'idempotency_conflict' })
-      await expect(client.createRemoteTarget({
-        ...request,
-        mutation: {
-          ...request.mutation,
-          idempotencyKey: randomUUID(),
-          expectedRevision: 1
-        }
-      })).rejects.toMatchObject({ status: 409, code: 'stale_revision' })
+      await expect(
+        client.createRemoteTarget({
+          ...request,
+          mutation: { ...request.mutation, requestHash: 'b'.repeat(64) }
+        })
+      ).rejects.toMatchObject({ status: 409, code: 'idempotency_conflict' })
+      await expect(
+        client.createRemoteTarget({
+          ...request,
+          mutation: {
+            ...request.mutation,
+            idempotencyKey: randomUUID(),
+            expectedRevision: 1
+          }
+        })
+      ).rejects.toMatchObject({ status: 409, code: 'stale_revision' })
     } finally {
       await running.close()
     }

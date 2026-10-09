@@ -27,7 +27,7 @@
     "koffi": "3.3.2",
     "node-pty": "1.1.0",
     "ssh2": "1.17.0",
-    "ws": "8.18.3",
+    "ws": "8.21.0",
     "zod": "catalog:"
   },
   "devDependencies": {

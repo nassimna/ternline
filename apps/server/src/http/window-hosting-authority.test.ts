@@ -12,7 +12,10 @@ it('fences exact generations, refreshes a lease without a revision, and unhosts 
   const state = {
     reconcileWindowHosting: (claims: ReadonlySet<string>) => {
       const next = claims.has(windowId)
-      if (next !== hosted) { hosted = next; revision += 1 }
+      if (next !== hosted) {
+        hosted = next
+        revision += 1
+      }
       return revision
     }
   }

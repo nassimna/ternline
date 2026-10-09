@@ -112,9 +112,9 @@ function input(paths: Awaited<ReturnType<typeof fixture>>): LiveCutoverPreflight
         if (path !== paths.databasePath) throw new Error('wrong owner')
       }
     },
-    probeIndexKey: async () => true,
-    probeCodex: async () => true,
-    probeRemoteCredential: async () => 'present'
+    probeIndexKey: () => Promise.resolve(true),
+    probeCodex: () => Promise.resolve(true),
+    probeRemoteCredential: () => Promise.resolve('present')
   }
 }
 
@@ -126,8 +126,20 @@ function addTarget(databasePath: string, targetId: string, hostKeyState = 'trust
       remote_target_id,label,host,port,user,host_key_state,known_hosts_version,revision,
       idempotency_key,request_hash,created_at_ms,updated_at_ms
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).run(targetId, 'fixture', 'example.com', 22, 'user', hostKeyState, 1, 1,
-      randomUUID(), 'a'.repeat(64), 1, 1)
+    ).run(
+      targetId,
+      'fixture',
+      'example.com',
+      22,
+      'user',
+      hostKeyState,
+      1,
+      1,
+      randomUUID(),
+      'a'.repeat(64),
+      1,
+      1
+    )
   } finally {
     db.close()
   }
@@ -137,9 +149,9 @@ it('reads the normalized Rust snapshot and reports unresolved live dependencies 
   const paths = await fixture()
   const options = input(paths)
   let indexProbes = 0
-  options.probeIndexKey = async () => {
+  options.probeIndexKey = () => {
     indexProbes++
-    return true
+    return Promise.resolve(true)
   }
   const before = await readFile(paths.databasePath)
   const result = await preflightLiveCutover(options)
@@ -195,9 +207,9 @@ it('qualifies exact Rust v1 credentials for trusted and untrusted targets', asyn
   addTarget(paths.databasePath, untrustedId, 'untrusted')
   const references: string[] = []
   const options = input(paths)
-  options.probeRemoteCredential = async (reference) => {
+  options.probeRemoteCredential = (reference) => {
     references.push(reference.locator)
-    return 'present'
+    return Promise.resolve('present')
   }
   const result = await preflightLiveCutover(options)
   expect(result.trustedRemoteCount).toBe(1)
@@ -207,12 +219,13 @@ it('qualifies exact Rust v1 credentials for trusted and untrusted targets', asyn
 })
 
 it.each(['missing', 'locked', 'duplicate'] as const)(
-  'blocks an exact Rust credential reported as %s', async (presence) => {
+  'blocks an exact Rust credential reported as %s',
+  async (presence) => {
     const paths = await fixture()
     const targetId = randomUUID()
     addTarget(paths.databasePath, targetId)
     const options = input(paths)
-    options.probeRemoteCredential = async () => presence
+    options.probeRemoteCredential = () => Promise.resolve(presence)
     const result = await preflightLiveCutover(options)
     expect(result.blockers).toContain(`remote_credential_${presence}:${targetId}`)
   }
@@ -247,14 +260,17 @@ it('uses the existing v2 scope after a committed marker and blocks a missing sco
   db.exec(`CREATE TABLE node_live_credential_origins (
     remote_target_id TEXT PRIMARY KEY, origin TEXT NOT NULL, committed_revision INTEGER
   )`)
-  db.prepare('INSERT INTO node_live_credential_origins VALUES (?, ?, ?)')
-    .run(targetId, 'v2_committed', 1)
+  db.prepare('INSERT INTO node_live_credential_origins VALUES (?, ?, ?)').run(
+    targetId,
+    'v2_committed',
+    1
+  )
   db.close()
   const options = input(paths)
   const references: string[] = []
-  options.probeRemoteCredential = async (reference) => {
+  options.probeRemoteCredential = (reference) => {
     references.push(reference.locator)
-    return 'present'
+    return Promise.resolve('present')
   }
   const withoutScope = await preflightLiveCutover(options)
   expect(withoutScope.blockers).toContain(`remote_credential_reference_unavailable:${targetId}`)

@@ -7,8 +7,8 @@ import { BrowserAutomationProviderAuthority } from './provider-authority'
 it('rotates trusted window generations and interrupts stale provider polls', async () => {
   const windowId = randomUUID()
   let current = true
-  const authority = new BrowserAutomationProviderAuthority((candidate) =>
-    current && candidate === windowId
+  const authority = new BrowserAutomationProviderAuthority(
+    (candidate) => current && candidate === windowId
   )
   const first = authority.registerTrustedWindow(windowId, 1)
   expect(authority.isCurrent(first, { windowId, windowGeneration: 1 })).toBe(true)

@@ -19,10 +19,11 @@ export async function ensureSecretService(bus: Bus): Promise<void> {
     throw new Error('Secret Service is unavailable')
 
   await daemon.StartServiceByName!(KDE_COMPAT_NAME, 0)
-  const [standardOwner, compatOwner] = await Promise.all([
+  const owners: readonly unknown[] = await Promise.all([
     daemon.GetNameOwner!(STANDARD_NAME),
     daemon.GetNameOwner!(KDE_COMPAT_NAME)
   ])
+  const [standardOwner, compatOwner] = owners
   if (!standardOwner || standardOwner !== compatOwner)
     throw new Error('KDE Secret Service did not acquire the standard bus name')
 }

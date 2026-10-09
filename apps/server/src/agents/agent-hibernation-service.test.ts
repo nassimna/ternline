@@ -47,7 +47,7 @@ function fixture(
     exactTerminal,
     async () => {
       beforeCheckpoint?.()
-      return checkpointAvailable ? codexCheckpoint(agentSessionId, now) : undefined
+      return Promise.resolve(checkpointAvailable ? codexCheckpoint(agentSessionId, now) : undefined)
     },
     () => now
   )

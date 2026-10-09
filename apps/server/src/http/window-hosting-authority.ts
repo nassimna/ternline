@@ -4,7 +4,10 @@ import type { ApplicationStateStore } from '../persistence/application-state-sto
 
 const LEASE_MS = 15_000
 
-interface Claim { generation: number; expiresAt: number }
+interface Claim {
+  generation: number
+  expiresAt: number
+}
 
 /** Private-channel claims for exact Electron window generations. */
 export class WindowHostingAuthority {

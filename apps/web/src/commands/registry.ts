@@ -129,8 +129,8 @@ const multiWindow = (reason: string, capability?: string) => (context: CommandCo
     (capability === undefined || context.capabilities.includes(capability)),
   reason
 })
-const selectedTabWithMultiWindow = (reason: string, capability: string) =>
-  (context: CommandContext) => ({
+const selectedTabWithMultiWindow =
+  (reason: string, capability: string) => (context: CommandContext) => ({
     available:
       context.capabilities?.includes('multi-window-v1') === true &&
       context.capabilities.includes(capability) &&

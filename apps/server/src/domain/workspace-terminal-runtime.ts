@@ -239,7 +239,7 @@ export class WorkspaceTerminalRuntime {
         this.terminals.close(terminal.id)
       } catch (rollbackError) {
         throw new AggregateError([error, rollbackError], 'Agent terminal rollback failed', {
-          cause: error
+          cause: rollbackError
         })
       }
       throw error

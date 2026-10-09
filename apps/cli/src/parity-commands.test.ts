@@ -70,7 +70,7 @@ void test('workspace close targets an ID with automatic revision and preserves e
   )
 })
 
-test('close-selected preserves replacement defaults, revision, key, and command tail', async () => {
+await test('close-selected preserves replacement defaults, revision, key, and command tail', async () => {
   const parsed = parse([
     'workspace',
     'close-selected',
@@ -113,7 +113,7 @@ test('close-selected preserves replacement defaults, revision, key, and command 
   )
 })
 
-test('pane split dispatches terminal, browser, and existing tab through validated requests', async () => {
+await test('pane split dispatches terminal, browser, and existing tab through validated requests', async () => {
   const base = [
     'pane',
     'split',
@@ -149,7 +149,7 @@ test('pane split dispatches terminal, browser, and existing tab through validate
   }
 })
 
-test('action invoke uses exact correlation and idempotency fields', async () => {
+await test('action invoke uses exact correlation and idempotency fields', async () => {
   const correlationId = randomUUID()
   const parsed = parse([
     'action',
@@ -186,7 +186,7 @@ test('action invoke uses exact correlation and idempotency fields', async () => 
   assert.deepEqual(seen, [expected])
 })
 
-test('action cancel passes exact invocation and correlation identifiers', async () => {
+await test('action cancel passes exact invocation and correlation identifiers', async () => {
   const invocationId = randomUUID()
   const correlationId = randomUUID()
   const parsed = parse([
@@ -221,7 +221,7 @@ test('action cancel passes exact invocation and correlation identifiers', async 
   )
 })
 
-test('rejects incomplete replacement, invalid split, oversized and nonobject action parameters', () => {
+await test('rejects incomplete replacement, invalid split, oversized and nonobject action parameters', () => {
   assert.throws(
     () =>
       parse(['workspace', 'close-selected', '--expected-revision', '1', '--replacement-name', 'X']),

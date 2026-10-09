@@ -23,7 +23,6 @@ export async function moveNodeBrowserTab(input: NodeBrowserTabMove): Promise<voi
   input.assertCurrent()
   if (input.target.ownsSession(id)) throw new Error('The target already owns the browser')
   const resume = input.source.suspendOwnedSession(id)
-  let staged = false
   const rollback = (): void => {
     input.target.destroyOwnedSession(id)
     resume()
@@ -37,7 +36,6 @@ export async function moveNodeBrowserTab(input: NodeBrowserTabMove): Promise<voi
       },
       input.targetSnapshot
     )
-    staged = true
     input.assertCurrent()
   } catch (error) {
     rollback()
@@ -62,10 +60,11 @@ export async function moveNodeBrowserTab(input: NodeBrowserTabMove): Promise<voi
     commitError = error
   }
 
-  if (staged) {
-    input.target.activateTransferredSession(id)
-    input.source.destroyOwnedSession(id)
-    input.transferred(id)
-  }
-  if (commitError) throw commitError
+  input.target.activateTransferredSession(id)
+  input.source.destroyOwnedSession(id)
+  input.transferred(id)
+  if (commitError)
+    throw commitError instanceof Error
+      ? commitError
+      : new Error('The Node tab move failed', { cause: commitError })
 }

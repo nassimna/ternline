@@ -32,7 +32,8 @@ export function RemoteSessionActions({
   const action = { remoteSessionId: session.remoteSessionId, expectedRevision: session.revision }
   const trusted = hostKeyState === 'trusted'
   const canDiscover = trusted && (session.state === 'connected' || session.state === 'detached')
-  const canReconnect = trusted &&
+  const canReconnect =
+    trusted &&
     (session.state === 'trustRequired' ||
       session.state === 'credentialRequired' ||
       session.state === 'detached')
@@ -73,20 +74,21 @@ export function RemoteSessionActions({
       >
         {messages.remoteSessions.discoverTmux}
       </Button>
-      {(session.state === 'trustRequired' || session.state === 'credentialRequired' ||
-        session.state === 'detached') ? (
-          <Button
-            disabled={busy || !canReconnect}
-            size="small"
-            onClick={() =>
-              void run('reconnect', async () => {
-                await window.desktopBridge.reconnectRemoteSession!(action)
-              })
-            }
-          >
-            {messages.remoteSessions.reconnect}
-          </Button>
-        ) : null}
+      {session.state === 'trustRequired' ||
+      session.state === 'credentialRequired' ||
+      session.state === 'detached' ? (
+        <Button
+          disabled={busy || !canReconnect}
+          size="small"
+          onClick={() =>
+            void run('reconnect', async () => {
+              await window.desktopBridge.reconnectRemoteSession!(action)
+            })
+          }
+        >
+          {messages.remoteSessions.reconnect}
+        </Button>
+      ) : null}
       {canDetach ? (
         <Button
           disabled={busy}

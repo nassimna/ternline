@@ -10,7 +10,9 @@ import { BrowserAutomationProviderMailbox } from './provider-mailbox'
 
 const id = (suffix: string) => `00000000-0000-4000-8000-${suffix.padStart(12, '0')}`
 const identity: DesktopProviderIdentityParams = {
-  providerId: id('1'), providerEpoch: 1, leaseId: id('2')
+  providerId: id('1'),
+  providerEpoch: 1,
+  leaseId: id('2')
 }
 const target = { windowId: id('3'), windowGeneration: 1 }
 
@@ -51,8 +53,12 @@ function successAck(): BrowserAutomationProviderAcknowledgeParams {
       state: 'ready',
       profileKey: 'default',
       target: {
-        workspaceId: id('7'), paneId: id('8'), tabId: id('9'),
-        browserSessionId: id('10'), browserLifecycleId: id('11'), window: target
+        workspaceId: id('7'),
+        paneId: id('8'),
+        tabId: id('9'),
+        browserSessionId: id('10'),
+        browserLifecycleId: id('11'),
+        window: target
       },
       createdAtMs: 1,
       updatedAtMs: 2,
@@ -64,15 +70,21 @@ function successAck(): BrowserAutomationProviderAcknowledgeParams {
 describe('browser automation provider mailbox', () => {
   it('delivers one request and accepts only the exact current lease and target', async () => {
     let active = true
-    const mailbox = new BrowserAutomationProviderMailbox((candidate, window) =>
-      active && candidate.providerId === identity.providerId &&
-      candidate.providerEpoch === identity.providerEpoch && candidate.leaseId === identity.leaseId &&
-      (!window || (window.windowId === target.windowId && window.windowGeneration === target.windowGeneration))
+    const mailbox = new BrowserAutomationProviderMailbox(
+      (candidate, window) =>
+        active &&
+        candidate.providerId === identity.providerId &&
+        candidate.providerEpoch === identity.providerEpoch &&
+        candidate.leaseId === identity.leaseId &&
+        (!window ||
+          (window.windowId === target.windowId &&
+            window.windowGeneration === target.windowGeneration))
     )
     const published = mailbox.publish(createRequest())
     expect((await mailbox.poll({ identity, timeoutMs: 0 })).request).toEqual(createRequest())
-    expect(() => mailbox.acknowledge({ ...successAck(), correlationId: id('12') }))
-      .toThrowError('provider_epoch_mismatch')
+    expect(() => mailbox.acknowledge({ ...successAck(), correlationId: id('12') })).toThrowError(
+      'provider_epoch_mismatch'
+    )
     active = false
     expect(() => mailbox.acknowledge(successAck())).toThrowError('provider_epoch_mismatch')
     active = true
@@ -91,8 +103,9 @@ describe('browser automation provider mailbox', () => {
     expect((await mailbox.poll({ identity: second, timeoutMs: 0 })).request).toEqual(request)
     mailbox.revokeProvider(second.providerId)
     expect(await published.completion).toEqual({ kind: 'interrupted' })
-    expect(() => mailbox.acknowledge({ ...successAck(), identity: second }))
-      .toThrowError('canceled')
+    expect(() => mailbox.acknowledge({ ...successAck(), identity: second })).toThrowError(
+      'canceled'
+    )
     mailbox.dispose()
   })
 
@@ -115,8 +128,7 @@ describe('browser automation provider mailbox', () => {
     await mailbox.poll({ identity, timeoutMs: 0 })
     const missingSession = successAck()
     delete missingSession.session
-    expect(() => mailbox.acknowledge(missingSession))
-      .toThrow()
+    expect(() => mailbox.acknowledge(missingSession)).toThrow()
     mailbox.acknowledge(successAck())
     expect(await published.completion).toMatchObject({ kind: 'acknowledge' })
     mailbox.dispose()
@@ -125,29 +137,46 @@ describe('browser automation provider mailbox', () => {
   it('matches screenshot transfer responses to the exact handle and chunk', async () => {
     const mailbox = new BrowserAutomationProviderMailbox(() => true)
     const request: BrowserAutomationProviderRequest = {
-      kind: 'screenshotRead', identity, target,
-      requestId: id('15'), correlationId: id('16'),
-      params: { automationSessionId: id('4'), sessionGeneration: 1, handleId: id('17'), chunkIndex: 0 }
+      kind: 'screenshotRead',
+      identity,
+      target,
+      requestId: id('15'),
+      correlationId: id('16'),
+      params: {
+        automationSessionId: id('4'),
+        sessionGeneration: 1,
+        handleId: id('17'),
+        chunkIndex: 0
+      }
     }
     const published = mailbox.publish(request)
     await mailbox.poll({ identity, timeoutMs: 0 })
     const response = {
-      identity, target, requestId: id('15'), correlationId: id('16'),
+      identity,
+      target,
+      requestId: id('15'),
+      correlationId: id('16'),
       outcome: {
         kind: 'screenshotRead' as const,
         result: {
-          handleId: id('17'), chunkIndex: 0, chunkCount: 1,
+          handleId: id('17'),
+          chunkIndex: 0,
+          chunkCount: 1,
           dataBase64: Buffer.from('png').toString('base64'),
-          sha256: 'a'.repeat(64), expiresAtMs: 1_000
+          sha256: 'a'.repeat(64),
+          expiresAtMs: 1_000
         }
       }
     }
-    expect(() => mailbox.respondTransfer({
-      ...response, outcome: {
-        ...response.outcome,
-        result: { ...response.outcome.result, handleId: id('18') }
-      }
-    })).toThrowError('invalid_operation')
+    expect(() =>
+      mailbox.respondTransfer({
+        ...response,
+        outcome: {
+          ...response.outcome,
+          result: { ...response.outcome.result, handleId: id('18') }
+        }
+      })
+    ).toThrowError('invalid_operation')
     mailbox.respondTransfer(response)
     expect(await published.completion).toMatchObject({ kind: 'transfer' })
     mailbox.dispose()

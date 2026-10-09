@@ -6,17 +6,7 @@ import { constants, mkdirSync } from 'node:fs'
 import { lstat, mkdir, open } from 'node:fs/promises'
 import { promisify } from 'node:util'
 
-import {
-  app,
-  BrowserWindow,
-  dialog,
-  net,
-  Notification,
-  protocol,
-  safeStorage,
-  screen,
-  shell
-} from 'electron'
+import { app, BrowserWindow, dialog, net, Notification, protocol, screen, shell } from 'electron'
 import {
   advancedTabMutationResultSchema,
   configurationGetResultSchema,
@@ -65,8 +55,6 @@ import {
   registerSenderBoundApplicationMenuHandlers
 } from './application-menu'
 import type { ControlClient } from './control-client'
-import { resolveControlEndpoint } from './control-endpoint'
-import { ControlTokenStore, type TokenCipher } from './control-token-store'
 import {
   forwardDesktopEvents,
   forwardLifecycleState,
@@ -74,16 +62,16 @@ import {
   registerDesktopLifecycleHandlers,
   registerMultiWindowDesktopHandlers
 } from './desktop-ipc'
-import { CLI_SESSION_FILE_NAME, PRODUCT_NAME } from './identity'
+import { PRODUCT_NAME } from './identity'
 import { MacCliPathInstaller } from './mac-cli-path-installer'
 import { registerMacCliPathHandlers } from './mac-cli-path-ipc'
 import { recoverNodeWindowHosting } from './node-hosting-recovery'
-import { LifecycleController } from './lifecycle-controller'
+import type { LifecycleController } from './lifecycle-controller'
 import { RENDERER_SCHEME, resolveRendererAsset } from './renderer-protocol'
 import { loadRendererForCurrentLifecycle } from './renderer-load-orchestrator'
 import { acquireMainWindow } from './main-window-acquisition'
 import { resolveRendererTarget } from './renderer-target'
-import { resolveServicePath, ServiceSupervisor } from './service-supervisor'
+import type { ServiceSupervisor } from './service-supervisor'
 import { forwardSystemNotifications, shouldShowSystemNotification } from './system-notifications'
 import {
   visibleSavedWindowState,
@@ -98,7 +86,7 @@ import {
 } from './update-controller'
 import { registerSenderBoundDesktopUpdateHandlers } from './update-ipc'
 import { WindowCreationEntrypoints } from './window-creation-entrypoints'
-import { connectWindowScopedClient, rebindRegisteredWindows } from './window-client-rebinding'
+import { connectWindowScopedClient } from './window-client-rebinding'
 import { WindowCreationCoordinator } from './window-lifecycle-coordinator'
 import { WindowRegistry, type WindowRegistryEntry } from './window-registry'
 import { SenderBoundIpcRouter } from './sender-bound-ipc-router'
@@ -113,8 +101,6 @@ import { runtimeResourceIds } from './renderer-ownership-reconciliation'
 import { shouldRequestServiceWindowClose } from './window-close-policy'
 import { DesktopProviderClaims } from './desktop-provider-claims'
 import { NodeSidecar } from './node-sidecar'
-import { NodeCopyDiagnostics } from './node-copy-diagnostics'
-import { matchesNodeCopyBase } from './node-copy-topology'
 import { rehomeNodeBrowsers } from './node-window-browser-rehome'
 import { moveNodeBrowserTab } from './node-tab-browser-move'
 
@@ -130,8 +116,7 @@ interface DesktopProviderRecoveryContext {
   readonly client: ControlClient
 }
 
-let supervisor: ServiceSupervisor | undefined
-let lifecycle: LifecycleController | undefined
+const legacyService: { supervisor?: ServiceSupervisor; lifecycle?: LifecycleController } = {}
 let nodeSidecar: NodeSidecar | undefined
 let nodeCoreDemoReady = false
 let nativeNodeDesktop = false
@@ -676,16 +661,16 @@ registerDesktopHandlers(senderBoundIpc, {
     }
   },
   enrollRemoteCredential: async (targetId, expectedRevision, credentialFd) => {
-    if (!supervisor) throw new Error('The local service is not ready')
-    return supervisor.enrollRemoteCredential(targetId, expectedRevision, credentialFd)
+    if (!legacyService.supervisor) throw new Error('The local service is not ready')
+    return legacyService.supervisor.enrollRemoteCredential(targetId, expectedRevision, credentialFd)
   },
   commitRemoteCredential: async (enrollmentId, targetId, expectedRevision) => {
-    if (!supervisor) throw new Error('The local service is not ready')
-    await supervisor.commitRemoteCredential(enrollmentId, targetId, expectedRevision)
+    if (!legacyService.supervisor) throw new Error('The local service is not ready')
+    await legacyService.supervisor.commitRemoteCredential(enrollmentId, targetId, expectedRevision)
   },
   removeRemoteCredential: async (enrollmentId, targetId) => {
-    if (!supervisor) throw new Error('The local service is not ready')
-    await supervisor.removeRemoteCredential(enrollmentId, targetId)
+    if (!legacyService.supervisor) throw new Error('The local service is not ready')
+    await legacyService.supervisor.removeRemoteCredential(enrollmentId, targetId)
   }
 })
 registerMultiWindowDesktopHandlers(
@@ -715,7 +700,7 @@ registerMultiWindowDesktopHandlers(
   {
     create: async (entry, params) => {
       const sidecar = nodeSidecar
-      const rustClient = lifecycle?.getClient()
+      const rustClient = legacyService.lifecycle?.getClient()
       if (
         !nodeCoreDemoReady ||
         !sidecar ||
@@ -1017,19 +1002,6 @@ protocol.registerSchemesAsPrivileged([
   }
 ])
 
-function createTokenCipher(): TokenCipher {
-  return {
-    decrypt: (value) => safeStorage.decryptString(value),
-    encrypt: (value) => safeStorage.encryptString(value),
-    isSecure: () => {
-      if (!safeStorage.isEncryptionAvailable()) return false
-      return (
-        process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'
-      )
-    }
-  }
-}
-
 async function closeNodeWindowWorkspaces(
   sidecar: NodeSidecar,
   source: WindowRegistryEntry,
@@ -1114,14 +1086,6 @@ async function closeNodeWindowWorkspaces(
   return result
 }
 
-async function bindReadyClient(client: ControlClient): Promise<void> {
-  desktopProviderRecovery.cancel()
-  await providerPollingGate.bindAll(
-    () => rebindRegisteredWindows(windowRegistry, client, bindReadyClientForWindow),
-    () => startProviderPolling(client)
-  )
-}
-
 function bindReadyClientForWindow(
   window: BrowserWindow,
   client: ControlClient,
@@ -1187,7 +1151,7 @@ async function bindReadyClientNow(
     const identity = desktopProviderIdentity
     const current = windowRegistry.findByWindow(window)
     if (!identity || !current) throw new Error('Desktop-provider window claim is unavailable')
-    const activeSupervisor = supervisor
+    const activeSupervisor = legacyService.supervisor
     if (!activeSupervisor) throw new Error('Window-scoped control client is unavailable')
     const child = await connectWindowScopedClient(activeSupervisor, identity, current)
     client = child
@@ -1330,10 +1294,11 @@ async function bindNativeNodeWindow(window: BrowserWindow): Promise<void> {
       throw new Error('Native Node window changed before binding')
     }
     const binding = entry.binding as DesktopWindowBinding
-    binding.replaceNodeExclusive(browserViews, async () => {
+    binding.replaceNodeExclusive(browserViews, () => {
       if (nodeBrowserViews.get(entry.windowId) === browserViews)
         nodeBrowserViews.delete(entry.windowId)
       browserViews.dispose()
+      return Promise.resolve()
     })
     nodeBrowserViews.set(entry.windowId, browserViews)
     await startNodeHostingForWindow(entry, sidecar)
@@ -1403,7 +1368,7 @@ async function invalidateProviderBindings(owner?: ActiveDesktopProvider): Promis
 async function recoverDesktopProvider(context: DesktopProviderRecoveryContext): Promise<boolean> {
   if (
     quitOrchestrator.isQuitStarted() ||
-    lifecycle?.getClient() !== context.client ||
+    legacyService.lifecycle?.getClient() !== context.client ||
     (desktopProvider !== undefined && desktopProvider !== context.controller)
   ) {
     return true
@@ -1411,13 +1376,14 @@ async function recoverDesktopProvider(context: DesktopProviderRecoveryContext): 
   return serializeReadyBindingOperation(async () => {
     if (
       quitOrchestrator.isQuitStarted() ||
-      lifecycle?.getClient() !== context.client ||
+      legacyService.lifecycle?.getClient() !== context.client ||
       (desktopProvider !== undefined && desktopProvider !== context.controller)
     ) {
       return true
     }
     await invalidateProviderBindings(context.controller)
-    if (quitOrchestrator.isQuitStarted() || lifecycle?.getClient() !== context.client) return true
+    if (quitOrchestrator.isQuitStarted() || legacyService.lifecycle?.getClient() !== context.client)
+      return true
     try {
       await context.client.connect()
       await ensureDesktopProvider(context.client)
@@ -1435,7 +1401,7 @@ async function recoverDesktopProvider(context: DesktopProviderRecoveryContext): 
         startProviderPolling(context.client)
       }
       return (
-        lifecycle?.getClient() === context.client &&
+        legacyService.lifecycle?.getClient() === context.client &&
         desktopProviderClient === context.client &&
         desktopProvider?.active === true
       )
@@ -1765,8 +1731,8 @@ async function createMainWindow(
       const removeWindowApplicationMenu = applicationMenu.bindWindow(window)
       acquisition.addCleanup(removeWindowApplicationMenu)
 
-      const currentLifecycle = lifecycle
-      if ((!currentLifecycle || !supervisor) && !nativeNodeDesktop) {
+      const currentLifecycle = legacyService.lifecycle
+      if ((!currentLifecycle || !legacyService.supervisor) && !nativeNodeDesktop) {
         throw new Error('Desktop lifecycle is unavailable')
       }
       acquiredLifecycle = currentLifecycle
@@ -2029,7 +1995,7 @@ const windowCreationCoordinator = new WindowCreationCoordinator<
   isQuitStarted: () => quitOrchestrator.isQuitStarted(),
   isWindowLive: (window) => !window.isDestroyed(),
   resolveState: async () => {
-    const currentLifecycle = lifecycle
+    const currentLifecycle = legacyService.lifecycle
     const client =
       currentLifecycle?.getState().status === 'ready' ? currentLifecycle.getClient() : undefined
     return client ? resolveSavedWindowState(client) : undefined
@@ -2040,90 +2006,8 @@ function createWindowForCurrentState(): Promise<BrowserWindow | undefined> {
   if (nativeNodeDesktop) {
     return currentWindow() ? Promise.resolve(currentWindow()) : createInitialNativeWindows()
   }
-  if (!lifecycle || !supervisor) return Promise.resolve(undefined)
+  if (!legacyService.lifecycle || !legacyService.supervisor) return Promise.resolve(undefined)
   return windowCreationCoordinator.ensureWindow()
-}
-
-async function createInitialWindowForCurrentState(): Promise<BrowserWindow | undefined> {
-  const client = lifecycle?.getClient()
-  if (!client || !supervisor) return createWindowForCurrentState()
-  try {
-    const topology = await client.listWindows()
-    const focused = topology.windows.find(({ windowId }) => windowId === topology.focusedWindowId)
-    if (!focused) throw new Error('Focused service placement is unavailable')
-    const ordered = [focused, ...topology.windows.filter((placement) => placement !== focused)]
-    const plannedClaims = windowRegistry.reserveRendererGenerations(
-      ordered.map(({ windowId }) => windowId)
-    )
-    const generationByWindow = new Map(
-      plannedClaims.map(({ generation, windowId }) => [windowId, generation])
-    )
-    const finishRestore = providerClaims.stage(plannedClaims)
-    let restoreClaimsFinished = false
-    let focusedWindow: BrowserWindow | undefined
-    try {
-      await providerPollingGate.bindAll(
-        async () => {
-          for (const placement of ordered) {
-            if (windowRegistry.get(placement.windowId)) continue
-            try {
-              const created = await createServicePlacementWindow(
-                client,
-                placement.windowId,
-                generationByWindow.get(placement.windowId)
-              )
-              if (placement === focused) focusedWindow = created
-            } catch (error) {
-              console.error(`[window] failed to restore placement ${placement.windowId}`, error)
-            }
-          }
-          // Failed native creations must be withdrawn and published before polling can dispatch
-          // requests to the staged placement set. A final exact heartbeat also makes a partial
-          // restore authoritative immediately instead of waiting for the lease timer.
-          finishRestore()
-          restoreClaimsFinished = true
-          if (desktopProviderClient === client && desktopProvider?.active) {
-            await desktopProvider.heartbeatNow()
-          }
-        },
-        () => startProviderPolling(client)
-      )
-    } finally {
-      if (!restoreClaimsFinished) finishRestore()
-    }
-    if (windowRegistry.size === 0) throw new Error('No service placement could be restored')
-    focusedWindow?.focus()
-    await restoreNodeOnlyWindows(client, new Set(topology.windows.map(({ windowId }) => windowId)))
-    return focusedWindow ?? currentWindow()
-  } catch {
-    return windowRegistry.size > 0 ? currentWindow() : createWindowForCurrentState()
-  }
-}
-
-async function restoreNodeOnlyWindows(
-  rustClient: ControlClient,
-  rustWindowIds: ReadonlySet<string>
-): Promise<void> {
-  const sidecar = nodeCoreDemoReady ? nodeSidecar : undefined
-  if (!sidecar) return
-  const topology = await sidecar.client.listWindows()
-  const ordered = [
-    ...topology.windows.filter(({ windowId }) => windowId === topology.focusedWindowId),
-    ...topology.windows.filter(({ windowId }) => windowId !== topology.focusedWindowId)
-  ]
-  for (const { windowId } of ordered) {
-    if (rustWindowIds.has(windowId) || windowRegistry.get(windowId)) continue
-    nodeOnlyWindowIds.add(windowId)
-    try {
-      await createServicePlacementWindow(rustClient, windowId)
-    } catch (error) {
-      nodeOnlyWindowIds.delete(windowId)
-      console.error(`[window] failed to restore Node placement ${windowId}`, error)
-    }
-  }
-  if (!rustWindowIds.has(topology.focusedWindowId)) {
-    windowRegistry.get(topology.focusedWindowId)?.window.focus()
-  }
 }
 
 const windowCreationEntrypoints = new WindowCreationEntrypoints({
@@ -2207,7 +2091,7 @@ async function detachNodeTab(
 ) {
   const params = tabDetachParamsSchema.parse(input)
   const sidecar = nodeSidecar
-  const rustClient = lifecycle?.getClient()
+  const rustClient = legacyService.lifecycle?.getClient()
   const current = (): void => {
     if (
       !nodeCoreDemoReady ||
@@ -2273,10 +2157,10 @@ async function detachNodeTab(
     throw new Error('The Node browser native placement changed')
   const terminalTransfer = sidecar!.suspendLocalTerminalEvents(
     source.windowId,
-    attached && !remote ? [terminalId!] : []
+    attached && !remote ? [terminalId] : []
   )
   const remoteTransfer = remote
-    ? sidecar!.suspendRemoteTerminalEvents(source.windowId, terminalId!)
+    ? sidecar!.suspendRemoteTerminalEvents(source.windowId, terminalId)
     : undefined
   let resumeBrowser: (() => void) | undefined
   try {
@@ -2358,7 +2242,7 @@ async function detachNodeTab(
   if (descriptor) {
     const { snapshot: latest } = await sidecar!.client.listWorkspaces()
     const detachedWorkspace = latest.workspaces.find(
-      ({ id }) => id === result!.placement.workspaceId
+      ({ id }) => id === result.placement.workspaceId
     )
     if (!detachedWorkspace) throw new Error('The detached browser workspace is unavailable')
     await target.binding.browserViews.mountTransferred(
@@ -2555,7 +2439,7 @@ async function moveNodeTabExact(
       ? sidecar.suspendLocalTerminalEvents(source.windowId, [terminalId])
       : undefined
   const remoteTransfer = remote
-    ? sidecar.suspendRemoteTerminalEvents(source.windowId, terminalId!)
+    ? sidecar.suspendRemoteTerminalEvents(source.windowId, terminalId)
     : undefined
   const resolveCommit = async (): Promise<'committed' | 'not-committed' | 'unknown'> => {
     const { snapshot: latest } = await sidecar.client.listWorkspaces()
@@ -2606,7 +2490,10 @@ async function moveNodeTabExact(
       target.window.focus()
       target.window.webContents.send(DESKTOP_IPC.desktopBindingRebind)
     }
-    if (transferError) throw transferError
+    if (transferError)
+      throw transferError instanceof Error
+        ? transferError
+        : new Error('The terminal transfer failed', { cause: transferError })
   }
   let result: ReturnType<typeof advancedTabMutationResultSchema.parse>
   try {
@@ -2639,7 +2526,8 @@ async function closeNodeWindowPlacement(
   target: WindowRegistryEntry,
   params: WindowCloseParams
 ) {
-  let terminalTransfer: ReturnType<NodeSidecar['suspendLocalTerminalEvents']> | undefined
+  let terminalTransfer: ReturnType<NodeSidecar['suspendLocalTerminalEvents']> | undefined =
+    undefined
   const remoteTransfers: ReturnType<NodeSidecar['suspendRemoteTerminalEvents']>[] = []
   const current = (): void => {
     if (
@@ -2849,7 +2737,7 @@ async function ensureDesktopProvider(client: ControlClient): Promise<void> {
 }
 
 async function startDesktopProvider(client: ControlClient): Promise<void> {
-  const bootstrapProof = supervisor?.getDesktopBootstrapProof()
+  const bootstrapProof = legacyService.supervisor?.getDesktopBootstrapProof()
   if (!bootstrapProof) throw new Error('Desktop-provider bootstrap proof is unavailable')
   const serviceCapabilities = (await client.identify()).capabilities
   const supportsDesktopActions = serviceCapabilities.includes('actions-v1')
@@ -2974,13 +2862,13 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
     cancelSchedule: (handle) => clearTimeout(handle),
     logError: (message, error) => console.error(`[desktop-provider] ${message}`, error),
     onLeaseLost: async (reason) => {
-      if (desktopProvider !== controller || lifecycle?.getClient() !== client) return
+      if (desktopProvider !== controller || legacyService.lifecycle?.getClient() !== client) return
       await Promise.all([
         actionProvider?.stop(reason),
         automationProvider?.stop(reason),
         confirmationProvider?.stop(reason)
       ])
-      if (desktopProvider !== controller || lifecycle?.getClient() !== client) return
+      if (desktopProvider !== controller || legacyService.lifecycle?.getClient() !== client) return
       desktopProviderRecovery.request({ controller, client })
     },
     acknowledgementCache: desktopProviderAcknowledgements,
@@ -3024,7 +2912,7 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
           if (
             desktopProvider !== controller ||
             browserAutomationProvider !== automationProvider ||
-            lifecycle?.getClient() !== client
+            legacyService.lifecycle?.getClient() !== client
           ) {
             return
           }
@@ -3033,7 +2921,7 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
             confirmationProvider?.stop(reason),
             controller.stop(reason)
           ]).then(() => {
-            if (desktopProvider === controller && lifecycle?.getClient() === client) {
+            if (desktopProvider === controller && legacyService.lifecycle?.getClient() === client) {
               desktopProviderRecovery.request({ controller, client })
             }
           })
@@ -3057,7 +2945,7 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
           if (
             desktopProvider !== controller ||
             desktopActionProvider !== actionProvider ||
-            lifecycle?.getClient() !== client
+            legacyService.lifecycle?.getClient() !== client
           ) {
             return
           }
@@ -3066,7 +2954,7 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
             confirmationProvider?.stop(reason),
             controller.stop(reason)
           ]).then(() => {
-            if (desktopProvider === controller && lifecycle?.getClient() === client) {
+            if (desktopProvider === controller && legacyService.lifecycle?.getClient() === client) {
               desktopProviderRecovery.request({ controller, client })
             }
           })
@@ -3086,7 +2974,7 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
           if (
             desktopProvider !== controller ||
             projectActionConfirmationProvider !== confirmationProvider ||
-            lifecycle?.getClient() !== client
+            legacyService.lifecycle?.getClient() !== client
           ) {
             return
           }
@@ -3095,7 +2983,7 @@ async function startDesktopProvider(client: ControlClient): Promise<void> {
             automationProvider?.stop(reason),
             controller.stop(reason)
           ]).then(() => {
-            if (desktopProvider === controller && lifecycle?.getClient() === client) {
+            if (desktopProvider === controller && legacyService.lifecycle?.getClient() === client) {
               desktopProviderRecovery.request({ controller, client })
             }
           })
@@ -3138,7 +3026,7 @@ async function executeDesktopProviderRequest(
   }
   if (request.operation === 'createWindow') {
     if (!existing) {
-      const providerClient = lifecycle?.getClient()
+      const providerClient = legacyService.lifecycle?.getClient()
       if (!providerClient) throw new Error('Desktop-provider control client is unavailable')
       windowRegistry.deferWindowActivation(request.target.windowId, request.target.generation)
       try {
@@ -3649,13 +3537,13 @@ async function performExitCleanup(): Promise<void> {
       // Final renderer cleanup cannot reach the in-memory terminal runtime once shutdown starts.
       terminalCleanupDuringQuit = true
       try {
-        await supervisor?.stop()
+        await legacyService.supervisor?.stop()
       } catch (error) {
         terminalCleanupDuringQuit = false
         throw error
       }
     },
-    reconcileShutdownFailure: () => lifecycle?.reconcileShutdownFailure(),
+    reconcileShutdownFailure: () => legacyService.lifecycle?.reconcileShutdownFailure(),
     commitTeardown: async () => {
       // Keep the live bindings usable until the service has been confirmed stopped. If a later
       // local teardown fails, quitting remains fail-closed even though the service is already safe.
@@ -3665,7 +3553,7 @@ async function performExitCleanup(): Promise<void> {
       await unbindReadyClient()
       senderBoundIpc.dispose()
       await windowRegistry.dispose()
-      await lifecycle?.dispose()
+      await legacyService.lifecycle?.dispose()
     }
   })
 }
@@ -3722,7 +3610,7 @@ if (!app.requestSingleInstanceLock()) {
       console.error('[startup] native Node desktop failed', error)
       return windowCreationEntrypoints.recoverStartup(
         error,
-        lifecycle !== undefined && supervisor !== undefined
+        legacyService.lifecycle !== undefined && legacyService.supervisor !== undefined
       )
     })
 }

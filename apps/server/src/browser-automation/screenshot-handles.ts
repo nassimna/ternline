@@ -31,21 +31,29 @@ export class BrowserAutomationScreenshotHandles {
   public validate(candidate: ScreenshotOwnership): void {
     this.prune()
     const now = this.now()
-    if (candidate.handle.expiresAtMs <= now ||
-        candidate.handle.expiresAtMs > now + CONTENT_TTL_MS ||
-        candidate.handle.chunkCount !== Math.ceil(candidate.handle.byteLength / (512 * 1024)))
+    if (
+      candidate.handle.expiresAtMs <= now ||
+      candidate.handle.expiresAtMs > now + CONTENT_TTL_MS ||
+      candidate.handle.chunkCount !== Math.ceil(candidate.handle.byteLength / (512 * 1024))
+    )
       throw new Error('invalid_operation')
     if (this.handles.has(candidate.handle.handleId)) throw new Error('idempotency_conflict')
     const values = [...this.handles.values()]
-    const session = values.filter((item) => item.automationSessionId === candidate.automationSessionId)
-    const provider = values.filter((item) => item.identity.providerId === candidate.identity.providerId)
+    const session = values.filter(
+      (item) => item.automationSessionId === candidate.automationSessionId
+    )
+    const provider = values.filter(
+      (item) => item.identity.providerId === candidate.identity.providerId
+    )
     const profile = values.filter((item) => item.profileKey === candidate.profileKey)
     const exceeds = (items: ScreenshotOwnership[], count: number, bytes: number) =>
       items.length >= count ||
       items.reduce((sum, item) => sum + item.handle.byteLength, candidate.handle.byteLength) > bytes
-    if (exceeds(session, MAX_SESSION_HANDLES, MAX_SESSION_BYTES) ||
-        exceeds(provider, MAX_PROVIDER_HANDLES, MAX_PROVIDER_BYTES) ||
-        exceeds(profile, MAX_PROFILE_HANDLES, MAX_PROFILE_BYTES))
+    if (
+      exceeds(session, MAX_SESSION_HANDLES, MAX_SESSION_BYTES) ||
+      exceeds(provider, MAX_PROVIDER_HANDLES, MAX_PROVIDER_BYTES) ||
+      exceeds(profile, MAX_PROFILE_HANDLES, MAX_PROFILE_BYTES)
+    )
       throw new Error('resource_limit')
   }
 
@@ -63,9 +71,12 @@ export class BrowserAutomationScreenshotHandles {
     this.prune()
     const ownership = this.handles.get(handleId)
     if (!ownership) throw new Error('result_expired')
-    if (ownership.callerId !== callerId ||
-        ownership.automationSessionId !== sessionId ||
-        ownership.sessionGeneration !== generation) throw new Error('policy_denied')
+    if (
+      ownership.callerId !== callerId ||
+      ownership.automationSessionId !== sessionId ||
+      ownership.sessionGeneration !== generation
+    )
+      throw new Error('policy_denied')
     return ownership
   }
 

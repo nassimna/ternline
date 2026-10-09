@@ -40,7 +40,9 @@ export function tmuxCommand(operation: TmuxOperation): string {
 export function isNoTmuxServerResponse(stderr: string): boolean {
   return (
     /^no server running on [^\r\n]+\r?\n?$/u.test(stderr) ||
-    /^error connecting to \/tmp\/tmux-[0-9]+\/default \(No such file or directory\)\r?\n?$/u.test(stderr)
+    /^error connecting to \/tmp\/tmux-[0-9]+\/default \(No such file or directory\)\r?\n?$/u.test(
+      stderr
+    )
   )
 }
 

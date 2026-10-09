@@ -14,7 +14,8 @@ it('reconnects a successfully created tmux session by attaching, while failed cr
     'remote_credential_enrollments',
     'remote_target_deletions',
     'remote_sessions'
-  ] as const) database.exec(RUST_SCHEMA_V15_SQL[table])
+  ] as const)
+    database.exec(RUST_SCHEMA_V15_SQL[table])
   const targetId = randomUUID()
   const sessionId = randomUUID()
   const failedId = randomUUID()
@@ -25,20 +26,24 @@ it('reconnects a successfully created tmux session by attaching, while failed cr
     requestHash: 'a'.repeat(64)
   })
   try {
-    database.prepare(
-      `INSERT INTO remote_targets
+    database
+      .prepare(
+        `INSERT INTO remote_targets
        (remote_target_id,label,host,port,user,host_key_state,known_hosts_version,
         revision,idempotency_key,request_hash,created_at_ms,updated_at_ms)
        VALUES (?,'Test','example.com',22,'alice','trusted',1,1,?,?,1,1)`
-    ).run(targetId, randomUUID(), 'b'.repeat(64))
+      )
+      .run(targetId, randomUUID(), 'b'.repeat(64))
     for (const id of [sessionId, failedId]) {
-      database.prepare(
-        `INSERT INTO remote_sessions
+      database
+        .prepare(
+          `INSERT INTO remote_sessions
          (remote_session_id,remote_target_id,workspace_id,pane_id,tab_id,tmux_mode,tmux_name,
           state,observation,attempt_generation,reconnect_max_attempts,reconnect_initial_delay_ms,
           reconnect_max_delay_ms,revision,idempotency_key,request_hash,created_at_ms,updated_at_ms)
          VALUES (?,?,?,?,?,'create','main','credentialRequired','unknown',1,3,500,5000,1,?,?,1,1)`
-      ).run(id, targetId, randomUUID(), randomUUID(), randomUUID(), randomUUID(), 'c'.repeat(64))
+        )
+        .run(id, targetId, randomUUID(), randomUUID(), randomUUID(), randomUUID(), 'c'.repeat(64))
     }
     const first = mutation(1)
     const reserved = catalog.beginActivation(sessionId, first)
@@ -46,8 +51,14 @@ it('reconnects a successfully created tmux session by attaching, while failed cr
     if (reserved.replay) throw new Error('Unexpected replay')
     expect(reserved.session.tmux?.mode).toBe('create')
     const completed = catalog.completeActivation(
-      sessionId, reserved.session.attemptGeneration, reserved.session.revision, first,
-      'connected', targetId, 1, 1
+      sessionId,
+      reserved.session.attemptGeneration,
+      reserved.session.revision,
+      first,
+      'connected',
+      targetId,
+      1,
+      1
     )
     expect(completed.applied).toBe(true)
     expect(catalog.getSession(sessionId).session.tmux?.mode).toBe('attach')
@@ -61,8 +72,15 @@ it('reconnects a successfully created tmux session by attaching, while failed cr
     const failedReservation = catalog.beginActivation(failedId, failed)
     if (failedReservation.replay) throw new Error('Unexpected replay')
     catalog.completeActivation(
-      failedId, failedReservation.session.attemptGeneration, failedReservation.session.revision,
-      failed, 'failed', targetId, 1, 1, 'transport_unavailable'
+      failedId,
+      failedReservation.session.attemptGeneration,
+      failedReservation.session.revision,
+      failed,
+      'failed',
+      targetId,
+      1,
+      1,
+      'transport_unavailable'
     )
     expect(catalog.getSession(failedId).session.tmux?.mode).toBe('create')
   } finally {

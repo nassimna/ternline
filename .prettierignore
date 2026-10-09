@@ -9,3 +9,4 @@ test-results
 playwright-report
 pnpm-lock.yaml
 packages/protocol-client/src/generated
+docs/reports/cmux-ternline-performance.html

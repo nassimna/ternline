@@ -9,7 +9,9 @@ it('serializes one target through rejection while another target proceeds', asyn
   const lock = new RemoteTargetOperationLock()
   const events: string[] = []
   let release!: () => void
-  const gate = new Promise<void>((resolve) => { release = resolve })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
   const first = lock.withTarget(TARGET_A, async () => {
     events.push('first entered')
     await gate

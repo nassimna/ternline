@@ -49,13 +49,14 @@ export function parseLayoutCommand(args: string[], sessionFile: string): LayoutC
   if (verb !== 'save' && verb !== 'delete' && verb !== 'apply' && verb !== 'import') {
     return undefined
   }
-  const parsed = verb === 'save'
-    ? saveFlags(args.slice(2))
-    : flags(args.slice(2), [
-        '--layout-id',
-        ...(verb === 'import' ? ['--file'] : []),
-        ...revisionOptions
-      ])
+  const parsed =
+    verb === 'save'
+      ? saveFlags(args.slice(2))
+      : flags(args.slice(2), [
+          '--layout-id',
+          ...(verb === 'import' ? ['--file'] : []),
+          ...revisionOptions
+        ])
   required(parsed.values, '--layout-id')
   required(parsed.values, '--expected-revision')
   if (verb === 'save') required(parsed.values, '--name')

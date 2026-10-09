@@ -279,7 +279,8 @@ export class ServiceSupervisor {
   }
 
   public start(): Promise<ControlClient> {
-    if (this.handoffRequested) return Promise.reject(new Error('Rust service handoff is in progress'))
+    if (this.handoffRequested)
+      return Promise.reject(new Error('Rust service handoff is in progress'))
     return this.enqueueLifecycle(() => this.startUnlocked())
   }
 
@@ -314,7 +315,8 @@ export class ServiceSupervisor {
   }
 
   public restart(): Promise<ControlClient> {
-    if (this.handoffRequested) return Promise.reject(new Error('Rust service handoff is in progress'))
+    if (this.handoffRequested)
+      return Promise.reject(new Error('Rust service handoff is in progress'))
     return this.enqueueLifecycle(async () => {
       await this.stopUnlocked()
       return this.startUnlocked()
@@ -477,7 +479,8 @@ export class ServiceSupervisor {
   }
 
   private enqueueUtility<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.handoffRequested) return Promise.reject(new Error('Rust service handoff is in progress'))
+    if (this.handoffRequested)
+      return Promise.reject(new Error('Rust service handoff is in progress'))
     const result = this.utilityQueue.then(operation, operation)
     this.utilityQueue = result.then(
       () => undefined,

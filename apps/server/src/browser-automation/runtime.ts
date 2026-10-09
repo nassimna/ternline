@@ -24,8 +24,8 @@ import type {
   BrowserAutomationSessionParams
 } from '@agent-workspace/protocol-client'
 
-import { BrowserAutomationProviderAuthority } from './provider-authority'
-import { BrowserAutomationDurableRecords } from './durable-records'
+import type { BrowserAutomationProviderAuthority } from './provider-authority'
+import type { BrowserAutomationDurableRecords } from './durable-records'
 
 const SESSION_TTL_MS = 30 * 60_000
 
@@ -152,7 +152,7 @@ export class BrowserAutomationRuntime {
     }
     const operation = this.records.getOperationSnapshot(params.operationId)
     if (!operation) throw new Error('interrupted')
-    return operation
+    return Promise.resolve(operation)
   }
 
   public cancelOperation(

@@ -79,7 +79,9 @@ export class BrowserAutomationProviderMailbox {
     timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
   ): { requestId: string; completion: Promise<Completion> } {
     // Generated Rust DTOs use required fields with undefined while Zod strips optional fields.
-    const request = browserAutomationProviderRequestSchema.parse(input) as BrowserAutomationProviderRequest
+    const request = browserAutomationProviderRequestSchema.parse(
+      input
+    ) as BrowserAutomationProviderRequest
     const { requestId: providerRequestId, correlationId, identity, target } = requestFence(request)
     // Cancel has no provider response of its own. Keep its queue key distinct
     // from the execute operation so a late execute acknowledgement can still
@@ -126,7 +128,9 @@ export class BrowserAutomationProviderMailbox {
     return { requestId, completion }
   }
 
-  public async poll(input: BrowserAutomationProviderPollParams): Promise<{ request?: BrowserAutomationProviderRequest }> {
+  public async poll(
+    input: BrowserAutomationProviderPollParams
+  ): Promise<{ request?: BrowserAutomationProviderRequest }> {
     const params = browserAutomationProviderPollParamsSchema.parse(input)
     const identity = params.identity
     if (this.closed || !this.current(identity))
@@ -184,36 +188,51 @@ export class BrowserAutomationProviderMailbox {
     entry: Entry
     value: BrowserAutomationProviderAcknowledgeParams
   } {
-    const value = browserAutomationProviderAcknowledgeParamsSchema.parse(input) as BrowserAutomationProviderAcknowledgeParams
+    const value = browserAutomationProviderAcknowledgeParamsSchema.parse(
+      input
+    ) as BrowserAutomationProviderAcknowledgeParams
     const entry = this.match(value.operationId, value.correlationId, value.identity, value.target)
-    if (entry.request.kind === 'screenshotRead' || entry.request.kind === 'screenshotRelease' || entry.request.kind === 'cancel')
+    if (
+      entry.request.kind === 'screenshotRead' ||
+      entry.request.kind === 'screenshotRelease' ||
+      entry.request.kind === 'cancel'
+    )
       throw new BrowserAutomationMailboxError('invalid_operation')
-    const expectedSession = entry.request.kind === 'create'
-      ? entry.request.provision.automationSessionId
-      : entry.request.kind === 'destroy'
-        ? entry.request.session.automationSessionId
-        : entry.request.request.session.automationSessionId
-    const expectedGeneration = entry.request.kind === 'create'
-      ? entry.request.provision.generation
-      : entry.request.kind === 'destroy'
-        ? entry.request.session.generation
-        : entry.request.request.session.generation
-    const expectedAttempt = entry.request.kind === 'execute'
-      ? entry.request.request.operation.attemptEpoch
-      : entry.request.attemptEpoch
-    if (value.automationSessionId !== expectedSession ||
-        value.sessionGeneration !== expectedGeneration ||
-        value.attemptEpoch !== expectedAttempt)
+    const expectedSession =
+      entry.request.kind === 'create'
+        ? entry.request.provision.automationSessionId
+        : entry.request.kind === 'destroy'
+          ? entry.request.session.automationSessionId
+          : entry.request.request.session.automationSessionId
+    const expectedGeneration =
+      entry.request.kind === 'create'
+        ? entry.request.provision.generation
+        : entry.request.kind === 'destroy'
+          ? entry.request.session.generation
+          : entry.request.request.session.generation
+    const expectedAttempt =
+      entry.request.kind === 'execute'
+        ? entry.request.request.operation.attemptEpoch
+        : entry.request.attemptEpoch
+    if (
+      value.automationSessionId !== expectedSession ||
+      value.sessionGeneration !== expectedGeneration ||
+      value.attemptEpoch !== expectedAttempt
+    )
       throw new BrowserAutomationMailboxError('provider_epoch_mismatch')
-    if (entry.request.kind === 'execute' && value.navigationEpoch !== undefined &&
-        value.navigationEpoch < entry.request.request.operation.navigationEpoch)
+    if (
+      entry.request.kind === 'execute' &&
+      value.navigationEpoch !== undefined &&
+      value.navigationEpoch < entry.request.request.operation.navigationEpoch
+    )
       throw new BrowserAutomationMailboxError('invalid_operation')
     if (value.state === 'succeeded') {
-      const valid = entry.request.kind === 'create'
-        ? value.session !== undefined && value.result === undefined
-        : entry.request.kind === 'destroy'
-          ? value.session === undefined && value.result === undefined
-          : value.session === undefined && value.result !== undefined
+      const valid =
+        entry.request.kind === 'create'
+          ? value.session !== undefined && value.result === undefined
+          : entry.request.kind === 'destroy'
+            ? value.session === undefined && value.result === undefined
+            : value.session === undefined && value.result !== undefined
       if (!valid) throw new BrowserAutomationMailboxError('invalid_operation')
       if (
         entry.request.kind === 'create' &&
@@ -258,7 +277,8 @@ export class BrowserAutomationProviderMailbox {
           value.result.kind !== expectedResult ||
           (value.result.kind === 'navigation' &&
             (value.result.navigationEpoch <= entry.request.request.operation.navigationEpoch ||
-             (value.navigationEpoch !== undefined && value.result.navigationEpoch !== value.navigationEpoch)))
+              (value.navigationEpoch !== undefined &&
+                value.result.navigationEpoch !== value.navigationEpoch)))
         )
           throw new BrowserAutomationMailboxError('invalid_operation')
       }
@@ -271,12 +291,19 @@ export class BrowserAutomationProviderMailbox {
     const entry = this.match(value.requestId, value.correlationId, value.identity, value.target)
     if (entry.request.kind !== 'screenshotRead' && entry.request.kind !== 'screenshotRelease')
       throw new BrowserAutomationMailboxError('invalid_operation')
-    if (value.outcome.kind !== 'error' &&
-        (entry.request.kind === 'screenshotRead' ? value.outcome.kind !== 'screenshotRead' : value.outcome.kind !== 'screenshotRelease'))
+    if (
+      value.outcome.kind !== 'error' &&
+      (entry.request.kind === 'screenshotRead'
+        ? value.outcome.kind !== 'screenshotRead'
+        : value.outcome.kind !== 'screenshotRelease')
+    )
       throw new BrowserAutomationMailboxError('invalid_operation')
-    if (entry.request.kind === 'screenshotRead' && value.outcome.kind === 'screenshotRead' &&
-        (value.outcome.result.handleId !== entry.request.params.handleId ||
-         value.outcome.result.chunkIndex !== entry.request.params.chunkIndex))
+    if (
+      entry.request.kind === 'screenshotRead' &&
+      value.outcome.kind === 'screenshotRead' &&
+      (value.outcome.result.handleId !== entry.request.params.handleId ||
+        value.outcome.result.chunkIndex !== entry.request.params.chunkIndex)
+    )
       throw new BrowserAutomationMailboxError('invalid_operation')
     this.remove(entry.requestId, { kind: 'transfer', value })
   }
@@ -293,15 +320,16 @@ export class BrowserAutomationProviderMailbox {
   public cancelSession(sessionId: string): void {
     for (const entry of [...this.entries.values()]) {
       const request = entry.request
-      const owned = request.kind === 'create'
-        ? request.provision.automationSessionId === sessionId
-        : request.kind === 'destroy'
-          ? request.session.automationSessionId === sessionId
-          : request.kind === 'execute'
-            ? request.request.session.automationSessionId === sessionId
-            : request.kind === 'cancel'
-              ? request.automationSessionId === sessionId
-              : request.params.automationSessionId === sessionId
+      const owned =
+        request.kind === 'create'
+          ? request.provision.automationSessionId === sessionId
+          : request.kind === 'destroy'
+            ? request.session.automationSessionId === sessionId
+            : request.kind === 'execute'
+              ? request.request.session.automationSessionId === sessionId
+              : request.kind === 'cancel'
+                ? request.automationSessionId === sessionId
+                : request.params.automationSessionId === sessionId
       if (owned) this.cancel(entry.requestId)
     }
   }
@@ -336,10 +364,13 @@ export class BrowserAutomationProviderMailbox {
     target: ActionInvocationTarget
   ): Entry {
     const entry = this.entries.get(requestId)
-    if (!entry || entry.state !== 'inFlight')
-      throw new BrowserAutomationMailboxError('canceled')
-    if (!sameIdentity(entry.identity, identity) || !sameTarget(entry.target, target) ||
-        entry.correlationId !== correlationId || !this.current(identity, target))
+    if (!entry || entry.state !== 'inFlight') throw new BrowserAutomationMailboxError('canceled')
+    if (
+      !sameIdentity(entry.identity, identity) ||
+      !sameTarget(entry.target, target) ||
+      entry.correlationId !== correlationId ||
+      !this.current(identity, target)
+    )
       throw new BrowserAutomationMailboxError('provider_epoch_mismatch')
     return entry
   }
@@ -361,15 +392,18 @@ function requestFence(request: BrowserAutomationProviderRequest): {
   identity: DesktopProviderIdentityParams
   target: ActionInvocationTarget
 } {
-  if (request.kind === 'execute') return {
-    requestId: request.request.operation.operationId,
-    correlationId: request.request.operation.correlationId,
-    identity: request.request.identity,
-    target: request.request.target
-  }
+  if (request.kind === 'execute')
+    return {
+      requestId: request.request.operation.operationId,
+      correlationId: request.request.operation.correlationId,
+      identity: request.request.identity,
+      target: request.request.target
+    }
   return {
-    requestId: request.kind === 'screenshotRead' || request.kind === 'screenshotRelease'
-      ? request.requestId : request.operationId,
+    requestId:
+      request.kind === 'screenshotRead' || request.kind === 'screenshotRelease'
+        ? request.requestId
+        : request.operationId,
     correlationId: request.correlationId,
     identity: request.identity,
     target: request.target
@@ -377,7 +411,9 @@ function requestFence(request: BrowserAutomationProviderRequest): {
 }
 
 function sameIdentity(a: DesktopProviderIdentityParams, b: DesktopProviderIdentityParams): boolean {
-  return a.providerId === b.providerId && a.providerEpoch === b.providerEpoch && a.leaseId === b.leaseId
+  return (
+    a.providerId === b.providerId && a.providerEpoch === b.providerEpoch && a.leaseId === b.leaseId
+  )
 }
 
 function sameTarget(a: ActionInvocationTarget, b: ActionInvocationTarget): boolean {
@@ -385,10 +421,29 @@ function sameTarget(a: ActionInvocationTarget, b: ActionInvocationTarget): boole
 }
 
 function sameBinding(
-  a: { workspaceId: string; paneId: string; tabId: string; browserSessionId: string; browserLifecycleId: string; window: ActionInvocationTarget },
-  b: { workspaceId: string; paneId: string; tabId: string; browserSessionId: string; browserLifecycleId: string; window: ActionInvocationTarget }
+  a: {
+    workspaceId: string
+    paneId: string
+    tabId: string
+    browserSessionId: string
+    browserLifecycleId: string
+    window: ActionInvocationTarget
+  },
+  b: {
+    workspaceId: string
+    paneId: string
+    tabId: string
+    browserSessionId: string
+    browserLifecycleId: string
+    window: ActionInvocationTarget
+  }
 ): boolean {
-  return a.workspaceId === b.workspaceId && a.paneId === b.paneId && a.tabId === b.tabId &&
-    a.browserSessionId === b.browserSessionId && a.browserLifecycleId === b.browserLifecycleId &&
+  return (
+    a.workspaceId === b.workspaceId &&
+    a.paneId === b.paneId &&
+    a.tabId === b.tabId &&
+    a.browserSessionId === b.browserSessionId &&
+    a.browserLifecycleId === b.browserLifecycleId &&
     sameTarget(a.window, b.window)
+  )
 }

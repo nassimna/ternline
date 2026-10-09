@@ -86,7 +86,7 @@ export function moveExactTab(
     throw new WindowMutationError('policy_denied', 'Tab has no transferable runtime identity')
   if (request.target.destinationIndex > destinationPane.tabs.length)
     throw new WindowMutationError('target_not_found', 'Target index is outside the pane')
-  if (original !== destination && Object.keys(original!.tabs).length === 1)
+  if (original !== destination && Object.keys(original.tabs).length === 1)
     throw new WindowMutationError('policy_denied', 'The source workspace needs a terminal')
   if (state.legacyOverLimit || !Number.isSafeInteger(now) || now < 0)
     throw new WindowMutationError('policy_denied', 'Tab move is unavailable in this state')

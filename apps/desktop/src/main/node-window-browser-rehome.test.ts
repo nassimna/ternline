@@ -3,9 +3,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { rehomeNodeBrowsers } from './node-window-browser-rehome'
 
 const descriptor = {
-  workspaceId: 'workspace-a', paneId: 'pane-a', tabId: 'tab-a',
-  browserSessionId: 'browser-a', lifecycleId: 'lifecycle-a',
-  profilePartition: 'persist:test', stateRevision: 3, title: 'Page', url: 'https://example.test',
+  workspaceId: 'workspace-a',
+  paneId: 'pane-a',
+  tabId: 'tab-a',
+  browserSessionId: 'browser-a',
+  lifecycleId: 'lifecycle-a',
+  profilePartition: 'persist:test',
+  stateRevision: 3,
+  title: 'Page',
+  url: 'https://example.test',
   history: { entries: [{ url: 'https://example.test', title: 'Page' }], index: 0 }
 }
 
@@ -14,22 +20,35 @@ function fixture() {
   const resume = vi.fn(() => events.push('resume'))
   const source = {
     ownedTransferDescriptors: vi.fn(() => [descriptor]),
-    suspendOwnedSession: vi.fn(() => { events.push('suspend'); return resume }),
+    suspendOwnedSession: vi.fn(() => {
+      events.push('suspend')
+      return resume
+    }),
     destroyOwnedSession: vi.fn(() => events.push('destroy-source'))
   }
   const target = {
     ownsSession: vi.fn(() => false),
-    mountTransferred: vi.fn(async () => { events.push('mount-target') }),
+    mountTransferred: vi.fn(() => {
+      events.push('mount-target')
+      return Promise.resolve()
+    }),
     destroyOwnedSession: vi.fn(() => events.push('destroy-target')),
     activateTransferredSession: vi.fn(() => events.push('activate-target'))
   }
-  const commit = vi.fn(async () => { events.push('commit') })
+  const commit = vi.fn(() => {
+    events.push('commit')
+    return Promise.resolve()
+  })
   const transferred = vi.fn(() => events.push('record-owner'))
   const input = {
-    source, target, sourceWorkspaceIds: new Set(['workspace-a']),
-    assertCurrent: vi.fn(), commit,
-    resolveCommit: vi.fn(async (): Promise<'committed' | 'not-committed' | 'unknown'> =>
-      'not-committed'),
+    source,
+    target,
+    sourceWorkspaceIds: new Set(['workspace-a']),
+    assertCurrent: vi.fn(),
+    commit,
+    resolveCommit: vi.fn((): Promise<'committed' | 'not-committed' | 'unknown'> =>
+      Promise.resolve('not-committed')
+    ),
     transferred
   }
   return { events, resume, source, target, commit, transferred, input }
@@ -40,7 +59,12 @@ describe('Node native browser close transfer', () => {
     const test = fixture()
     await rehomeNodeBrowsers(test.input)
     expect(test.events).toEqual([
-      'suspend', 'mount-target', 'commit', 'activate-target', 'destroy-source', 'record-owner'
+      'suspend',
+      'mount-target',
+      'commit',
+      'activate-target',
+      'destroy-source',
+      'record-owner'
     ])
     expect(test.resume).not.toHaveBeenCalled()
   })
@@ -53,34 +77,37 @@ describe('Node native browser close transfer', () => {
     expect(mount.commit).not.toHaveBeenCalled()
 
     const close = fixture()
-    close.commit.mockImplementationOnce(async () => {
+    close.commit.mockImplementationOnce(() => {
       close.events.push('commit')
-      throw new Error('revision conflict')
+      return Promise.reject(new Error('revision conflict'))
     })
     await expect(rehomeNodeBrowsers(close.input)).rejects.toThrow('revision conflict')
-    expect(close.events).toEqual([
-      'suspend', 'mount-target', 'commit', 'destroy-target', 'resume'
-    ])
+    expect(close.events).toEqual(['suspend', 'mount-target', 'commit', 'destroy-target', 'resume'])
   })
 
   it('finalizes a proven committed close despite a lost response', async () => {
     const test = fixture()
-    test.commit.mockImplementationOnce(async () => {
+    test.commit.mockImplementationOnce(() => {
       test.events.push('commit')
-      throw new Error('connection lost')
+      return Promise.reject(new Error('connection lost'))
     })
     test.input.resolveCommit.mockResolvedValueOnce('committed')
     await rehomeNodeBrowsers(test.input)
     expect(test.events).toEqual([
-      'suspend', 'mount-target', 'commit', 'activate-target', 'destroy-source', 'record-owner'
+      'suspend',
+      'mount-target',
+      'commit',
+      'activate-target',
+      'destroy-source',
+      'record-owner'
     ])
   })
 
   it('quarantines an unknown commit outcome without recreating two active owners', async () => {
     const test = fixture()
-    test.commit.mockImplementationOnce(async () => {
+    test.commit.mockImplementationOnce(() => {
       test.events.push('commit')
-      throw new Error('connection lost')
+      return Promise.reject(new Error('connection lost'))
     })
     test.input.resolveCommit.mockResolvedValueOnce('unknown')
     await expect(rehomeNodeBrowsers(test.input)).rejects.toThrow('quarantined')

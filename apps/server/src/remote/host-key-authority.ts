@@ -119,7 +119,7 @@ export class HostKeyAuthority {
       await lstat(root)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || trusted.length > 0) {
-        throw new Error('Live known-hosts directory is missing or unsafe')
+        throw new Error('Live known-hosts directory is missing or unsafe', { cause: error })
       }
     }
     await prepareKnownHostsRoot(root)

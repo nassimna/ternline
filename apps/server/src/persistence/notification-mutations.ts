@@ -16,7 +16,10 @@ import {
   type DurableApplicationState
 } from '@agent-workspace/contracts'
 import { readLegacySnapshotConnection } from './legacy-state-reader'
-import { CardSlotAttentionError, type CardSlotAttentionService } from '../domain/card-slot-attention'
+import {
+  CardSlotAttentionError,
+  type CardSlotAttentionService
+} from '../domain/card-slot-attention'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 const MAX_SAFE = Number.MAX_SAFE_INTEGER
@@ -131,7 +134,10 @@ function view(value: DurableNotification): NotificationView {
 export class NotificationMutations {
   private readonly database: Database.Database
 
-  constructor(databasePath: string, private readonly afterChange?: () => void) {
+  constructor(
+    databasePath: string,
+    private readonly afterChange?: () => void
+  ) {
     for (const path of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
       let file: ReturnType<typeof lstatSync>
       try {
@@ -175,56 +181,88 @@ export class NotificationMutations {
       idempotencyKey: input.idempotencyKey,
       mode: input.mode
     })
-    const result = this.database.transaction(() => {
-      const stored = this.database.prepare(
-        `SELECT request_hash,result_json FROM idempotency_results
+    const result = this.database
+      .transaction(() => {
+        const stored = this.database
+          .prepare(
+            `SELECT request_hash,result_json FROM idempotency_results
          WHERE namespace='attention-v1' AND epoch=? AND idempotency_key=?`
-      ).get(LEGACY_IDEMPOTENCY_EPOCH, input.idempotencyKey) as
-        { request_hash: string; result_json: string | null } | undefined
-      if (stored) {
-        if (stored.request_hash !== requestJson || stored.result_json === null) {
-          throw new CardSlotAttentionError('idempotency_conflict', 'The idempotency key was already used for another acknowledgement')
+          )
+          .get(LEGACY_IDEMPOTENCY_EPOCH, input.idempotencyKey) as
+          { request_hash: string; result_json: string | null } | undefined
+        if (stored) {
+          if (stored.request_hash !== requestJson || stored.result_json === null) {
+            throw new CardSlotAttentionError(
+              'idempotency_conflict',
+              'The idempotency key was already used for another acknowledgement'
+            )
+          }
+          return attentionAcknowledgementResultSchema.parse(
+            JSON.parse(stored.result_json)
+          ) as AttentionAcknowledgementResult
         }
-        return attentionAcknowledgementResultSchema.parse(JSON.parse(stored.result_json)) as AttentionAcknowledgementResult
-      }
-      const state = readLegacySnapshotConnection(this.database)
-      const prepared = attention.prepareAcknowledgement(input)
-      if (state.revision !== prepared.expectedApplicationRevision) {
-        throw new CardSlotAttentionError('revision_conflict', 'The application revision changed before acknowledgement')
-      }
-      if (state.revision >= MAX_SAFE) {
-        throw new CardSlotAttentionError('revision_out_of_range', 'The application revision cannot be incremented safely')
-      }
-      const notification = state.notifications.find((item) => item.id === input.notificationId)!
-      const next = durableApplicationStateSchema.parse({
-        ...state,
-        revision: state.revision + 1,
-        notifications: state.notifications.map((item) => item.id === notification.id
-          ? { ...item, readAt: Math.max(Date.now(), item.createdAt) }
-          : item)
-      })
-      const projected = attention.projectAcknowledged(next, prepared.workspaceId)
-      const updated = this.database.prepare(
-        `UPDATE application_snapshot SET revision=?,json_payload=?,saved_at_ms=?
+        const state = readLegacySnapshotConnection(this.database)
+        const prepared = attention.prepareAcknowledgement(input)
+        if (state.revision !== prepared.expectedApplicationRevision) {
+          throw new CardSlotAttentionError(
+            'revision_conflict',
+            'The application revision changed before acknowledgement'
+          )
+        }
+        if (state.revision >= MAX_SAFE) {
+          throw new CardSlotAttentionError(
+            'revision_out_of_range',
+            'The application revision cannot be incremented safely'
+          )
+        }
+        const notification = state.notifications.find((item) => item.id === input.notificationId)!
+        const next = durableApplicationStateSchema.parse({
+          ...state,
+          revision: state.revision + 1,
+          notifications: state.notifications.map((item) =>
+            item.id === notification.id
+              ? { ...item, readAt: Math.max(Date.now(), item.createdAt) }
+              : item
+          )
+        })
+        const projected = attention.projectAcknowledged(next, prepared.workspaceId)
+        const updated = this.database
+          .prepare(
+            `UPDATE application_snapshot SET revision=?,json_payload=?,saved_at_ms=?
          WHERE singleton=1 AND revision=?`
-      ).run(String(next.revision), JSON.stringify(next), Date.now(), String(state.revision))
-      if (updated.changes !== 1) {
-        throw new CardSlotAttentionError('revision_conflict', 'The application revision changed before acknowledgement')
-      }
-      this.database.prepare(
-        `INSERT INTO idempotency_results
+          )
+          .run(String(next.revision), JSON.stringify(next), Date.now(), String(state.revision))
+        if (updated.changes !== 1) {
+          throw new CardSlotAttentionError(
+            'revision_conflict',
+            'The application revision changed before acknowledgement'
+          )
+        }
+        this.database
+          .prepare(
+            `INSERT INTO idempotency_results
          (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
          VALUES ('attention-v1',?,?,?,?,?)`
-      ).run(LEGACY_IDEMPOTENCY_EPOCH, input.idempotencyKey, requestJson, JSON.stringify(projected), Date.now())
-      this.database.prepare(
-        `UPDATE idempotency_results SET result_json=NULL
+          )
+          .run(
+            LEGACY_IDEMPOTENCY_EPOCH,
+            input.idempotencyKey,
+            requestJson,
+            JSON.stringify(projected),
+            Date.now()
+          )
+        this.database
+          .prepare(
+            `UPDATE idempotency_results SET result_json=NULL
          WHERE namespace='attention-v1' AND epoch=? AND sequence NOT IN (
            SELECT sequence FROM idempotency_results WHERE namespace='attention-v1' AND epoch=?
            AND result_json IS NOT NULL ORDER BY sequence DESC LIMIT 4096
          )`
-      ).run(LEGACY_IDEMPOTENCY_EPOCH, LEGACY_IDEMPOTENCY_EPOCH)
-      return projected
-    }).immediate()
+          )
+          .run(LEGACY_IDEMPOTENCY_EPOCH, LEGACY_IDEMPOTENCY_EPOCH)
+        return projected
+      })
+      .immediate()
     attention.refreshAttention()
     return result
   }
@@ -309,7 +347,9 @@ export class NotificationMutations {
       ...(input.body === undefined ? {} : { body: input.body })
     })
     if (!parsed.success) fail('invalid_params', 'Notification is invalid')
-    return this.commit('node.notification.publish', input.mutation,
+    return this.commit(
+      'node.notification.publish',
+      input.mutation,
       { windowId: input.windowId, notification: parsed.data },
       (state, owned) => {
         const { target } = parsed.data
@@ -321,8 +361,10 @@ export class NotificationMutations {
           fail('target_not_found', 'Notification target is unavailable')
         }
         const tab = target.tabId === undefined ? undefined : workspace.tabs[target.tabId]
-        if (target.tabId !== undefined && (!tab ||
-          (target.paneId !== undefined && tab.paneId !== target.paneId))) {
+        if (
+          target.tabId !== undefined &&
+          (!tab || (target.paneId !== undefined && tab.paneId !== target.paneId))
+        ) {
           fail('target_not_found', 'Notification tab binding is unavailable')
         }
         const timestamp = now()
@@ -345,15 +387,19 @@ export class NotificationMutations {
           for (let index = 1; index < notifications.length; index += 1) {
             const current = notifications[index]!
             const candidate = notifications[oldest]!
-            if (current.createdAt < candidate.createdAt ||
-              (current.createdAt === candidate.createdAt && current.id < candidate.id)) {
+            if (
+              current.createdAt < candidate.createdAt ||
+              (current.createdAt === candidate.createdAt && current.id < candidate.id)
+            ) {
               oldest = index
             }
           }
           notifications.splice(oldest, 1)
         }
         return { notifications, changedIds: [notification.id], workspaceIds: [target.workspaceId] }
-      }, input.windowId)
+      },
+      input.windowId
+    )
   }
 
   markUnread(input: NotificationWriteRequest): NotificationChange {

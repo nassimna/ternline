@@ -41,7 +41,10 @@ export class DesktopWindowBinding implements WindowRegistryBinding {
   }
 
   /** Bind a ready renderer after Node becomes its exclusive state owner. */
-  public replaceNodeExclusive(browserViews: BrowserViewManager, dispose: () => Promise<void>): void {
+  public replaceNodeExclusive(
+    browserViews: BrowserViewManager,
+    dispose: () => Promise<void>
+  ): void {
     if (this.#disposed) throw new Error('Window binding is disposed')
     if (this.#browserViews) throw new Error('Window renderer is already bound')
     this.#browserViews = browserViews
