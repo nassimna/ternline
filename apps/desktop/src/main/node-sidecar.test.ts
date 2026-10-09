@@ -2568,232 +2568,283 @@ it('rejects remote replacement before opening a key when the verified sidecar la
   expect(pickCredential).not.toHaveBeenCalled()
 })
 
-it('publishes a live target only after reservation and the pinned credential handoff', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-new-'))
+it('rejects a writable credential descriptor before reserving a live target', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-writable-credential-'))
   const keyPath = join(directory, 'test-key')
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
-  const proof = {
-    liveStatePath: join(directory, 'state.sqlite3'),
-    backupStatePath: join(directory, 'backup.sqlite3'),
-    liveStateIdentity: '1:2',
-    backupStateIdentity: '1:3',
-    backupSha256: 'a'.repeat(64)
-  }
-  const draft = { label: 'Task target', host: 'example.com', port: 22, user: 'alice' }
-  const order: string[] = []
-  const begin = vi.fn(() => {
-    order.push('reserve')
-    return Promise.resolve()
-  })
-  const handoff = vi.fn(() => {
-    order.push('handoff')
-    return Promise.resolve()
-  })
-  const commit = vi.fn(({ target }: { target: { remoteTargetId: string } }) => {
-    order.push('commit')
-    return Promise.resolve({
-      target: {
-        ...draft,
-        remoteTargetId: target.remoteTargetId,
-        authentication: 'publicKey',
-        hostKeyState: 'untrusted',
-        knownHostsVersion: 1,
-        revision: 1
-      }
-    })
-  })
+  const beginRemoteTargetEnrollment = vi.fn()
+  const liveBackupProof = vi.fn()
   try {
     await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
-    const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const credentialFd = handle.fd
+    const handle = await open(keyPath, constants.O_RDWR | constants.O_NOFOLLOW)
     Object.assign(sidecar, {
       stopped: false,
       options: {
         remoteTransport: true,
-        liveDatabasePath: proof.liveStatePath,
-        backupPath: proof.backupStatePath
+        liveDatabasePath: '/unused/state',
+        backupPath: '/unused/backup'
       },
       remoteEnrollmentEnabled: true,
-      client: { beginRemoteTargetEnrollment: begin, commitRemoteTargetEnrollment: commit },
-      ownerChannel: {
-        liveBackupProof: () => {
-          order.push('proof')
-          return Promise.resolve(proof)
-        }
-      },
-      enrollLiveRemoteTarget: handoff
-    })
-    const result = await sidecar.invokeDesktopCore(
-      randomUUID(),
-      DESKTOP_IPC.remoteTargetEnroll,
-      [draft],
-      vi.fn(),
-      undefined,
-      { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
-    )
-    expect(result.handled).toBe(true)
-    expect(order).toEqual(['reserve', 'proof', 'handoff', 'commit'])
-    expect(handoff).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      proof,
-      credentialFd
-    )
-    await expect(handle.stat()).rejects.toThrow()
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-it('reserves and commits a live replacement only after the pinned handoff and observed revision', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-replace-'))
-  const keyPath = join(directory, 'test-key')
-  const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
-  const proof = {
-    liveStatePath: join(directory, 'state.sqlite3'),
-    backupStatePath: join(directory, 'backup.sqlite3'),
-    liveStateIdentity: '1:2',
-    backupStateIdentity: '1:3',
-    backupSha256: 'a'.repeat(64)
-  }
-  const target = {
-    remoteTargetId: targetId,
-    label: 'Test',
-    host: 'example.com',
-    port: 22,
-    user: 'alice',
-    authentication: 'publicKey' as const,
-    hostKeyState: 'untrusted' as const,
-    knownHostsVersion: 1,
-    revision: 2
-  }
-  const order: string[] = []
-  const getRemoteTarget = vi
-    .fn()
-    .mockImplementationOnce(() => {
-      order.push('read-before')
-      return Promise.resolve({ target })
-    })
-    .mockImplementationOnce(() => {
-      order.push('read-after')
-      return Promise.resolve({ target: { ...target, revision: 3 } })
-    })
-  const beginRemoteCredentialReplacement = vi.fn(() => {
-    order.push('reserve')
-    return Promise.resolve()
-  })
-  const commitRemoteCredentialReplacement = vi.fn(() => {
-    order.push('commit')
-    return Promise.resolve({ target: { ...target, revision: 3 } })
-  })
-  const liveBackupProof = vi.fn(() => {
-    order.push('proof')
-    return Promise.resolve(proof)
-  })
-  const handoff = vi.fn(() => {
-    order.push('handoff')
-    return Promise.resolve()
-  })
-  try {
-    await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
-    const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const credentialFd = handle.fd
-    Object.assign(sidecar, {
-      stopped: false,
-      options: {
-        remoteTransport: true,
-        liveDatabasePath: proof.liveStatePath,
-        backupPath: proof.backupStatePath
-      },
-      remoteReplacementEnabled: true,
-      client: {
-        getRemoteTarget,
-        beginRemoteCredentialReplacement,
-        commitRemoteCredentialReplacement
-      },
-      ownerChannel: { liveBackupProof },
-      replaceLiveRemoteCredential: handoff
+      client: { beginRemoteTargetEnrollment },
+      ownerChannel: { liveBackupProof }
     })
     await expect(
       sidecar.invokeDesktopCore(
         randomUUID(),
-        DESKTOP_IPC.remoteCredentialReplace,
-        [{ remoteTargetId: targetId }],
+        DESKTOP_IPC.remoteTargetEnroll,
+        [{ label: 'Test', host: 'example.com', port: 22, user: 'alice' }],
         vi.fn(),
         undefined,
         { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
       )
-    ).resolves.toEqual({ handled: true, value: true })
-    expect(order).toEqual(['read-before', 'reserve', 'proof', 'handoff', 'commit', 'read-after'])
-    expect(handoff).toHaveBeenCalledWith(
-      expect.objectContaining({ remoteTargetId: targetId, expectedRevision: 2 }),
-      proof,
-      credentialFd
-    )
+    ).rejects.toThrow('private read-only regular file')
+    expect(beginRemoteTargetEnrollment).not.toHaveBeenCalled()
+    expect(liveBackupProof).not.toHaveBeenCalled()
     await expect(handle.stat()).rejects.toThrow()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
 
-it('leaves a failed live restart stopped and does not send a stale rollback request', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-restart-'))
-  const keyPath = join(directory, 'test-key')
-  const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
-  const abortRemoteCredentialReplacement = vi.fn()
-  const target = {
-    remoteTargetId: targetId,
-    label: 'Test',
-    host: 'example.com',
-    port: 22,
-    user: 'alice',
-    authentication: 'publicKey',
-    hostKeyState: 'untrusted',
-    knownHostsVersion: 1,
-    revision: 2
-  }
-  try {
-    await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
-    const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
-    Object.assign(sidecar, {
-      stopped: false,
-      options: { remoteTransport: true, liveDatabasePath: '/tmp/state', backupPath: '/tmp/backup' },
-      remoteReplacementEnabled: true,
-      client: {
-        getRemoteTarget: vi.fn().mockResolvedValue({ target }),
-        beginRemoteCredentialReplacement: vi.fn().mockResolvedValue(undefined),
-        abortRemoteCredentialReplacement
-      },
-      ownerChannel: {
-        liveBackupProof: vi.fn().mockResolvedValue({
-          liveStatePath: '/tmp/state',
-          backupStatePath: '/tmp/backup',
-          liveStateIdentity: '1:2',
-          backupStateIdentity: '1:3',
-          backupSha256: 'a'.repeat(64)
-        })
-      },
-      replaceLiveRemoteCredential: vi.fn(() => {
-        sidecar['stopped'] = true
-        return Promise.reject(new Error('restart failed'))
+it.skipIf(process.platform !== 'linux')(
+  'publishes a live target only after reservation and the pinned credential handoff',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-new-'))
+    const keyPath = join(directory, 'test-key')
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    const proof = {
+      liveStatePath: join(directory, 'state.sqlite3'),
+      backupStatePath: join(directory, 'backup.sqlite3'),
+      liveStateIdentity: '1:2',
+      backupStateIdentity: '1:3',
+      backupSha256: 'a'.repeat(64)
+    }
+    const draft = { label: 'Task target', host: 'example.com', port: 22, user: 'alice' }
+    const order: string[] = []
+    const begin = vi.fn(() => {
+      order.push('reserve')
+      return Promise.resolve()
+    })
+    const handoff = vi.fn(() => {
+      order.push('handoff')
+      return Promise.resolve()
+    })
+    const commit = vi.fn(({ target }: { target: { remoteTargetId: string } }) => {
+      order.push('commit')
+      return Promise.resolve({
+        target: {
+          ...draft,
+          remoteTargetId: target.remoteTargetId,
+          authentication: 'publicKey',
+          hostKeyState: 'untrusted',
+          knownHostsVersion: 1,
+          revision: 1
+        }
       })
     })
-    await expect(
-      sidecar.invokeDesktopCore(
+    try {
+      await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
+      const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+      const credentialFd = handle.fd
+      Object.assign(sidecar, {
+        stopped: false,
+        options: {
+          remoteTransport: true,
+          liveDatabasePath: proof.liveStatePath,
+          backupPath: proof.backupStatePath
+        },
+        remoteEnrollmentEnabled: true,
+        client: { beginRemoteTargetEnrollment: begin, commitRemoteTargetEnrollment: commit },
+        ownerChannel: {
+          liveBackupProof: () => {
+            order.push('proof')
+            return Promise.resolve(proof)
+          }
+        },
+        enrollLiveRemoteTarget: handoff
+      })
+      const result = await sidecar.invokeDesktopCore(
         randomUUID(),
-        DESKTOP_IPC.remoteCredentialReplace,
-        [{ remoteTargetId: targetId }],
+        DESKTOP_IPC.remoteTargetEnroll,
+        [draft],
         vi.fn(),
         undefined,
         { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
       )
-    ).rejects.toThrow('pending recovery')
-    expect(abortRemoteCredentialReplacement).not.toHaveBeenCalled()
-    await expect(handle.stat()).rejects.toThrow()
-  } finally {
-    await rm(directory, { recursive: true, force: true })
+      expect(result.handled).toBe(true)
+      expect(order).toEqual(['reserve', 'proof', 'handoff', 'commit'])
+      expect(handoff).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        proof,
+        credentialFd
+      )
+      await expect(handle.stat()).rejects.toThrow()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   }
-})
+)
+
+it.skipIf(process.platform !== 'linux')(
+  'reserves and commits a live replacement only after the pinned handoff and observed revision',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-replace-'))
+    const keyPath = join(directory, 'test-key')
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    const proof = {
+      liveStatePath: join(directory, 'state.sqlite3'),
+      backupStatePath: join(directory, 'backup.sqlite3'),
+      liveStateIdentity: '1:2',
+      backupStateIdentity: '1:3',
+      backupSha256: 'a'.repeat(64)
+    }
+    const target = {
+      remoteTargetId: targetId,
+      label: 'Test',
+      host: 'example.com',
+      port: 22,
+      user: 'alice',
+      authentication: 'publicKey' as const,
+      hostKeyState: 'untrusted' as const,
+      knownHostsVersion: 1,
+      revision: 2
+    }
+    const order: string[] = []
+    const getRemoteTarget = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        order.push('read-before')
+        return Promise.resolve({ target })
+      })
+      .mockImplementationOnce(() => {
+        order.push('read-after')
+        return Promise.resolve({ target: { ...target, revision: 3 } })
+      })
+    const beginRemoteCredentialReplacement = vi.fn(() => {
+      order.push('reserve')
+      return Promise.resolve()
+    })
+    const commitRemoteCredentialReplacement = vi.fn(() => {
+      order.push('commit')
+      return Promise.resolve({ target: { ...target, revision: 3 } })
+    })
+    const liveBackupProof = vi.fn(() => {
+      order.push('proof')
+      return Promise.resolve(proof)
+    })
+    const handoff = vi.fn(() => {
+      order.push('handoff')
+      return Promise.resolve()
+    })
+    try {
+      await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
+      const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+      const credentialFd = handle.fd
+      Object.assign(sidecar, {
+        stopped: false,
+        options: {
+          remoteTransport: true,
+          liveDatabasePath: proof.liveStatePath,
+          backupPath: proof.backupStatePath
+        },
+        remoteReplacementEnabled: true,
+        client: {
+          getRemoteTarget,
+          beginRemoteCredentialReplacement,
+          commitRemoteCredentialReplacement
+        },
+        ownerChannel: { liveBackupProof },
+        replaceLiveRemoteCredential: handoff
+      })
+      await expect(
+        sidecar.invokeDesktopCore(
+          randomUUID(),
+          DESKTOP_IPC.remoteCredentialReplace,
+          [{ remoteTargetId: targetId }],
+          vi.fn(),
+          undefined,
+          { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
+        )
+      ).resolves.toEqual({ handled: true, value: true })
+      expect(order).toEqual(['read-before', 'reserve', 'proof', 'handoff', 'commit', 'read-after'])
+      expect(handoff).toHaveBeenCalledWith(
+        expect.objectContaining({ remoteTargetId: targetId, expectedRevision: 2 }),
+        proof,
+        credentialFd
+      )
+      await expect(handle.stat()).rejects.toThrow()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
+
+it.skipIf(process.platform !== 'linux')(
+  'leaves a failed live restart stopped and does not send a stale rollback request',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-restart-'))
+    const keyPath = join(directory, 'test-key')
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    const abortRemoteCredentialReplacement = vi.fn()
+    const target = {
+      remoteTargetId: targetId,
+      label: 'Test',
+      host: 'example.com',
+      port: 22,
+      user: 'alice',
+      authentication: 'publicKey',
+      hostKeyState: 'untrusted',
+      knownHostsVersion: 1,
+      revision: 2
+    }
+    try {
+      await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
+      const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+      Object.assign(sidecar, {
+        stopped: false,
+        options: {
+          remoteTransport: true,
+          liveDatabasePath: '/tmp/state',
+          backupPath: '/tmp/backup'
+        },
+        remoteReplacementEnabled: true,
+        client: {
+          getRemoteTarget: vi.fn().mockResolvedValue({ target }),
+          beginRemoteCredentialReplacement: vi.fn().mockResolvedValue(undefined),
+          abortRemoteCredentialReplacement
+        },
+        ownerChannel: {
+          liveBackupProof: vi.fn().mockResolvedValue({
+            liveStatePath: '/tmp/state',
+            backupStatePath: '/tmp/backup',
+            liveStateIdentity: '1:2',
+            backupStateIdentity: '1:3',
+            backupSha256: 'a'.repeat(64)
+          })
+        },
+        replaceLiveRemoteCredential: vi.fn(() => {
+          sidecar['stopped'] = true
+          return Promise.reject(new Error('restart failed'))
+        })
+      })
+      await expect(
+        sidecar.invokeDesktopCore(
+          randomUUID(),
+          DESKTOP_IPC.remoteCredentialReplace,
+          [{ remoteTargetId: targetId }],
+          vi.fn(),
+          undefined,
+          { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
+        )
+      ).rejects.toThrow('pending recovery')
+      expect(abortRemoteCredentialReplacement).not.toHaveBeenCalled()
+      await expect(handle.stat()).rejects.toThrow()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
 
 it('reads the isolated agent catalog and rejects assessment outside the owning window', async () => {
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar

@@ -2253,7 +2253,7 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
 
 .settings-navigation-heading h2 {
   font-size: var(--aw-font-size-body);
-  font-weight: 550;
+  font-weight: var(--aw-font-weight-emphasis);
 }
 
 .settings-navigation-heading p {
@@ -2266,7 +2266,7 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
   place-items: center;
   height: 29px;
   color: var(--aw-color-text-secondary);
-  border: 1px solid var(--aw-color-border-strong);
+  border: var(--aw-border-width) solid var(--aw-color-border-strong);
   border-radius: var(--aw-radius-md);
 }
 
@@ -2330,8 +2330,8 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
 }
 
 .settings-content-heading h2 {
-  font-size: 1.3125rem;
-  font-weight: 550;
+  font-size: var(--aw-font-size-display);
+  font-weight: var(--aw-font-weight-emphasis);
   letter-spacing: -0.4px;
 }
 
@@ -2747,7 +2747,7 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
   width: 100%;
   height: 82px;
   overflow: hidden;
-  border: 1px solid var(--aw-color-border-strong);
+  border: var(--aw-border-width) solid var(--aw-color-border-strong);
   border-radius: var(--aw-radius-sm);
   --preview-background: var(--aw-color-preview-light-canvas);
   --preview-sidebar: var(--aw-color-preview-light-sidebar);
@@ -2804,7 +2804,7 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
 }
 .appearance-font-preview strong {
   font-size: var(--aw-font-size-heading);
-  font-weight: 500;
+  font-weight: var(--aw-font-weight-medium);
   line-height: var(--aw-line-height-prose);
 }
 .appearance-font-preview p {

@@ -1,15 +1,18 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { availableParallelism, hostname, release, tmpdir } from 'node:os'
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { availableParallelism, hostname, release, homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 
 import { describe, expect, it } from 'vitest'
 
-import type { TerminalEventMessage } from '@agent-workspace/protocol-client'
+import {
+  mutationResultSchema,
+  terminalEventSchema,
+  type TerminalEventMessage
+} from '@agent-workspace/protocol-client'
 
-import type { ControlClient } from './control-client'
-import { SERVICE_BINARY_NAME } from './identity'
-import { ServiceSupervisor } from './service-supervisor'
+import { DESKTOP_IPC } from '@agent-workspace/contracts/desktop/desktop-bridge'
+import { NodeSidecar } from './node-sidecar'
 
 const WARMUP_ITERATIONS = 10
 const MEASURED_ITERATIONS = 40
@@ -19,67 +22,57 @@ const OUTPUT_TIMEOUT_MS = 2_000
 
 describe('desktop to service terminal responsiveness', () => {
   it('keeps warmed PTY dispatch acknowledgements and perceived echo within Milestone 1 gates', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-performance-'))
-    const endpoint =
-      process.platform === 'win32'
-        ? `agent-workspace-performance-${process.pid}`
-        : join(directory, 'control.sock')
-    const executable =
-      process.platform === 'win32' ? `${SERVICE_BINARY_NAME}.exe` : SERVICE_BINARY_NAME
-    const servicePath = resolve(process.cwd(), '..', '..', 'target', 'release', executable)
-    const token = '13579bdf2468ace013579bdf2468ace013579bdf2468ace0'
-    const supervisor = new ServiceSupervisor(
-      endpoint,
-      token,
-      servicePath,
-      join(directory, 'state', 'workspace.sqlite'),
-      directory
-    )
-    let client: ControlClient | undefined
+    const cache = process.env.RUNNER_TEMP ?? join(homedir(), '.cache', 'ternline-validation')
+    await mkdir(cache, { recursive: true })
+    const directory = await realpath(await mkdtemp(join(cache, 'terminal-performance-')))
+    await chmod(directory, 0o700)
+    const listeners = new Set<(event: TerminalEventMessage) => void>()
+    const emit = (event: unknown): void => {
+      const parsed = terminalEventSchema.parse(event)
+      for (const listener of listeners) listener(parsed)
+    }
+    let sidecar: NodeSidecar | undefined
+    let windowId: string | undefined
     let terminalId: string | undefined
     let tabId: string | undefined
     let workspaceId: string | undefined
 
     try {
-      client = await supervisor.start()
-      const bootstrapProof = supervisor.getDesktopBootstrapProof()
-      if (!bootstrapProof) throw new Error('The desktop-provider bootstrap proof is missing')
-      const topology = await client.listWindows()
-      const placement = topology.windows.find(
-        ({ windowId }) => windowId === topology.focusedWindowId
-      )
-      if (!placement) throw new Error('The focused window placement is missing')
-      const claim = { windowId: placement.windowId, generation: 1 }
-      const registration = await client.registerDesktopProvider({
-        bootstrapProof,
-        instanceId: '14000000-0000-4000-8000-000000000001',
-        capabilities: ['window-host-v1', 'tab-transfer-v1', 'browser-transfer-v1'],
-        windows: [claim]
+      sidecar = await NodeSidecar.startNative({
+        native: true,
+        serverPath: resolve(process.cwd(), '..', 'server', 'dist', 'bin.mjs'),
+        liveDatabasePath: join(directory, 'workspace.sqlite'),
+        backupPath: join(directory, 'backup.sqlite'),
+        sessionFilePath: join(directory, 'session.json'),
+        defaultWorkingDirectory: directory
       })
-      await client.bindWindow({
-        identity: {
-          providerId: registration.providerId,
-          providerEpoch: registration.providerEpoch,
-          leaseId: registration.leaseId
-        },
-        window: claim
-      })
-      const initial = (await client.listWorkspaces()).snapshot
+      const topology = await sidecar.client.listWindows()
+      windowId = topology.focusedWindowId
+      await sidecar.reconcileHostingForTrustedOwner('registerHosting', windowId, 1)
+      const initial = (await sidecar.client.listWorkspaces()).snapshot
       const workspace = initial.workspaces.find(({ id }) => id === initial.selectedWorkspaceId)
       if (!workspace) throw new Error('The selected workspace is missing')
-      const result = await client.openTerminalTab({
-        workspaceId: workspace.id,
-        paneId: workspace.selectedPaneId,
-        launch: {
-          cwd: directory,
-          rows: 24,
-          cols: 80,
-          command:
-            process.platform === 'win32'
-              ? ['cmd.exe', '/D', '/Q']
-              : ['/bin/sh', '-c', 'stty -echo; exec /bin/cat']
-        }
-      })
+      const opened = await sidecar.invokeDesktopCore(
+        windowId,
+        DESKTOP_IPC.tabOpenTerminal,
+        [
+          {
+            workspaceId: workspace.id,
+            paneId: workspace.selectedPaneId,
+            launch: {
+              cwd: directory,
+              rows: 24,
+              cols: 80,
+              command:
+                process.platform === 'win32'
+                  ? ['cmd.exe', '/D', '/Q']
+                  : ['/bin/sh', '-c', 'stty -echo; exec /bin/cat']
+            }
+          }
+        ],
+        emit
+      )
+      const result = mutationResultSchema.parse(opened.value)
       const updated = result.snapshot.workspaces.find(({ id }) => id === workspace.id)
       const pane = updated?.panes.find(({ id }) => id === workspace.selectedPaneId)
       const tab = updated?.tabs.find(({ id }) => id === pane?.selectedTabId)
@@ -87,28 +80,34 @@ describe('desktop to service terminal responsiveness', () => {
       if (!tab || !terminalId) throw new Error('The managed terminal was not created')
       workspaceId = workspace.id
       tabId = tab.id
-      await client.attachTerminal(terminalId)
+      await sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.terminalAttach, [terminalId], emit)
 
       for (let iteration = 0; iteration < WARMUP_ITERATIONS; iteration += 1) {
-        await measureInput(client, terminalId, markerFor('warmup', iteration))
-        await measureResize(client, terminalId, iteration)
+        await measureInput(sidecar, windowId, listeners, terminalId, markerFor('warmup', iteration))
+        await measureResize(sidecar, windowId, terminalId, iteration)
       }
 
       const inputAcknowledgements: number[] = []
       const perceivedEchoes: number[] = []
       const resizeAcknowledgements: number[] = []
       for (let iteration = 0; iteration < MEASURED_ITERATIONS; iteration += 1) {
-        const input = await measureInput(client, terminalId, markerFor('measured', iteration))
+        const input = await measureInput(
+          sidecar,
+          windowId,
+          listeners,
+          terminalId,
+          markerFor('measured', iteration)
+        )
         inputAcknowledgements.push(input.acknowledgementMs)
         perceivedEchoes.push(input.echoMs)
-        resizeAcknowledgements.push(await measureResize(client, terminalId, iteration))
+        resizeAcknowledgements.push(await measureResize(sidecar, windowId, terminalId, iteration))
       }
 
       const inputSummary = summarize(inputAcknowledgements)
       const echoSummary = summarize(perceivedEchoes)
       const resizeSummary = summarize(resizeAcknowledgements)
       console.info(
-        `[terminal-performance] build=release environment=${process.env.CI ? 'ci' : 'local'} ` +
+        `[terminal-performance] runtime=node environment=${process.env.CI ? 'ci' : 'local'} ` +
           `platform=${process.platform}-${process.arch} cpus=${String(availableParallelism())} ` +
           `node=${process.version} samples=${String(MEASURED_ITERATIONS)} ` +
           `input-ack=${formatSummary(inputSummary)} ` +
@@ -127,7 +126,7 @@ describe('desktop to service terminal responsiveness', () => {
                 resultMetric('pty.resize_dispatch', resizeAcknowledgements, DISPATCH_P95_TARGET_MS)
               ],
               scenarios: [
-                'rapid typing through a release service PTY',
+                'rapid typing through the native Node service PTY',
                 'repeated PTY resize dispatch'
               ]
             },
@@ -137,8 +136,8 @@ describe('desktop to service terminal responsiveness', () => {
         )
       }
 
-      // These acknowledgements cover ControlClient serialization, the authenticated local
-      // socket, service dispatch, and completion of the PTY write/OS resize operation.
+      // These acknowledgements cover sender-bound desktop dispatch, authenticated HTTP,
+      // service dispatch, and completion of the PTY write/OS resize operation.
       expect(inputSummary.p95).toBeLessThanOrEqual(DISPATCH_P95_TARGET_MS)
       expect(resizeSummary.p95).toBeLessThanOrEqual(DISPATCH_P95_TARGET_MS)
       // Unix disables the terminal driver's local echo, so this measures input through the
@@ -146,24 +145,33 @@ describe('desktop to service terminal responsiveness', () => {
       // closest available cross-platform integration path and can include console echo.
       expect(echoSummary.p95).toBeLessThanOrEqual(PERCEIVED_ECHO_P95_TARGET_MS)
     } finally {
-      if (client && workspaceId && tabId) {
-        await client.closeTab({ workspaceId, tabId }).catch(() => undefined)
+      if (sidecar && windowId && workspaceId && tabId) {
+        await sidecar
+          .invokeDesktopCore(windowId, DESKTOP_IPC.tabClose, [{ workspaceId, tabId }], emit)
+          .catch(() => undefined)
       }
-      await supervisor.stop()
+      await sidecar?.stop()
       await rm(directory, { force: true, recursive: true })
     }
   }, 30_000)
 })
 
 async function measureInput(
-  client: ControlClient,
+  sidecar: NodeSidecar,
+  windowId: string,
+  listeners: Set<(event: TerminalEventMessage) => void>,
   terminalId: string,
   marker: string
 ): Promise<{ acknowledgementMs: number; echoMs: number }> {
   const startedAt = performance.now()
-  const outputAt = waitForTerminalOutput(client, terminalId, marker)
+  const outputAt = waitForTerminalOutput(listeners, terminalId, marker)
   const data = process.platform === 'win32' ? `echo ${marker}\r\n` : `${marker}\n`
-  await client.sendTerminalInput(terminalId, data)
+  await sidecar.invokeDesktopCore(
+    windowId,
+    DESKTOP_IPC.terminalSend,
+    [terminalId, data],
+    () => undefined
+  )
   const acknowledgedAt = performance.now()
 
   return {
@@ -173,17 +181,23 @@ async function measureInput(
 }
 
 async function measureResize(
-  client: ControlClient,
+  sidecar: NodeSidecar,
+  windowId: string,
   terminalId: string,
   iteration: number
 ): Promise<number> {
   const startedAt = performance.now()
-  await client.resizeTerminal(terminalId, 24 + (iteration % 2), 80 + (iteration % 3))
+  await sidecar.invokeDesktopCore(
+    windowId,
+    DESKTOP_IPC.terminalResize,
+    [terminalId, 24 + (iteration % 2), 80 + (iteration % 3)],
+    () => undefined
+  )
   return performance.now() - startedAt
 }
 
 function waitForTerminalOutput(
-  client: ControlClient,
+  listeners: Set<(event: TerminalEventMessage) => void>,
   terminalId: string,
   expected: string
 ): Promise<number> {
@@ -194,7 +208,7 @@ function waitForTerminalOutput(
       removeListener()
       rejectOutput(new Error(`Timed out waiting for terminal output: ${expected}`))
     }, OUTPUT_TIMEOUT_MS)
-    removeListener = client.onTerminalEvent((event: TerminalEventMessage) => {
+    const listener = (event: TerminalEventMessage): void => {
       if (event.event !== 'terminal.output' || event.data.terminalId !== terminalId) {
         return
       }
@@ -204,7 +218,11 @@ function waitForTerminalOutput(
         removeListener()
         resolveOutput(performance.now())
       }
-    })
+    }
+    listeners.add(listener)
+    removeListener = () => {
+      listeners.delete(listener)
+    }
   })
 }
 
@@ -245,7 +263,7 @@ function resultMetric(id: string, samples: readonly number[], target: number): o
     gate: 'required',
     passed: summary.p95 <= target,
     notes: [
-      `release service on ${process.platform}-${process.arch}`,
+      `native Node service on ${process.platform}-${process.arch}`,
       `kernel ${release()}; host ${hostname()}`
     ]
   }

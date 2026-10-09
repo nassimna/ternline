@@ -421,7 +421,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         spawnProcess: () => serviceChild.child,
@@ -469,7 +469,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         createProcessContainment,
@@ -504,7 +504,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         createProcessContainment: () => Promise.resolve(containment),
@@ -535,7 +535,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment(children, {
         spawnProcess,
@@ -597,7 +597,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         platform: 'win32',
@@ -621,7 +621,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         spawnProcess: () => serviceChild.child,
@@ -650,7 +650,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([unexpectedChild], {
         spawnProcess: () => unexpectedChild.child,
@@ -687,7 +687,7 @@ describe('ServiceSupervisor lifecycle', () => {
       const supervisor = new ServiceSupervisor(
         '/run/control.sock',
         '0123456789abcdef0123456789abcdef',
-        '/bin/true',
+        process.execPath,
         serviceOptions(directory),
         withFakeContainment([serviceChild], {
           platform: 'linux',
@@ -730,7 +730,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         platform: 'linux',
@@ -767,7 +767,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       {
         platform: 'darwin',
@@ -807,7 +807,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         shutdownTimeoutMs: 5,
@@ -860,7 +860,7 @@ describe('ServiceSupervisor lifecycle', () => {
       const supervisor = new ServiceSupervisor(
         '/run/control.sock',
         '0123456789abcdef0123456789abcdef',
-        '/bin/true',
+        process.execPath,
         serviceOptions(directory),
         {
           createProcessContainment: () => Promise.resolve(containment),
@@ -899,7 +899,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       {
         createProcessContainment: () => Promise.resolve(containment),
@@ -936,7 +936,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       {
         createProcessContainment: () => Promise.resolve(containment),
@@ -977,7 +977,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         platform: 'linux',
@@ -1014,7 +1014,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([serviceChild], {
         platform: 'win32',
@@ -1057,7 +1057,7 @@ describe('ServiceSupervisor lifecycle', () => {
     const supervisor = new ServiceSupervisor(
       '/run/control.sock',
       '0123456789abcdef0123456789abcdef',
-      '/bin/true',
+      process.execPath,
       serviceOptions(directory),
       withFakeContainment([child], { spawnProcess: () => child.child })
     )
@@ -1096,7 +1096,7 @@ describe('real Linux cgroup v2 containment', () => {
       const supervisor = new ServiceSupervisor(
         '/run/control.sock',
         '0123456789abcdef0123456789abcdef',
-        '/bin/true',
+        process.execPath,
         serviceOptions(directory),
         {
           platform: 'linux',
@@ -1147,17 +1147,19 @@ describe('real Linux cgroup v2 containment', () => {
 })
 
 describe('desktop packaging', () => {
-  it('ships both executable local sidecars', () => {
+  it('ships the staged Node runtime, server, CLI, and native addons', () => {
     const configuration = readFileSync(
       new URL('../../electron-builder.yml', import.meta.url),
       'utf8'
     )
-    expect(configuration).toContain('from: ../../target/release')
-    expect(configuration).toContain('to: bin')
-    expect(configuration).toContain('- agent-workspace-service')
-    expect(configuration).toContain('- agent-workspace-service.exe')
-    expect(configuration).toContain('- agent-workspace-cli')
-    expect(configuration).toContain('- agent-workspace-cli.exe')
+    expect(configuration).toContain('from: ../../target/node-linux')
+    expect(configuration).toContain('to: node-linux')
+    expect(configuration).toContain('from: ../../apps/server/dist')
+    expect(configuration).toContain('to: server/dist')
+    expect(configuration).toContain('from: ../cli/dist')
+    expect(configuration).toContain('to: cli/dist')
+    expect(configuration).toContain('afterPack: ./scripts/after-pack.mjs')
+    expect(configuration).not.toContain('from: ../../target/release')
   })
 })
 

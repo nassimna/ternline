@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync
@@ -16,7 +17,7 @@ import { expect, it } from 'vitest'
 import { NodeCopyDiagnostics } from './node-copy-diagnostics'
 
 it('exports the exact redacted isolated log snapshot once after the sidecar is down', () => {
-  const root = mkdtempSync(join(tmpdir(), 'node-copy-diagnostics-'))
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'node-copy-diagnostics-'))
   const sourceRoot = join(root, 'source')
   const copyRoot = join(root, 'copy')
   const liveRoot = join(root, 'live')
@@ -85,7 +86,7 @@ it('exports the exact redacted isolated log snapshot once after the sidecar is d
 })
 
 it('rejects a symlinked copy log directory without reading its target', () => {
-  const root = mkdtempSync(join(tmpdir(), 'node-copy-diagnostics-link-'))
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'node-copy-diagnostics-link-'))
   const sourceRoot = join(root, 'source')
   const copyRoot = join(root, 'copy')
   const liveRoot = join(root, 'live')
@@ -116,7 +117,7 @@ it('rejects a symlinked copy log directory without reading its target', () => {
 })
 
 it('rejects an active log without the copy ownership record', () => {
-  const root = mkdtempSync(join(tmpdir(), 'node-copy-diagnostics-unmarked-'))
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'node-copy-diagnostics-unmarked-'))
   const sourceRoot = join(root, 'source')
   const copyRoot = join(root, 'copy')
   const liveRoot = join(root, 'live')
