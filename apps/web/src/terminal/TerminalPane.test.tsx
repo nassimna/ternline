@@ -53,6 +53,8 @@ const terminalSpies = vi.hoisted(() => ({
   onTitleChange: undefined as ((title: string) => void) | undefined,
   onSearchResults: undefined as
     ((result: { resultIndex: number; resultCount: number }) => void) | undefined,
+  onScroll: undefined as (() => void) | undefined,
+  onWriteParsed: undefined as (() => void) | undefined,
   reset: vi.fn(),
   resizeObserver: undefined as ResizeObserverCallback | undefined,
   scrollToLine: vi.fn(),
@@ -95,6 +97,18 @@ vi.mock('@xterm/xterm', () => ({
     public onData(listener: (data: string) => void): { dispose(): void } {
       terminalSpies.onData = listener
       return { dispose: () => undefined }
+    }
+    public onScroll(listener: () => void): { dispose(): void } {
+      terminalSpies.onScroll = listener
+      return { dispose: () => undefined }
+    }
+    public onWriteParsed(listener: () => void): { dispose(): void } {
+      terminalSpies.onWriteParsed = listener
+      return { dispose: () => undefined }
+    }
+    public scrollToBottom(): void {
+      this.buffer.active.viewportY = this.buffer.active.baseY
+      terminalSpies.onScroll?.()
     }
     public onSelectionChange(): { dispose(): void } {
       return { dispose: () => undefined }
@@ -192,6 +206,8 @@ afterEach(() => {
   terminalSpies.onData = undefined
   terminalSpies.onTitleChange = undefined
   terminalSpies.onSearchResults = undefined
+  terminalSpies.onScroll = undefined
+  terminalSpies.onWriteParsed = undefined
   terminalSpies.reset.mockReset()
   terminalSpies.resizeObserver = undefined
   terminalSpies.scrollToLine.mockReset()
@@ -200,6 +216,26 @@ afterEach(() => {
 })
 
 describe('TerminalPane', () => {
+  it('offers new output without interrupting history and resumes following on return', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    window.desktopBridge = terminalBridge({ restartTerminal: vi.fn() })
+    renderTerminalPane()
+    await screen.findByText(messages.terminalPane.status.connected, {
+      selector: '.terminal-statusbar span'
+    })
+    expect(screen.queryByRole('button', { name: messages.terminalPane.jumpToLatest })).toBeNull()
+    const buffer = terminalSpies.instance!.buffer.active
+    buffer.baseY = 100
+    buffer.viewportY = 40
+    act(() => terminalSpies.onScroll?.())
+    expect(screen.getByRole('button', { name: messages.terminalPane.jumpToLatest })).toBeVisible()
+    buffer.baseY = 120
+    act(() => terminalSpies.onWriteParsed?.())
+    expect(buffer.viewportY).toBe(40)
+    fireEvent.click(screen.getByRole('button', { name: messages.terminalPane.newOutput }))
+    expect(buffer.viewportY).toBe(120)
+    expect(screen.queryByRole('button', { name: messages.terminalPane.newOutput })).toBeNull()
+  })
   it('announces search results, clears stale feedback and explains invalid patterns', async () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock)
     window.desktopBridge = terminalBridge({

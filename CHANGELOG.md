@@ -7,6 +7,18 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.11] - 2026-10-09
+
+### Fixed
+
+- Keep terminal wheel and trackpad scrolling responsive during continuous output, preserving the reading position while new output arrives.
+- Show Jump to latest and New output controls when reading terminal history; returning to the bottom resumes following live output.
+- Allow Option-drag selection and copying on macOS while a full-screen terminal application captures mouse input. Full-screen scrolling remains controlled by the application.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+
 ## [0.2.1-alpha.10] - 2026-10-09
 
 ### Fixed

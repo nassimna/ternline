@@ -145,6 +145,8 @@ export function TerminalPane({
   const [linkTarget, setLinkTarget] = useState<string | null>(null)
   const [identity, setIdentity] = useState<TerminalIdentity | null>(null)
   const [paneError, setPaneError] = useState<PaneError | null>(null)
+  const [readingHistory, setReadingHistory] = useState(false)
+  const [newOutput, setNewOutput] = useState(false)
 
   useEffect(() => {
     copyOnSelectRef.current = copyOnSelect
@@ -226,6 +228,7 @@ export function TerminalPane({
         leave: clearTerminalLink,
         allowNonHttpProtocols: false
       },
+      macOptionClickForcesSelection: true,
       screenReaderMode: false,
       scrollback: initialConfiguration.scrollback,
       theme: terminalTheme
@@ -270,6 +273,46 @@ export function TerminalPane({
     terminal.unicode.activeVersion = '11'
     terminal.open(host)
     fitAddon.fit()
+
+    // xterm's animated wheel scrolling can be interrupted by continuous PTY redraws.
+    let wheelRemainder = 0
+    const scrollHistory = (event: WheelEvent): void => {
+      const buffer = terminal.buffer.active
+      if (buffer.type !== 'normal' || buffer.baseY === 0 || event.ctrlKey || event.deltaY === 0) {
+        wheelRemainder = 0
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      const cellHeight = host.querySelector('.xterm-screen')!.clientHeight / terminal.rows
+      const delta =
+        event.deltaY *
+        (event.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? cellHeight
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+            ? cellHeight * terminal.rows
+            : 1) *
+        (event.altKey
+          ? terminal.options.fastScrollSensitivity!
+          : terminal.options.scrollSensitivity!)
+      if (Math.sign(delta) !== Math.sign(wheelRemainder)) wheelRemainder = 0
+      wheelRemainder += delta
+      const lines = Math.trunc(wheelRemainder / cellHeight)
+      wheelRemainder -= lines * cellHeight
+      if (lines !== 0) terminal.scrollLines(lines)
+    }
+    host.addEventListener('wheel', scrollHistory, { capture: true, passive: false })
+    const updateScrollState = (): boolean => {
+      const buffer = terminal.buffer.active
+      const reading = buffer.type === 'normal' && buffer.viewportY < buffer.baseY
+      setReadingHistory(reading)
+      if (!reading) setNewOutput(false)
+      return reading
+    }
+    const scrollDisposable = terminal.onScroll(updateScrollState)
+    const parsedDisposable = terminal.onWriteParsed(() => {
+      if (updateScrollState() && !restoring) setNewOutput(true)
+    })
 
     try {
       const webgl = new WebglAddon()
@@ -519,6 +562,9 @@ export function TerminalPane({
     return () => {
       disposed = true
       resizeObserver.disconnect()
+      host.removeEventListener('wheel', scrollHistory, true)
+      scrollDisposable.dispose()
+      parsedDisposable.dispose()
       if (resizeTimer !== undefined) {
         clearTimeout(resizeTimer)
       }
@@ -789,6 +835,20 @@ export function TerminalPane({
       </header>
       <div className="terminal-stage">
         <div className="terminal-host" ref={hostRef} />
+        {readingHistory && (
+          <Button
+            className="terminal-jump-to-latest"
+            size="small"
+            variant="secondary"
+            onClick={() => {
+              terminalRef.current?.scrollToBottom()
+              terminalRef.current?.focus()
+            }}
+            type="button"
+          >
+            {newOutput ? messages.terminalPane.newOutput : messages.terminalPane.jumpToLatest}
+          </Button>
+        )}
         {(paneError || exit) && (
           <Alert asChild variant={paneError ? 'destructive' : 'default'}>
             <div className="terminal-exit" role={paneError ? 'alert' : 'status'}>

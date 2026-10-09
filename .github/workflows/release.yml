@@ -200,7 +200,7 @@ jobs:
     name: Build direct Arch package and tagged recipe
     needs: package
     runs-on: ubuntu-latest
-    container: archlinux:base-20260712.0.555161@sha256:fe6972d4dc1f660c0c10f4c41b2de8986bab89e7e2955378f8beadb8ebcd7433
+    container: mirror.gcr.io/library/archlinux:base-20260712.0.555161@sha256:fe6972d4dc1f660c0c10f4c41b2de8986bab89e7e2955378f8beadb8ebcd7433
     timeout-minutes: 25
     steps:
       - name: Bootstrap existing Arch build image

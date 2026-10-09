@@ -874,6 +874,18 @@ body {
   scrollbar-width: thin;
 }
 
+.terminal-jump-to-latest {
+  position: absolute;
+  z-index: var(--aw-z-floating);
+  inset-inline-end: calc(4 * var(--aw-space-unit));
+  inset-block-end: calc(4 * var(--aw-space-unit));
+}
+
+.terminal-stage:has(.terminal-exit) .terminal-jump-to-latest {
+  inset-block-start: calc(4 * var(--aw-space-unit));
+  inset-block-end: auto;
+}
+
 .terminal-exit {
   position: absolute;
   right: 18px;
