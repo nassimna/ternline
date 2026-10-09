@@ -13,7 +13,10 @@ function plan(onClose: () => void): SshLaunchPlan {
     argv: ['-V'],
     revalidate: async () => {},
     environment: () => Promise.resolve({ SSH_AUTH_SOCK: '/attempt/agent.sock' }),
-    close: () => { onClose(); return Promise.resolve() }
+    close: () => {
+      onClose()
+      return Promise.resolve()
+    }
   } as unknown as SshLaunchPlan
 }
 
@@ -22,15 +25,25 @@ class FakePty implements PtyProcess {
   public killed = false
   private exitListener: (event: { exitCode: number }) => void = () => {}
 
-  public onData(): { dispose(): void } { return { dispose() {} } }
+  public onData(): { dispose(): void } {
+    return { dispose() {} }
+  }
   public onExit(listener: (event: { exitCode: number }) => void): { dispose(): void } {
     this.exitListener = listener
-    return { dispose: () => { this.exitListener = () => {} } }
+    return {
+      dispose: () => {
+        this.exitListener = () => {}
+      }
+    }
   }
   public write(): void {}
   public resize(): void {}
-  public kill(): void { this.killed = true }
-  public exit(code: number): void { this.exitListener({ exitCode: code }) }
+  public kill(): void {
+    this.killed = true
+  }
+  public exit(code: number): void {
+    this.exitListener({ exitCode: code })
+  }
 }
 
 describe('remote interactive runtime', () => {
@@ -38,7 +51,10 @@ describe('remote interactive runtime', () => {
     const pty = new FakePty()
     const spawns: unknown[] = []
     const adapter: PtyAdapter = {
-      spawn: (...args) => { spawns.push(args); return Promise.resolve(pty) }
+      spawn: (...args) => {
+        spawns.push(args)
+        return Promise.resolve(pty)
+      }
     }
     const terminals = new TerminalService(adapter)
     const runtime = new RemoteInteractiveRuntime(terminals)
@@ -46,22 +62,29 @@ describe('remote interactive runtime', () => {
     const first = await runtime.launch({
       remoteSessionId: SESSION_ID,
       generation: 1,
-      plan: plan(() => { closed += 1 }),
+      plan: plan(() => {
+        closed += 1
+      }),
       isCurrent: () => true
     })
     expect(spawns[0]).toEqual([
-      '/usr/bin/ssh', ['-V'],
+      '/usr/bin/ssh',
+      ['-V'],
       { cwd: '/', rows: 24, cols: 80, env: { SSH_AUTH_SOCK: '/attempt/agent.sock' } }
     ])
     expect(terminals.attach(first.terminalId).terminal.command).toEqual(['remote-transport'])
     expect(runtime.isLive(SESSION_ID, 1)).toBe(true)
     expect(runtime.ownsTerminal(first.terminalId)).toBe(true)
-    await expect(runtime.launch({
-      remoteSessionId: SESSION_ID,
-      generation: 2,
-      plan: plan(() => { closed += 1 }),
-      isCurrent: () => false
-    })).rejects.toMatchObject({ code: 'stale_attempt' })
+    await expect(
+      runtime.launch({
+        remoteSessionId: SESSION_ID,
+        generation: 2,
+        plan: plan(() => {
+          closed += 1
+        }),
+        isCurrent: () => false
+      })
+    ).rejects.toMatchObject({ code: 'stale_attempt' })
     expect(pty.killed).toBe(false)
     expect(runtime.isLive(SESSION_ID, 1)).toBe(true)
     await runtime.terminate(SESSION_ID, 1)
@@ -79,9 +102,13 @@ describe('remote interactive runtime', () => {
     await runtime.launch({
       remoteSessionId: SESSION_ID,
       generation: 3,
-      plan: plan(() => { calls.push('revoked') }),
+      plan: plan(() => {
+        calls.push('revoked')
+      }),
       isCurrent: () => true,
-      onExit: ({ generation }) => { calls.push(`exit ${generation}`) }
+      onExit: ({ generation }) => {
+        calls.push(`exit ${generation}`)
+      }
     })
     pty.exit(255)
     await new Promise((resolve) => setImmediate(resolve))
@@ -94,7 +121,9 @@ describe('remote interactive runtime', () => {
     const terminals = new TerminalService({ spawn: () => Promise.resolve(pty) })
     const runtime = new RemoteInteractiveRuntime(terminals)
     let release!: () => void
-    const revoked = new Promise<void>((resolve) => { release = resolve })
+    const revoked = new Promise<void>((resolve) => {
+      release = resolve
+    })
     const pendingPlan = {
       ...plan(() => {}),
       close: () => revoked
@@ -107,7 +136,9 @@ describe('remote interactive runtime', () => {
     })
     pty.exit(255)
     let disposed = false
-    const shutdown = runtime.dispose().then(() => { disposed = true })
+    const shutdown = runtime.dispose().then(() => {
+      disposed = true
+    })
     await Promise.resolve()
     expect(disposed).toBe(false)
     release()
@@ -117,7 +148,11 @@ describe('remote interactive runtime', () => {
 
   it('starts stock SSH in a real PTY and captures its bounded exit output', async () => {
     const terminals = new TerminalService(new NodePtyAdapter())
-    const { terminal } = await terminals.createRemote(plan(() => {}), 24, 80)
+    const { terminal } = await terminals.createRemote(
+      plan(() => {}),
+      24,
+      80
+    )
     const exited = await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('ssh did not exit')), 5000)
       const check = () => {
@@ -131,7 +166,9 @@ describe('remote interactive runtime', () => {
       check()
     })
     expect(exited).toBeUndefined()
-    const output = Buffer.concat(terminals.attach(terminal.id).output.map((part) => Buffer.from(part.data, 'base64'))).toString()
+    const output = Buffer.concat(
+      terminals.attach(terminal.id).output.map((part) => Buffer.from(part.data, 'base64'))
+    ).toString()
     expect(output).toContain('OpenSSH_')
     expect(terminals.attach(terminal.id).terminal.command).toEqual(['remote-transport'])
     terminals.close(terminal.id)

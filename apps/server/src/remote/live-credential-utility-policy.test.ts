@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmod, copyFile, link, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, link, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -44,30 +44,39 @@ async function fixture() {
   }
 }
 
-it.skipIf(process.platform !== 'linux')('binds a preexisting backup to exact live and backup files', async () => {
-  const { proof } = await fixture()
-  expect(() => verifyLiveCredentialStateProof(proof)).not.toThrow()
-  expect(inspectLegacyDatabase).toHaveBeenCalledWith(proof.backupStatePath)
-  expect(() => verifyLiveCredentialStateProof({ ...proof, liveStateIdentity: '1:2' })).toThrow()
-  expect(() => verifyLiveCredentialStateProof({ ...proof, backupSha256: '0'.repeat(64) })).toThrow()
-})
+it.skipIf(process.platform !== 'linux')(
+  'binds a preexisting backup to exact live and backup files',
+  async () => {
+    const { proof } = await fixture()
+    expect(() => verifyLiveCredentialStateProof(proof)).not.toThrow()
+    expect(inspectLegacyDatabase).toHaveBeenCalledWith(proof.backupStatePath)
+    expect(() => verifyLiveCredentialStateProof({ ...proof, liveStateIdentity: '1:2' })).toThrow()
+    expect(() =>
+      verifyLiveCredentialStateProof({ ...proof, backupSha256: '0'.repeat(64) })
+    ).toThrow()
+  }
+)
 
-it.skipIf(process.platform !== 'linux')('rejects replaced, linked, or unnormalized backups', async () => {
-  const { proof } = await fixture()
-  await rm(proof.backupStatePath)
-  await writeFile(proof.backupStatePath, 'live state', { mode: 0o600 })
-  expect(() => verifyLiveCredentialStateProof(proof)).toThrow()
-  await rm(proof.backupStatePath)
-  await link(proof.liveStatePath, proof.backupStatePath)
-  expect(() => verifyLiveCredentialStateProof(proof)).toThrow()
-  await rm(proof.backupStatePath)
-  await copyFile(proof.liveStatePath, proof.backupStatePath)
-  await chmod(proof.backupStatePath, 0o600)
-  const replacement = statSync(proof.backupStatePath)
-  const current = { ...proof, backupStateIdentity: `${replacement.dev}:${replacement.ino}` }
-  vi.mocked(inspectLegacyDatabase).mockReturnValueOnce({
-    snapshotRevision: null,
-    legacySnapshotCompatibility: false
-  } as ReturnType<typeof inspectLegacyDatabase>)
-  expect(() => verifyLiveCredentialStateProof(current)).toThrow()
-})
+it.skipIf(process.platform !== 'linux')(
+  'rejects replaced, linked, or unnormalized backups',
+  async () => {
+    const { directory, proof } = await fixture()
+    const replacementPath = join(directory, 'replacement.sqlite3')
+    await writeFile(replacementPath, 'live state', { mode: 0o600 })
+    await rename(replacementPath, proof.backupStatePath)
+    expect(() => verifyLiveCredentialStateProof(proof)).toThrow()
+    await rm(proof.backupStatePath)
+    await link(proof.liveStatePath, proof.backupStatePath)
+    expect(() => verifyLiveCredentialStateProof(proof)).toThrow()
+    await rm(proof.backupStatePath)
+    await copyFile(proof.liveStatePath, proof.backupStatePath)
+    await chmod(proof.backupStatePath, 0o600)
+    const replacement = statSync(proof.backupStatePath)
+    const current = { ...proof, backupStateIdentity: `${replacement.dev}:${replacement.ino}` }
+    vi.mocked(inspectLegacyDatabase).mockReturnValueOnce({
+      snapshotRevision: null,
+      legacySnapshotCompatibility: false
+    } as ReturnType<typeof inspectLegacyDatabase>)
+    expect(() => verifyLiveCredentialStateProof(current)).toThrow()
+  }
+)

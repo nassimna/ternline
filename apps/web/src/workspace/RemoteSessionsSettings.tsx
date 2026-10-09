@@ -36,9 +36,15 @@ export function RemoteSessionsSettings({
   const [targets, setTargets] = useState<readonly RemoteTargetSnapshot[]>([])
   const [sessions, setSessions] = useState<readonly RemoteSessionSnapshot[]>([])
   const [loading, setLoading] = useState(true)
+  const [previousOpen, setPreviousOpen] = useState(open)
   const [busy, setBusy] = useState<string | null>(null)
   const [status, setStatus] = useState('')
   const [tmuxName, setTmuxName] = useState('main')
+
+  if (previousOpen !== open) {
+    setPreviousOpen(open)
+    if (open) setLoading(true)
+  }
 
   const loadRemote = () =>
     Promise.all([
@@ -55,7 +61,6 @@ export function RemoteSessionsSettings({
   useEffect(() => {
     if (!open) return
     let active = true
-    setLoading(true)
     void loadRemote()
       .then(([targetResult, sessionResult]) => {
         if (!active) return

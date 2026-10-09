@@ -382,9 +382,10 @@ describe('RightSidebar', () => {
     expect(screen.queryByRole('button', { name: 'Detach' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load more tasks' }))
     expect(await screen.findByText('Second remote')).toBeVisible()
+    const stringMatcher: unknown = expect.any(String)
     expect(listTasks).toHaveBeenNthCalledWith(2, {
       limit: 100,
-      cancellationId: expect.any(String),
+      cancellationId: stringMatcher,
       cursor: first.target.sessionId
     })
     fireEvent.click(screen.getByRole('button', { name: 'Refresh tasks' }))
@@ -438,10 +439,11 @@ describe('RightSidebar', () => {
     expect(await screen.findByText('Updated shell')).toBeVisible()
     expect(listRecentlyClosed).toHaveBeenCalledTimes(2)
     fireEvent.click(screen.getByRole('button', { name: 'Reopen' }))
+    const recordMatcher: unknown = expect.objectContaining({ expectedRevision: 2 })
     await waitFor(() =>
       expect(reopenRecentlyClosed).toHaveBeenCalledWith(
         expect.objectContaining({
-          record: expect.objectContaining({ expectedRevision: 2 })
+          record: recordMatcher
         })
       )
     )

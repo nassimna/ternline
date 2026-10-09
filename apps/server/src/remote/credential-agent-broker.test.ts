@@ -19,12 +19,18 @@ const sshString = (value: Buffer | string) => {
   return Buffer.concat([length, bytes])
 }
 const sessionBind = (
-  hostKey: Buffer, sessionId: Buffer, signature: Buffer, forwarding = false,
+  hostKey: Buffer,
+  sessionId: Buffer,
+  signature: Buffer,
+  forwarding = false,
   extension = 'session-bind@openssh.com'
 ) => {
   const payload = Buffer.concat([
-    Buffer.from([27]), sshString(extension), sshString(hostKey),
-    sshString(sessionId), sshString(Buffer.concat([sshString('ssh-ed25519'), sshString(signature)])),
+    Buffer.from([27]),
+    sshString(extension),
+    sshString(hostKey),
+    sshString(sessionId),
+    sshString(Buffer.concat([sshString('ssh-ed25519'), sshString(signature)])),
     Buffer.from([Number(forwarding)])
   ])
   return Buffer.concat([sshString(payload)])
@@ -82,7 +88,11 @@ describe('attempt-scoped signing broker', () => {
       if (parsed instanceof Error || Array.isArray(parsed)) throw new Error('Invalid test key')
       const hostKey = parsed.getPublicSSH()
       lease = await CredentialBrokerLease.fromSigningBroker(
-        brokerRoot, targetId, 1, secret, hostKey.toString('base64')
+        brokerRoot,
+        targetId,
+        1,
+        secret,
+        hostKey.toString('base64')
       )
       expect(secret.every((byte) => byte === 0)).toBe(true)
       const socket = connect(await lease.socketFor(targetId, 1))
@@ -90,9 +100,12 @@ describe('attempt-scoped signing broker', () => {
       const hostSignature = parsed.sign(sessionId)
       if (hostSignature instanceof Error) throw hostSignature
       expect(await exchange(socket, sessionBind(hostKey, sessionId, hostSignature, true))).toBe(5)
-      expect(await exchange(socket, sessionBind(
-        hostKey, sessionId, hostSignature, false, 'session-bind@openssh.net'
-      ))).toBe(5)
+      expect(
+        await exchange(
+          socket,
+          sessionBind(hostKey, sessionId, hostSignature, false, 'session-bind@openssh.net')
+        )
+      ).toBe(5)
       const wrongHostKey = Buffer.from(hostKey)
       wrongHostKey[wrongHostKey.length - 1] = wrongHostKey[wrongHostKey.length - 1]! ^ 1
       expect(await exchange(socket, sessionBind(wrongHostKey, sessionId, hostSignature))).toBe(5)
@@ -109,16 +122,28 @@ describe('attempt-scoped signing broker', () => {
       expect(identities).toHaveLength(1)
       const identity = identities?.[0]
       if (!identity) throw new Error('No broker identity')
-      await expect(new Promise<Buffer>((resolve, reject) =>
-        client.sign(identity, Buffer.concat([
-          sshString(Buffer.alloc(32, 8)), Buffer.from([50]), Buffer.from('wrong session')
-        ]), (error, result) => error ? reject(error) : resolve(result!))
-      )).rejects.toThrow('Agent responded with failure')
+      await expect(
+        new Promise<Buffer>((resolve, reject) =>
+          client.sign(
+            identity,
+            Buffer.concat([
+              sshString(Buffer.alloc(32, 8)),
+              Buffer.from([50]),
+              Buffer.from('wrong session')
+            ]),
+            (error, result) => (error ? reject(error) : resolve(result!))
+          )
+        )
+      ).rejects.toThrow('Agent responded with failure')
       const signature = await new Promise<Buffer>((resolve, reject) =>
-        client.sign(identity, Buffer.concat([
-          sshString(sessionId), Buffer.from([50]), Buffer.from('attempt challenge')
-        ]), (error, result) =>
-          error ? reject(error) : resolve(result!)
+        client.sign(
+          identity,
+          Buffer.concat([
+            sshString(sessionId),
+            Buffer.from([50]),
+            Buffer.from('attempt challenge')
+          ]),
+          (error, result) => (error ? reject(error) : resolve(result!))
         )
       )
       expect(signature).toHaveLength(64)

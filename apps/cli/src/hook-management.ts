@@ -4,7 +4,13 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { parse as parseToml } from 'smol-toml'
-import { applyEdits, findNodeAtLocation, modify, parseTree, type Node as JsonNode } from 'jsonc-parser/lib/esm/main.js'
+import {
+  applyEdits,
+  findNodeAtLocation,
+  modify,
+  parseTree,
+  type Node as JsonNode
+} from 'jsonc-parser/lib/esm/main.js'
 
 const MAX_BYTES = 64 * 1024
 type Agent = 'codex' | 'claude'
@@ -23,9 +29,15 @@ interface State {
   priorClaudeManagedCount?: number
 }
 
-interface Paths { config: string; state: string; backup: string }
+interface Paths {
+  config: string
+  state: string
+  backup: string
+}
 
-function failure(message: string): never { throw new Error(message) }
+function failure(message: string): never {
+  throw new Error(message)
+}
 
 function paths(agent: Agent, home: string = process.env.HOME || homedir()): Paths {
   if (!isAbsolute(home)) failure('A user home directory is required')
@@ -47,14 +59,20 @@ async function ensureParent(path: string): Promise<void> {
 
 async function validateParent(parent: string): Promise<void> {
   const info = await lstat(parent)
-  if (!info.isDirectory() || info.isSymbolicLink() ||
-      (process.getuid && info.uid !== process.getuid()) ||
-      (await realpath(parent)) !== resolve(parent)) {
+  if (
+    !info.isDirectory() ||
+    info.isSymbolicLink() ||
+    (process.getuid && info.uid !== process.getuid()) ||
+    (await realpath(parent)) !== resolve(parent)
+  ) {
     failure('The hook directory must be a real user-owned directory')
   }
 }
 
-async function readOptional(path: string, secure = false): Promise<{ existed: boolean; text: string }> {
+async function readOptional(
+  path: string,
+  secure = false
+): Promise<{ existed: boolean; text: string }> {
   const parent = dirname(path)
   const parentInfo = await lstat(parent).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return undefined
@@ -66,25 +84,35 @@ async function readOptional(path: string, secure = false): Promise<{ existed: bo
     throw error
   })
   if (!info) return { existed: false, text: '' }
-  if (!info.isFile() || info.isSymbolicLink() ||
-      (process.getuid && info.uid !== process.getuid()) || info.size > MAX_BYTES ||
-      (secure && ((info.mode & 0o077) !== 0 || info.nlink !== 1))) {
+  if (
+    !info.isFile() ||
+    info.isSymbolicLink() ||
+    (process.getuid && info.uid !== process.getuid()) ||
+    info.size > MAX_BYTES ||
+    (secure && ((info.mode & 0o077) !== 0 || info.nlink !== 1))
+  ) {
     failure('The hook file must be a bounded user-owned regular file')
   }
   const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
   try {
     const checked = await file.stat()
-    if (!checked.isFile() || checked.size > MAX_BYTES ||
-        (process.getuid && checked.uid !== process.getuid()) ||
-        (secure && ((checked.mode & 0o077) !== 0 || checked.nlink !== 1)) ||
-        checked.dev !== info.dev || checked.ino !== info.ino) {
+    if (
+      !checked.isFile() ||
+      checked.size > MAX_BYTES ||
+      (process.getuid && checked.uid !== process.getuid()) ||
+      (secure && ((checked.mode & 0o077) !== 0 || checked.nlink !== 1)) ||
+      checked.dev !== info.dev ||
+      checked.ino !== info.ino
+    ) {
       failure('The hook file changed while reading')
     }
     const bytes = await file.readFile()
     if (bytes.length > MAX_BYTES) failure('The hook file exceeds 64 KiB')
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
     return { existed: true, text }
-  } finally { await file.close() }
+  } finally {
+    await file.close()
+  }
 }
 
 async function writeAtomic(path: string, text: string): Promise<void> {
@@ -92,14 +120,23 @@ async function writeAtomic(path: string, text: string): Promise<void> {
   await ensureParent(path)
   await readOptional(path) // Reject symlink and wrong owner before replacing.
   const temporary = join(dirname(path), `.agent-workspace-${randomUUID()}.tmp`)
-  const file = await open(temporary,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600)
+  const file = await open(
+    temporary,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+    0o600
+  )
   try {
     await file.writeFile(text)
     await file.sync()
-  } finally { await file.close() }
-  try { await rename(temporary, path) }
-  catch (error) { await rm(temporary, { force: true }); throw error }
+  } finally {
+    await file.close()
+  }
+  try {
+    await rename(temporary, path)
+  } catch (error) {
+    await rm(temporary, { force: true })
+    throw error
+  }
 }
 
 async function writeBackup(path: string, text: string): Promise<void> {
@@ -107,21 +144,34 @@ async function writeBackup(path: string, text: string): Promise<void> {
   if ((await readOptional(path, true)).existed)
     failure('A hook backup already exists; refusing to overwrite it')
   const temporary = join(dirname(path), `.agent-workspace-${randomUUID()}.tmp`)
-  const file = await open(temporary,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0), 0o600)
-  try { await file.writeFile(text); await file.sync() }
-  finally { await file.close() }
-  try { await link(temporary, path) }
-  catch (error) {
+  const file = await open(
+    temporary,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0),
+    0o600
+  )
+  try {
+    await file.writeFile(text)
+    await file.sync()
+  } finally {
+    await file.close()
+  }
+  try {
+    await link(temporary, path)
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST')
       failure('A hook backup was created concurrently')
     throw error
-  } finally { await rm(temporary, { force: true }) }
+  } finally {
+    await rm(temporary, { force: true })
+  }
 }
 
 function parseCodex(text: string): Record<string, unknown> {
-  try { return parseToml(text) }
-  catch { return failure('The agent configuration is malformed; no files were changed') }
+  try {
+    return parseToml(text)
+  } catch {
+    return failure('The agent configuration is malformed; no files were changed')
+  }
 }
 
 function parseClaude(text: string): Record<string, unknown> {
@@ -129,9 +179,17 @@ function parseClaude(text: string): Record<string, unknown> {
   try {
     const value: unknown = JSON.parse(text)
     const tree = parseTree(text)
-    if (value && typeof value === 'object' && !Array.isArray(value) && tree && !duplicateJsonKey(tree))
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      tree &&
+      !duplicateJsonKey(tree)
+    )
       return value as Record<string, unknown>
-  } catch { /* malformed */ }
+  } catch {
+    /* malformed */
+  }
   return failure('The agent configuration is malformed; no files were changed')
 }
 
@@ -203,7 +261,12 @@ function removeClaudeEntry(text: string, index: number): string {
   return output
 }
 
-interface NotifySpan { start: number; valueStart: number; valueEnd: number; lineEnd: number }
+interface NotifySpan {
+  start: number
+  valueStart: number
+  valueEnd: number
+  lineEnd: number
+}
 
 /** Only edit an unambiguous, single-line root assignment. The parser validates semantics. */
 function rootNotifySpan(text: string, document: Record<string, unknown>): NotifySpan | undefined {
@@ -222,9 +285,18 @@ function rootNotifySpan(text: string, document: Record<string, unknown>): Notify
       let comment = rhs.length
       for (let index = 0; index < rhs.length; index++) {
         const char = rhs[index]!
-        if (escaped) { escaped = false; continue }
-        if (quote === 'double' && char === '\\') { escaped = true; continue }
-        if (!quote && char === '#') { comment = index; break }
+        if (escaped) {
+          escaped = false
+          continue
+        }
+        if (quote === 'double' && char === '\\') {
+          escaped = true
+          continue
+        }
+        if (!quote && char === '#') {
+          comment = index
+          break
+        }
         if (char === '"' && quote !== 'single') quote = quote === 'double' ? undefined : 'double'
         if (char === "'" && quote !== 'double') quote = quote === 'single' ? undefined : 'single'
       }
@@ -233,7 +305,9 @@ function rootNotifySpan(text: string, document: Record<string, unknown>): Notify
         const parsed = parseToml(`notify = ${value}`) as Record<string, unknown>
         if (JSON.stringify(parsed.notify) !== JSON.stringify(document.notify))
           failure('The Codex notify entry is ambiguous')
-      } catch { failure('The Codex notify entry is ambiguous') }
+      } catch {
+        failure('The Codex notify entry is ambiguous')
+      }
       match = {
         start: offset,
         valueStart: offset + prefix.length,
@@ -288,25 +362,42 @@ function claudeEntries(document: Record<string, unknown>, create: boolean): unkn
   return entries as unknown[]
 }
 
-function same(a: unknown, b: unknown): boolean { return JSON.stringify(a) === JSON.stringify(b) }
+function same(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
 
 function validateState(value: unknown, agent: Agent, configPath: string): State {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) failure('Secure hook state is invalid')
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    failure('Secure hook state is invalid')
   const state = value as Partial<State>
-  if (state.version !== 1 || state.integration !== agent || state.configPath !== configPath ||
-      typeof state.configExisted !== 'boolean') failure('Secure hook state is invalid')
+  if (
+    state.version !== 1 ||
+    state.integration !== agent ||
+    state.configPath !== configPath ||
+    typeof state.configExisted !== 'boolean'
+  )
+    failure('Secure hook state is invalid')
   if (agent === 'codex') {
-    if (!Array.isArray(state.managed) || state.managed.length !== 4 ||
-        state.managed[2] !== 'hook' || state.managed[3] !== 'codex' ||
-        !state.managed.slice(0, 2).every((part) => typeof part === 'string' && isAbsolute(part)))
+    if (
+      !Array.isArray(state.managed) ||
+      state.managed.length !== 4 ||
+      state.managed[2] !== 'hook' ||
+      state.managed[3] !== 'codex' ||
+      !state.managed.slice(0, 2).every((part) => typeof part === 'string' && isAbsolute(part))
+    )
       failure('Secure hook state is invalid')
-  } else if (typeof state.claudeManagedIndex !== 'number' ||
-             typeof state.priorClaudeManagedCount !== 'number' ||
-             !Number.isSafeInteger(state.claudeManagedIndex) || state.claudeManagedIndex < 0 ||
-             !Number.isSafeInteger(state.priorClaudeManagedCount) || state.priorClaudeManagedCount < 0 ||
-             !state.managed || typeof state.managed !== 'object' ||
-             !Array.isArray((state.managed as Record<string, unknown>).hooks) ||
-             (state.managed as { hooks: unknown[] }).hooks.length !== 1) {
+  } else if (
+    typeof state.claudeManagedIndex !== 'number' ||
+    typeof state.priorClaudeManagedCount !== 'number' ||
+    !Number.isSafeInteger(state.claudeManagedIndex) ||
+    state.claudeManagedIndex < 0 ||
+    !Number.isSafeInteger(state.priorClaudeManagedCount) ||
+    state.priorClaudeManagedCount < 0 ||
+    !state.managed ||
+    typeof state.managed !== 'object' ||
+    !Array.isArray((state.managed as Record<string, unknown>).hooks) ||
+    (state.managed as { hooks: unknown[] }).hooks.length !== 1
+  ) {
     failure('Secure hook state is invalid')
   }
   return state as State
@@ -315,8 +406,11 @@ function validateState(value: unknown, agent: Agent, configPath: string): State 
 async function stateAt(path: string, agent: Agent, config: string): Promise<State | undefined> {
   const { existed, text } = await readOptional(path, true)
   if (!existed) return
-  try { return validateState(JSON.parse(text), agent, config) }
-  catch { return failure('Secure hook state is invalid') }
+  try {
+    return validateState(JSON.parse(text), agent, config)
+  } catch {
+    return failure('Secure hook state is invalid')
+  }
 }
 
 function matches(agent: Agent, document: Record<string, unknown>, state: State): boolean {
@@ -324,8 +418,10 @@ function matches(agent: Agent, document: Record<string, unknown>, state: State):
   const entries = claudeEntries(document, false)
   if (!entries) return false
   const count = entries.filter((item) => same(item, state.managed)).length
-  return count === state.priorClaudeManagedCount! + 1 &&
+  return (
+    count === state.priorClaudeManagedCount! + 1 &&
     same(entries[state.claudeManagedIndex!], state.managed)
+  )
 }
 
 export async function hookStatus(agent: Agent, home?: string): Promise<Status> {
@@ -363,8 +459,12 @@ export async function hookInstall(agent: Agent, home?: string): Promise<void> {
       : inserted!.text
     if (!same(parseCodex(output).notify, managed)) failure('The Codex edit could not be validated')
     state = {
-      version: 1, integration: agent, configPath: at.config, configExisted: config.existed,
-      managed, ...(priorCodexValue !== undefined ? { priorCodexValue } : {}),
+      version: 1,
+      integration: agent,
+      configPath: at.config,
+      configExisted: config.existed,
+      managed,
+      ...(priorCodexValue !== undefined ? { priorCodexValue } : {}),
       ...(inserted ? { insertedCodexText: inserted.inserted } : {})
     }
   } else {
@@ -379,14 +479,24 @@ export async function hookInstall(agent: Agent, home?: string): Promise<void> {
     if (!same(claudeEntries(parseClaude(output), false)?.[claudeManagedIndex], managed))
       failure('The Claude edit could not be validated')
     state = {
-      version: 1, integration: agent, configPath: at.config, configExisted: config.existed,
-      managed, priorClaudeNotificationExisted, claudeManagedIndex, priorClaudeManagedCount
+      version: 1,
+      integration: agent,
+      configPath: at.config,
+      configExisted: config.existed,
+      managed,
+      priorClaudeNotificationExisted,
+      claudeManagedIndex,
+      priorClaudeManagedCount
     }
   }
   await writeBackup(at.backup, config.text)
   await writeAtomic(at.state, `${JSON.stringify(state)}\n`)
-  try { await writeAtomic(at.config, output) }
-  catch (error) { await rm(at.state, { force: true }); throw error }
+  try {
+    await writeAtomic(at.config, output)
+  } catch (error) {
+    await rm(at.state, { force: true })
+    throw error
+  }
 }
 
 export async function hookUninstall(agent: Agent, home?: string): Promise<void> {
@@ -397,41 +507,56 @@ export async function hookUninstall(agent: Agent, home?: string): Promise<void> 
   let output: string
   if (agent === 'codex') {
     const document = parseCodex(config.text)
-    if (!matches(agent, document, state)) failure('The managed hook conflicts with edits made after installation')
+    if (!matches(agent, document, state))
+      failure('The managed hook conflicts with edits made after installation')
     const span = rootNotifySpan(config.text, document)
     if (!span) failure('The managed hook is missing')
     if (state.priorCodexValue !== undefined) {
-      output = config.text.slice(0, span.valueStart) + state.priorCodexValue + config.text.slice(span.valueEnd)
+      output =
+        config.text.slice(0, span.valueStart) +
+        state.priorCodexValue +
+        config.text.slice(span.valueEnd)
     } else {
       const inserted = state.insertedCodexText
       const index = inserted ? config.text.indexOf(inserted) : -1
-      if (index !== span.start - (inserted?.startsWith('\n') ? 1 : 0) ||
-          index + inserted!.length < span.lineEnd)
+      if (
+        index !== span.start - (inserted?.startsWith('\n') ? 1 : 0) ||
+        index + inserted!.length < span.lineEnd
+      )
         failure('The managed hook conflicts with edits made after installation')
       output = config.text.slice(0, index) + config.text.slice(index + inserted!.length)
     }
     const restored = parseCodex(output)
-    if (state.priorCodexValue === undefined ? restored.notify !== undefined :
-      JSON.stringify(restored.notify) === JSON.stringify(state.managed))
+    if (
+      state.priorCodexValue === undefined
+        ? restored.notify !== undefined
+        : JSON.stringify(restored.notify) === JSON.stringify(state.managed)
+    )
       failure('The restored Codex configuration is invalid')
   } else {
     const document = parseClaude(config.text)
-    if (!matches(agent, document, state)) failure('The managed hook conflicts with edits made after installation')
+    if (!matches(agent, document, state))
+      failure('The managed hook conflicts with edits made after installation')
     const entries = claudeEntries(document, false)!
     entries.splice(state.claudeManagedIndex!, 1)
     if (!state.priorClaudeNotificationExisted && entries.length === 0) {
       output = editClaude(config.text, ['hooks', 'Notification'], undefined)
       const remainingHooks = parseClaude(output).hooks
-      if (remainingHooks === undefined ||
-          (remainingHooks !== null && typeof remainingHooks === 'object' &&
-           Object.keys(remainingHooks).length === 0))
+      if (
+        remainingHooks === undefined ||
+        (remainingHooks !== null &&
+          typeof remainingHooks === 'object' &&
+          Object.keys(remainingHooks).length === 0)
+      )
         output = editClaude(output, ['hooks'], undefined)
     } else {
       output = removeClaudeEntry(config.text, state.claudeManagedIndex!)
     }
   }
-  if (!state.configExisted && (agent === 'codex' ? output.trim() === '' :
-    Object.keys(parseClaude(output)).length === 0)) {
+  if (
+    !state.configExisted &&
+    (agent === 'codex' ? output.trim() === '' : Object.keys(parseClaude(output)).length === 0)
+  ) {
     await rm(at.config, { force: true })
   } else {
     await writeAtomic(at.config, output)

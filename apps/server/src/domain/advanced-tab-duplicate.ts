@@ -2,7 +2,7 @@ import {
   durableApplicationStateSchema,
   type DurableApplicationState
 } from '@agent-workspace/contracts'
-import { tabDuplicateParamsSchema } from '@agent-workspace/protocol-client'
+import type { tabDuplicateParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { openBrowserTab, openTerminalTab } from './workspace-mutations'

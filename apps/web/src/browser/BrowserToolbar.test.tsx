@@ -3,7 +3,7 @@
 
 import '@testing-library/jest-dom/vitest'
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MutationResult } from '@agent-workspace/protocol-client'
 
@@ -50,14 +50,17 @@ describe('BrowserToolbar', () => {
     expect(address).toHaveValue('https://example.com/')
   })
 
-  it('shows the observed URL after navigating back to the address that was edited', () => {
+  it('shows the observed URL after navigating back to the address that was edited', async () => {
     const bridge = createBridge()
     const owner = createOwner()
     const { rerender } = render(<BrowserToolbar bridge={bridge} {...owner} state={state()} />)
     const address = screen.getByRole('textbox', { name: 'Address' })
 
     fireEvent.change(address, { target: { value: 'https://example.com/?node=3' } })
-    fireEvent.keyDown(address, { key: 'Enter' })
+    await act(() => {
+      fireEvent.keyDown(address, { key: 'Enter' })
+      return Promise.resolve()
+    })
     rerender(
       <BrowserToolbar
         bridge={bridge}

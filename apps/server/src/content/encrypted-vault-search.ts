@@ -314,7 +314,12 @@ export class EncryptedVaultSearch {
       this.end(params.cancellationId)
     }
   }
-  async query(params: { query: string; limit: number; cancellationId: string; sourceAuthorizationIds?: string[] | undefined }) {
+  async query(params: {
+    query: string
+    limit: number
+    cancellationId: string
+    sourceAuthorizationIds?: string[] | undefined
+  }) {
     const operation = this.begin(params.cancellationId)
     try {
       if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 100)
@@ -343,7 +348,9 @@ export class EncryptedVaultSearch {
           let accessible: boolean
           if (result.sourceKind === 'workspaceFile') {
             try {
-              accessible = this.files.read({ document: result.document, offset: 0, maxBytes: 1 }).kind === 'text'
+              accessible =
+                this.files.read({ document: result.document, offset: 0, maxBytes: 1 }).kind ===
+                'text'
             } catch {
               accessible = false
             }
@@ -352,7 +359,8 @@ export class EncryptedVaultSearch {
             accessible = Boolean(session && session.revision === result.document.identityVersion)
           }
           if (accessible) valid.push(result)
-          if (valid.length > params.limit) return { results: valid.slice(0, params.limit), truncated: true }
+          if (valid.length > params.limit)
+            return { results: valid.slice(0, params.limit), truncated: true }
         }
         if (!page.nextCursor) return { results: valid, truncated: false }
         if (examined >= MAX_QUERY_CANDIDATES) return { results: valid, truncated: true }

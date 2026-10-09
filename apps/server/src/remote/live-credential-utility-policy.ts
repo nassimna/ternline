@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto'
-import { constants, closeSync, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs'
+import {
+  constants,
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync
+} from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
 
 import { inspectLegacyDatabase } from '../persistence/legacy-inspection'
@@ -19,11 +27,18 @@ function privateFile(path: string): string {
   const parent = lstatSync(parentPath)
   const file = lstatSync(path)
   if (
-    !parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== process.getuid() ||
-    (parent.mode & 0o777) !== 0o700 || realpathSync(parentPath) !== parentPath ||
-    !file.isFile() || file.isSymbolicLink() || file.nlink !== 1 ||
-    file.uid !== process.getuid() || (file.mode & 0o777) !== 0o600
-  ) throw new Error('State file must be private')
+    !parent.isDirectory() ||
+    parent.isSymbolicLink() ||
+    parent.uid !== process.getuid() ||
+    (parent.mode & 0o777) !== 0o700 ||
+    realpathSync(parentPath) !== parentPath ||
+    !file.isFile() ||
+    file.isSymbolicLink() ||
+    file.nlink !== 1 ||
+    file.uid !== process.getuid() ||
+    (file.mode & 0o777) !== 0o600
+  )
+    throw new Error('State file must be private')
   return `${file.dev}:${file.ino}`
 }
 
@@ -41,10 +56,13 @@ function exactFileSha256(path: string): string {
       hash.update(buffer.subarray(0, count))
     const after = lstatSync(path)
     if (
-      after.dev !== opened.dev || after.ino !== opened.ino ||
-      after.size !== opened.size || after.mtimeMs !== opened.mtimeMs ||
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino ||
+      after.size !== opened.size ||
+      after.mtimeMs !== opened.mtimeMs ||
       after.ctimeMs !== opened.ctimeMs
-    ) throw new Error('Backup changed while hashing')
+    )
+      throw new Error('Backup changed while hashing')
     return hash.digest('hex')
   } finally {
     closeSync(fd)
@@ -56,14 +74,19 @@ export function verifyLiveCredentialStateProof(proof: LiveCredentialStateProof):
   const liveIdentity = privateFile(proof.liveStatePath)
   const backupIdentity = privateFile(proof.backupStatePath)
   if (
-    proof.liveStatePath === proof.backupStatePath || liveIdentity === backupIdentity ||
-    liveIdentity !== proof.liveStateIdentity || backupIdentity !== proof.backupStateIdentity ||
+    proof.liveStatePath === proof.backupStatePath ||
+    liveIdentity === backupIdentity ||
+    liveIdentity !== proof.liveStateIdentity ||
+    backupIdentity !== proof.backupStateIdentity ||
     exactFileSha256(proof.backupStatePath) !== proof.backupSha256
-  ) throw new Error('Live state or backup identity differs from handoff proof')
+  )
+    throw new Error('Live state or backup identity differs from handoff proof')
   const report = inspectLegacyDatabase(proof.backupStatePath)
   if (report.snapshotRevision === null || report.legacySnapshotCompatibility)
     throw new Error('Live backup is not a normalized Rust-v15 state')
-  if (exactFileSha256(proof.backupStatePath) !== proof.backupSha256 ||
-      privateFile(proof.backupStatePath) !== proof.backupStateIdentity)
+  if (
+    exactFileSha256(proof.backupStatePath) !== proof.backupSha256 ||
+    privateFile(proof.backupStatePath) !== proof.backupStateIdentity
+  )
     throw new Error('Live backup changed during validation')
 }

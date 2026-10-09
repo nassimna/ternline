@@ -10,14 +10,19 @@ const invalid = () => new CredentialError('credential_revoked', 'Credential desc
 
 /** Reject a writable inherited descriptor before reserving a durable enrollment. */
 export function assertInheritedCredentialReadOnly(fd: number): void {
-  if (process.platform !== 'linux' || !process.getuid || fd !== CREDENTIAL_FD || consumed) throw invalid()
+  if (process.platform !== 'linux' || !process.getuid || fd !== CREDENTIAL_FD || consumed)
+    throw invalid()
   try {
     const info = readFileSync('/proc/self/fdinfo/3', 'utf8')
     const match = /^flags:[ \t]*([0-7]+)[ \t]*$/m.exec(info)
     if (!match || (Number.parseInt(match[1]!, 8) & 0o3) !== 0) throw invalid()
   } catch {
     consumed = true
-    try { closeSync(CREDENTIAL_FD) } catch { /* A rejected descriptor may already be closed. */ }
+    try {
+      closeSync(CREDENTIAL_FD)
+    } catch {
+      /* A rejected descriptor may already be closed. */
+    }
     throw invalid()
   }
 }
@@ -30,8 +35,16 @@ export function readInheritedCredentialFd(fd: number): Buffer {
   try {
     const uid = process.getuid?.()
     const before = fstatSync(CREDENTIAL_FD)
-    if (uid === undefined || !before.isFile() || before.uid !== uid || before.nlink !== 1 ||
-        (before.mode & 0o077) !== 0 || before.size === 0 || before.size > MAX_KEY_BYTES) throw invalid()
+    if (
+      uid === undefined ||
+      !before.isFile() ||
+      before.uid !== uid ||
+      before.nlink !== 1 ||
+      (before.mode & 0o077) !== 0 ||
+      before.size === 0 ||
+      before.size > MAX_KEY_BYTES
+    )
+      throw invalid()
     secret = Buffer.alloc(before.size)
     let offset = 0
     while (offset < secret.length) {
@@ -46,7 +59,8 @@ export function readInheritedCredentialFd(fd: number): Buffer {
       extra.fill(0)
     }
     const after = fstatSync(CREDENTIAL_FD)
-    if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size) throw invalid()
+    if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size)
+      throw invalid()
     const result = secret
     secret = undefined
     return result
@@ -54,6 +68,10 @@ export function readInheritedCredentialFd(fd: number): Buffer {
     throw invalid()
   } finally {
     secret?.fill(0)
-    try { closeSync(CREDENTIAL_FD) } catch { /* A rejected descriptor may already be closed. */ }
+    try {
+      closeSync(CREDENTIAL_FD)
+    } catch {
+      /* A rejected descriptor may already be closed. */
+    }
   }
 }

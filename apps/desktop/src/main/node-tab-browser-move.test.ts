@@ -14,14 +14,16 @@ function fixture() {
   }
   const target = {
     ownsSession: vi.fn(() => false),
-    mountTransferred: vi.fn(async () => {
+    mountTransferred: vi.fn(() => {
       events.push('mount-target')
+      return Promise.resolve()
     }),
     destroyOwnedSession: vi.fn(() => events.push('destroy-target')),
     activateTransferredSession: vi.fn(() => events.push('activate-target'))
   }
-  const commit = vi.fn(async () => {
+  const commit = vi.fn(() => {
     events.push('commit')
+    return Promise.resolve()
   })
   const transferred = vi.fn(() => events.push('record-owner'))
   const input = {
@@ -43,8 +45,8 @@ function fixture() {
     targetSnapshot: undefined,
     assertCurrent: vi.fn(),
     commit,
-    resolveCommit: vi.fn(
-      async (): Promise<'committed' | 'not-committed' | 'unknown'> => 'not-committed'
+    resolveCommit: vi.fn((): Promise<'committed' | 'not-committed' | 'unknown'> =>
+      Promise.resolve('not-committed')
     ),
     transferred
   }
@@ -83,6 +85,17 @@ describe('Node exact browser tab move', () => {
     rejected.commit.mockRejectedValueOnce(new Error('stale revision'))
     await expect(moveNodeBrowserTab(rejected.input)).rejects.toThrow('stale revision')
     expect(rejected.events).toEqual(['suspend', 'mount-target', 'destroy-target', 'resume'])
+  })
+
+  it('preserves a non-Error commit failure as the cause after finalizing ownership', async () => {
+    const test = fixture()
+    test.commit.mockRejectedValueOnce('lost response')
+    test.input.resolveCommit.mockResolvedValueOnce('committed')
+    await expect(moveNodeBrowserTab(test.input)).rejects.toMatchObject({
+      message: 'The Node tab move failed',
+      cause: 'lost response'
+    })
+    expect(test.transferred).toHaveBeenCalledWith('browser')
   })
 
   it('finalizes a proven commit and quarantines an unknown outcome', async () => {

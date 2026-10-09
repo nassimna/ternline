@@ -3,9 +3,10 @@ import { expect, it, vi } from 'vitest'
 import { AgentRegistrationService } from './agent-registration-service'
 import { CodexAdapter } from './codex-adapter'
 import type { PrivateCodexProfile } from './private-codex-profile'
+import type * as SealedExecutable from './sealed-executable'
 
 vi.mock('./sealed-executable', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./sealed-executable')>()),
+  ...(await importOriginal<typeof SealedExecutable>()),
   sealedLaunchAvailable: () => true,
   withSealedExecutable: async (
     _plan: unknown,
@@ -21,8 +22,9 @@ it('does not claim a shell is a live Codex thread after registration preflight',
     agentSessionId: '10000000-0000-4000-8000-000000000004'
   }
   let terminalId = 'shell-terminal'
-  const replaceAgentTerminal = vi.fn(async () => {
+  const replaceAgentTerminal = vi.fn(() => {
     terminalId = 'codex-terminal'
+    return Promise.resolve()
   })
   const snapshot = {
     workspaces: [
@@ -262,7 +264,7 @@ it('rejects another thread outside the isolated profile and rechecks private log
     await expect(checks.requirePrivateLogin(adapter)).rejects.toThrow(
       'Private Codex login is unavailable'
     )
-    vi.mocked(adapter.privateLoginReady).mockResolvedValueOnce(true)
+    adapter.privateLoginReady = vi.fn().mockResolvedValueOnce(true)
     await expect(checks.requirePrivateLogin(adapter)).resolves.toBeUndefined()
   } finally {
     if (priorHome === undefined) delete process.env.CODEX_HOME

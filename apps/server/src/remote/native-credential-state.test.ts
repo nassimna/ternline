@@ -27,13 +27,14 @@ it('qualifies only a private native database with an active Node owner', async (
     const request = { nativeStatePath: path, stateIdentity: `${file.dev}:${file.ino}` }
     try {
       const scope = IsolatedCredentialScope.loadOrCreate(path)
-      await SecretServiceCredentialProvider.create(
-        join(directory, 'remote-agent-brokers'), scope
-      )
+      await SecretServiceCredentialProvider.create(join(directory, 'remote-agent-brokers'), scope)
       await expect(verifyNativeCredentialState(request)).resolves.toBeUndefined()
-      await expect(verifyNativeCredentialState({
-        ...request, stateIdentity: `${file.dev}:${file.ino + 1}`
-      })).rejects.toMatchObject({ code: 'native_unavailable' })
+      await expect(
+        verifyNativeCredentialState({
+          ...request,
+          stateIdentity: `${file.dev}:${file.ino + 1}`
+        })
+      ).rejects.toMatchObject({ code: 'native_unavailable' })
       const enrollment = await RemoteCredentialEnrollmentService.create({
         workingStatePath: path,
         nativeMode: true,
@@ -46,8 +47,9 @@ it('qualifies only a private native database with an active Node owner', async (
         revokeTargetTransports: () => Promise.resolve()
       })
       try {
-        await expect(enrollment.beginOnlineNew(randomUUID(), randomUUID()))
-          .rejects.toMatchObject({ code: 'storage_unavailable' })
+        await expect(enrollment.beginOnlineNew(randomUUID(), randomUUID())).rejects.toMatchObject({
+          code: 'storage_unavailable'
+        })
       } finally {
         enrollment.close()
       }
@@ -68,7 +70,9 @@ it('stores and commits a new native key through a private child descriptor', asy
   const path = join(directory, 'state.sqlite3')
   try {
     const owner = await ApplicationStateStore.openNative(
-      path, join(directory, 'backup.sqlite3'), directory
+      path,
+      join(directory, 'backup.sqlite3'),
+      directory
     )
     try {
       IsolatedCredentialScope.loadOrCreate(path)
@@ -79,9 +83,8 @@ it('stores and commits a new native key through a private child descriptor', asy
         validateInheritedFd: () => undefined,
         enrollFromInheritedFd: () => Promise.resolve(),
         delete: () => Promise.resolve(),
-        has: () => Promise.resolve(
-          existsSync(markerPath) && readFileSync(markerPath, 'utf8') === targetId
-        )
+        has: () =>
+          Promise.resolve(existsSync(markerPath) && readFileSync(markerPath, 'utf8') === targetId)
       }
       const enrollment = await RemoteCredentialEnrollmentService.create({
         workingStatePath: path,
@@ -133,15 +136,18 @@ it('stores and commits a new native key through a private child descriptor', asy
         const descriptor = openSync(descriptorPath, 'r')
         let child: ReturnType<typeof spawnSync>
         try {
-          child = spawnSync(process.execPath,
-            [helperPath, JSON.stringify(request), markerPath],
-            { stdio: ['ignore', 'pipe', 'pipe', descriptor], timeout: 10_000 })
+          child = spawnSync(process.execPath, [helperPath, JSON.stringify(request), markerPath], {
+            stdio: ['ignore', 'pipe', 'pipe', descriptor],
+            timeout: 10_000
+          })
         } finally {
           closeSync(descriptor)
         }
         expect(child.status, child.stderr.toString()).toBe(0)
         expect(JSON.parse(child.stdout.toString())).toEqual({
-          status: 'stored', targetId, enrollmentId
+          status: 'stored',
+          targetId,
+          enrollmentId
         })
         expect(await enrollment.beginOnlineNew(targetId, enrollmentId)).toBe(enrollmentId)
         const target = {
@@ -150,11 +156,19 @@ it('stores and commits a new native key through a private child descriptor', asy
           host: 'native.example.com',
           port: 22,
           user: 'builder',
-          mutation: { expectedRevision: 0, idempotencyKey: randomUUID(), requestHash: 'a'.repeat(64) }
+          mutation: {
+            expectedRevision: 0,
+            idempotencyKey: randomUUID(),
+            requestHash: 'a'.repeat(64)
+          }
         }
-        expect((await enrollment.commitOnlineNew(enrollmentId, targetId, () =>
-          owner.exclusive(() => owner.commitEnrolledRemoteTarget(target, enrollmentId))
-        )).target.revision).toBe(1)
+        expect(
+          (
+            await enrollment.commitOnlineNew(enrollmentId, targetId, () =>
+              owner.exclusive(() => owner.commitEnrolledRemoteTarget(target, enrollmentId))
+            )
+          ).target.revision
+        ).toBe(1)
       } finally {
         enrollment.close()
       }

@@ -28,5 +28,7 @@ AppImage.
   outside the focused migration validation pass. Earlier Rust-package measurements must not be
   presented as measurements of the Node app.
 
+Historical Rust-package smoke evidence from 2026-07-21 averaged 0.8893% process-tree CPU during a five-minute idle window after a five-minute quiet settle, passing the strict `< 1%` gate. The [retained report](validation/evidence/performance/2026-07-21-smoke-candidate.json) records this host-specific measurement; it does not qualify the current Node package or the unrun eight-hour soak.
+
 See [architecture](ARCHITECTURE.md), [Linux packaging](node-linux-packaging.md),
 [updates](UPDATES.md), and [release qualification](RELEASE_QUALIFICATION.md).

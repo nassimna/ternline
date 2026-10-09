@@ -983,7 +983,7 @@ export class NodeSidecar {
         (await realpath(parent)) !== parent ||
         !directory.isDirectory() ||
         directory.isSymbolicLink() ||
-        directory.uid !== process.getuid!() ||
+        directory.uid !== process.getuid() ||
         (directory.mode & 0o077) !== 0
       ) {
         throw new Error('Node live sidecar output directory must be private and canonical')
@@ -2221,7 +2221,8 @@ export class NodeSidecar {
             params.workspaceId,
             params.paneId
           ])
-          const requests = (this.recentlyClosedReopenRequests ??= new Map())
+          this.recentlyClosedReopenRequests ??= new Map()
+          const requests = this.recentlyClosedReopenRequests
           const now = Date.now()
           for (const [key, cached] of requests) {
             if (cached.expiresAtMs !== undefined && cached.expiresAtMs <= now) requests.delete(key)
@@ -2359,10 +2360,8 @@ export class NodeSidecar {
           )
           browser.views().reconcileAuthoritativeSnapshot(after.snapshot, false)
           browser.reconcileRendererOwnership(liveResourceIds)
-          this.emitWorkspaceProjectionChanged(
-            after.snapshot,
-            'recentlyClosed.reopen',
-            browser.emitDomainEvent
+          this.emitWorkspaceProjectionChanged(after.snapshot, 'recentlyClosed.reopen', (event) =>
+            browser.emitDomainEvent(event)
           )
           original.completedAtMs ??= Date.now()
           original.expiresAtMs = original.completedAtMs + RECENTLY_CLOSED_RETRY_TTL_MS
@@ -2445,7 +2444,8 @@ export class NodeSidecar {
           }
           const retryProbe = before.snapshot.revision > params.expectedRevision
           const cacheKey = `${windowId}:${params.idempotencyKey}`
-          const requests = (this.layoutApplyRequests ??= new Map())
+          this.layoutApplyRequests ??= new Map()
+          const requests = this.layoutApplyRequests
           const now = Date.now()
           for (const [key, request] of requests) {
             if (request.expiresAtMs <= now) requests.delete(key)
@@ -2603,10 +2603,8 @@ export class NodeSidecar {
           }
           browser.views().reconcileAuthoritativeSnapshot(after.snapshot, false)
           browser.reconcileRendererOwnership(new Set([...nextTerminals, ...nextBrowsers]))
-          this.emitWorkspaceProjectionChanged(
-            after.snapshot,
-            'layout.apply',
-            browser.emitDomainEvent
+          this.emitWorkspaceProjectionChanged(after.snapshot, 'layout.apply', (event) =>
+            browser.emitDomainEvent(event)
           )
           if (original.completedAtMs === undefined) {
             original.completedAtMs = Date.now()
@@ -3823,7 +3821,8 @@ export class NodeSidecar {
   }
 
   private rememberClosedTerminal(windowId: string, terminalId: string): void {
-    const closed = (this.closedTerminalCheckpoints ??= new Map())
+    this.closedTerminalCheckpoints ??= new Map()
+    const closed = this.closedTerminalCheckpoints
     closed.delete(terminalId)
     closed.set(terminalId, {
       windowId,

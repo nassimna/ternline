@@ -9,6 +9,7 @@ const rendererFoundation = readFileSync(
   'utf8'
 )
 const productStyles = readFileSync(new URL('../../../web/src/styles.css', import.meta.url), 'utf8')
+const toaster = readFileSync(new URL('../../../web/src/ui/sonner.tsx', import.meta.url), 'utf8')
 const rendererStyles = `${rendererFoundation}\n${productStyles}`
 const foundationTokens = readFileSync(
   new URL('../../../../packages/design-tokens/src/tokens.css', import.meta.url),
@@ -80,25 +81,16 @@ describe('renderer design-token contract', () => {
     expect(productStyles).toContain('var(--aw-color-terminal-canvas)')
     expect(productStyles).toContain('var(--aw-color-browser-content)')
     expect(terminalPane).toContain("from '@agent-workspace/design-tokens/terminal-theme'")
-    expect(foundationTokens).toContain(
-      "--aw-font-ui: system-ui, 'Segoe UI', 'Cantarell', 'Ubuntu', sans-serif"
-    )
+    expect(foundationTokens).toContain("--aw-font-ui: 'Geist', system-ui, sans-serif")
     expect(foundationTokens).toContain(
       "--aw-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace"
     )
   })
 
-  it('keeps transient notification text on semantic colors without opacity interpolation', () => {
-    expect(productStyles).toContain(
-      '[data-sonner-toaster] [data-sonner-toast] [data-title] {\n  color: var(--aw-color-text-primary) !important;\n}'
-    )
-    expect(productStyles).toContain(
-      '[data-sonner-toaster] [data-sonner-toast] [data-description] {\n  color: var(--aw-color-text-secondary) !important;\n}'
-    )
-    expect(productStyles).toContain(
-      'transition-property: transform, height, box-shadow !important;'
-    )
-    expect(productStyles).toContain('transition-property: transform !important;')
+  it('keeps transient notification text on semantic colors', () => {
+    expect(toaster).toContain("'--normal-text': 'var(--aw-color-text-primary)'")
+    expect(toaster).toContain("title: 'font-medium text-text-primary'")
+    expect(toaster).toContain("description: 'text-text-secondary'")
   })
 
   it('keeps the CSS terminal canvas synchronized with the xterm palette', () => {

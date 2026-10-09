@@ -124,8 +124,10 @@ class FakeWebContents extends EventEmitter {
         (_, index) => ({ url: this.url || 'https://example.test/', title: `Page ${index}` })
       )
     ),
-    restore: vi.fn(async ({ entries, index }: Electron.RestoreOptions) => {
+    restore: vi.fn(({ entries, index }: Electron.RestoreOptions) => {
       this.url = entries[index ?? entries.length - 1]?.url ?? ''
+
+      return Promise.resolve()
     })
   }
   public popupHandler: ((details: { url: string }) => { action: string }) | undefined

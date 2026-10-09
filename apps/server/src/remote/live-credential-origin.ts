@@ -52,11 +52,13 @@ export class LiveCredentialOriginStore {
   /** Prove both provenance and a durable deletion fence before touching a live item. */
   public readFencedDeletionOrigin(targetId: string): Exclude<LiveCredentialOrigin, 'unmarked'> {
     requireTargetId(targetId)
-    const row = this.database.prepare(
-      `SELECT origin FROM node_live_credential_origins
+    const row = this.database
+      .prepare(
+        `SELECT origin FROM node_live_credential_origins
        JOIN remote_target_deletions USING (remote_target_id)
        WHERE remote_target_id = ?`
-    ).get(targetId) as { origin: Exclude<LiveCredentialOrigin, 'unmarked'> } | undefined
+      )
+      .get(targetId) as { origin: Exclude<LiveCredentialOrigin, 'unmarked'> } | undefined
     if (!row || (row.origin !== 'v1_eligible' && row.origin !== 'v2_committed'))
       throw new LiveCredentialOriginError('invalid_target')
     return row.origin

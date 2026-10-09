@@ -43,6 +43,7 @@ it('rejects missing, remote, and changed terminal owners without resuming anothe
 
   const remote = fixture()
   Object.assign(remote.sidecar, { remoteTerminals: new Map([['terminal', {}]]) })
-  expect(() => remote.sidecar.suspendLocalTerminalEvents('source', ['terminal']))
-    .toThrow('Remote terminal')
+  expect(() => remote.sidecar.suspendLocalTerminalEvents('source', ['terminal'])).toThrow(
+    'Remote terminal'
+  )
 })

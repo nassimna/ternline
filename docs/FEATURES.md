@@ -4,24 +4,24 @@ Agent Workspace is a Linux x86_64 desktop app with an Electron shell, React UI, 
 Node.js/Hono service. The application, backend, CLI, and shared contracts use TypeScript. The
 AppImage bundles Node and its native dependencies; Rust is not required to build or run it.
 
-| Area | Features |
-| --- | --- |
-| Workspaces | Open local folders; saved SSH workspace launches; workspace selection, rename, pin, reorder, groups, and multi-selection. |
-| Terminals | Real local PTYs; configurable shell, font and appearance; terminal input, resize, search, split panes, restart, and renderer reconnection. |
-| Windows and tabs | Multiple windows; tab selection, duplication, move and detach; window rehome; focus history; eligible recently closed tabs. Live agent/remote bindings follow transferred tabs. |
-| Layouts | Save, apply, import and export layouts in a single hosted window. Applying a layout creates fresh runtimes. |
-| Managed SSH | Enroll and replace Ed25519 credentials in Secret Service; explicit host-key trust; tmux discovery, session creation, reconnect, detach and close. Requires tmux 3.2+ on the remote host. |
-| Codex sessions | Register an exact existing thread; assess restore support; reattach/resume; fork conversations; hibernate eligible verified sessions. Requires a supported authenticated Codex CLI. |
-| Agent organization | Session catalog, teams and members, attention/status, exact-tab navigation, and task actions with confirmation where required. |
-| Agent hooks | Codex and Claude notification hooks and reversible hook setup. Claude can run in a terminal; durable session lifecycle actions currently use the Codex adapter. |
-| Files and documents | Workspace file browsing, text read/save, editable TextBox documents, Markdown preview, and diff views. |
-| Vault and search | Encrypted local index, explicit source consent, search and cancellation, rebuild, exclude, forget, and confirmed source export. Requires an unlocked Secret Service wallet. |
-| Embedded browser | Isolated native browser views, address navigation, back/forward, reload/stop, developer tools, open externally, and authenticated browser automation with attachment approval. |
-| Notifications and sidebar | Workspace attention, notification history/read state, configurable notifications, sidebar placement/cards, and process/Git/port metadata. |
-| Settings and navigation | Theme, density, fonts, terminal preferences, editable keyboard shortcuts, searchable command palette, and keyboard navigation. |
-| Recovery and diagnostics | Service restart, persisted workspace recovery, diagnostics preview/export, recovery export, and a pre-Node backup for existing profiles. |
-| CLI and actions | Installed `agent-workspace-cli` uses the same authenticated service for workspace, terminal, organization, layout, content, search, agent, remote, notification and action operations. Run `--help` for exact commands. |
-| Updates | Update controls exist for configured trusted feeds. The local installation does not provide a hosted update feed or a signed public release. |
+| Area                      | Features                                                                                                                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspaces                | Open local folders; saved SSH workspace launches; workspace selection, rename, pin, reorder, groups, and multi-selection.                                                                                               |
+| Terminals                 | Real local PTYs; configurable shell, font and appearance; terminal input, resize, search, split panes, restart, and renderer reconnection.                                                                              |
+| Windows and tabs          | Multiple windows; tab selection, duplication, move and detach; window rehome; focus history; eligible recently closed tabs. Live agent/remote bindings follow transferred tabs.                                         |
+| Layouts                   | Save, apply, import and export layouts in a single hosted window. Applying a layout creates fresh runtimes.                                                                                                             |
+| Managed SSH               | Enroll and replace Ed25519 credentials in Secret Service; explicit host-key trust; tmux discovery, session creation, reconnect, detach and close. Requires tmux 3.2+ on the remote host.                                |
+| Codex sessions            | Register an exact existing thread; assess restore support; reattach/resume; fork conversations; hibernate eligible verified sessions. Requires a supported authenticated Codex CLI.                                     |
+| Agent organization        | Session catalog, teams and members, attention/status, exact-tab navigation, and task actions with confirmation where required.                                                                                          |
+| Agent hooks               | Codex and Claude notification hooks and reversible hook setup. Claude can run in a terminal; durable session lifecycle actions currently use the Codex adapter.                                                         |
+| Files and documents       | Workspace file browsing, text read/save, editable TextBox documents, Markdown preview, and diff views.                                                                                                                  |
+| Vault and search          | Encrypted local index, explicit source consent, search and cancellation, rebuild, exclude, forget, and confirmed source export. Requires an unlocked Secret Service wallet.                                             |
+| Embedded browser          | Isolated native browser views, address navigation, back/forward, reload/stop, developer tools, open externally, and authenticated browser automation with attachment approval.                                          |
+| Notifications and sidebar | Workspace attention, notification history/read state, configurable notifications, sidebar placement/cards, and process/Git/port metadata.                                                                               |
+| Settings and navigation   | Theme, density, fonts, terminal preferences, editable keyboard shortcuts, searchable command palette, and keyboard navigation.                                                                                          |
+| Recovery and diagnostics  | Service restart, persisted workspace recovery, diagnostics preview/export, recovery export, and a pre-Node backup for existing profiles.                                                                                |
+| CLI and actions           | Installed `agent-workspace-cli` uses the same authenticated service for workspace, terminal, organization, layout, content, search, agent, remote, notification and action operations. Run `--help` for exact commands. |
+| Updates                   | Update controls exist for configured trusted feeds. The local installation does not provide a hosted update feed or a signed public release.                                                                            |
 
 ## Boundaries
 

@@ -42,4 +42,6 @@ The server creates or opens an owner-only SQLite database at `state/workspace.sq
 
 The Linux build stages the exact Node executable, server, CLI, and native addons under `resources/node-linux`. [Linux packaging](node-linux-packaging.md) documents the candidate build and inspector. [Releasing](RELEASING.md) lists the remaining release evidence. A successful source build or isolated-profile run is not proof of a qualified release.
 
+Historical Rust-package evidence from the local 2026-07-21 smoke averaged 0.8893% process-tree CPU during a five-minute idle window after a five-minute quiet settle, passing the strict `< 1%` gate. The [retained machine-readable report](validation/evidence/performance/2026-07-21-smoke-candidate.json) and [performance guide](PERFORMANCE.md) describe this host-specific result. It does not qualify the current Node package or the unrun eight-hour soak.
+
 The original Rust-first [implementation specification](IMPLEMENTATION_SPEC.md), [parity breakdown](PARITY_WORK_BREAKDOWN.md), and [milestone evidence](validation/) remain as historical design and test records. Their process diagrams, crate paths, and commands do not describe the current runtime. ADR 0014 records the migration decision.

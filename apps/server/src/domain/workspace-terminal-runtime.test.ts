@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createWorkspace } from './workspace-mutations'
 import { projectApplicationSnapshot } from './application-projection'
@@ -115,6 +115,46 @@ function snapshot() {
 }
 
 describe('WorkspaceTerminalRuntime', () => {
+  it('rejects disconnected SSH workspace creation before spawning or committing, including CLI/API calls', async () => {
+    const fixture = snapshot()
+    const spawn = vi.fn().mockResolvedValue(new FakePty())
+    const service = new TerminalService({ spawn })
+    const checkConnection = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    const runtime = new WorkspaceTerminalRuntime(service, Date.now, checkConnection)
+    const commit = vi.fn<ApplicationStateStore['commitWorkspaceCreate']>()
+    const store = {
+      exclusive: (operation: () => Promise<unknown>) => operation(),
+      preflightWorkspaceCreate: () => null,
+      commitWorkspaceCreate: commit
+    } as unknown as ApplicationStateStore
+    try {
+      await runtime.restore(fixture.state)
+      spawn.mockClear()
+      const request = {
+        name: 'SSH',
+        workingDirectory: '/tmp',
+        ssh: { host: 'prod', user: 'deploy', port: 22 },
+        initialTerminal: { cwd: '/tmp', rows: 24, cols: 80 },
+        expectedRevision: fixture.state.revision,
+        idempotencyEpoch: randomUUID(),
+        idempotencyKey: randomUUID()
+      }
+      await expect(runtime.createWorkspace(store, request)).rejects.toThrow('Permission denied')
+      expect(checkConnection).toHaveBeenCalledWith(request.ssh)
+      expect(spawn).not.toHaveBeenCalled()
+      expect(commit).not.toHaveBeenCalled()
+      checkConnection.mockResolvedValue(undefined)
+      commit.mockImplementation((_request, ids) => ({ ...ids, revision: 1, replayed: false }))
+      await expect(runtime.createWorkspace(store, request)).resolves.toMatchObject({
+        replayed: false
+      })
+      expect(spawn).toHaveBeenCalledWith('ssh', ['deploy@prod'], expect.anything())
+      expect(commit).toHaveBeenCalledOnce()
+    } finally {
+      service.dispose()
+    }
+  })
+
   it('persists SSH profiles and restores every terminal on the SSH machine', async () => {
     const fixture = snapshot()
     const browser = fixture.state.workspaces[0]!.tabs[fixture.browserId]!.content

@@ -180,7 +180,7 @@ export async function preflightLiveCutover(
       const settings = await preflightLiveSettings(
         input.rustDesktopPath,
         join(profile, 'config.json'),
-        report.runtimeSettings!
+        report.runtimeSettings
       )
       for (const blocker of settings.blockers) {
         if (!(blocker === 'node_config_missing' && settings.rustDesktop.status === 'present'))
@@ -236,9 +236,13 @@ export async function preflightLiveCutover(
           : undefined
         // A fenced deletion may already have removed either external artifact.
         // Startup must let the owner recover that exact durable intent first.
-        const pendingDeletions = new Set((database
-          .prepare('SELECT remote_target_id FROM remote_target_deletions')
-          .all() as Array<{ remote_target_id: string }>).map((row) => row.remote_target_id))
+        const pendingDeletions = new Set(
+          (
+            database
+              .prepare('SELECT remote_target_id FROM remote_target_deletions')
+              .all() as Array<{ remote_target_id: string }>
+          ).map((row) => row.remote_target_id)
+        )
         let isolatedScope: IsolatedCredentialScope | undefined
         if (targets.length > 128) blockers.push('remote_target_limit_exceeded')
         for (const target of targets) {

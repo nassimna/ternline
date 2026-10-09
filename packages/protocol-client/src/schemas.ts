@@ -155,9 +155,15 @@ export const remoteTargetEnrollmentCommitSchema = z.strictObject({
   target: remoteTargetCreateParamsSchema
 })
 export const remoteTargetEnrollmentAbortSchema = remoteTargetEnrollmentBeginSchema
-export const remoteTargetEnrollmentAbortResultSchema = z.strictObject({ status: z.literal('aborted') })
+export const remoteTargetEnrollmentAbortResultSchema = z.strictObject({
+  status: z.literal('aborted')
+})
 export const remoteCredentialReplacementSchema = remoteTargetEnrollmentBeginSchema.extend({
-  expectedRevision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER - 1)
+  expectedRevision: z
+    .number()
+    .int()
+    .min(1)
+    .max(Number.MAX_SAFE_INTEGER - 1)
 })
 export const remoteListParamsSchema = z.strictObject({
   limit: z.number().int().min(1).max(128),

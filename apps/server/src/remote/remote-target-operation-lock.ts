@@ -9,7 +9,9 @@ export class RemoteTargetOperationLock {
     if (exactId !== targetId) throw new Error('invalid remote target identifier')
     const previous = this.tails.get(exactId)
     let release!: () => void
-    const done = new Promise<void>((resolve) => { release = resolve })
+    const done = new Promise<void>((resolve) => {
+      release = resolve
+    })
     this.tails.set(exactId, done)
     if (previous) await previous
     try {

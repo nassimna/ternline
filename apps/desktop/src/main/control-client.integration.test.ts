@@ -1,303 +1,252 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { chmod, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import type { TerminalEventMessage } from '@agent-workspace/protocol-client'
+import { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
+import { DESKTOP_IPC } from '@agent-workspace/contracts/desktop/desktop-bridge'
+import {
+  mutationResultSchema,
+  terminalAttachResultSchema,
+  terminalEventSchema,
+  type TerminalEventMessage
+} from '@agent-workspace/protocol-client'
 
-import { ControlClient } from './control-client'
-import { APPLICATION_ID, SERVICE_BINARY_NAME } from './identity'
-import { ServiceSupervisor } from './service-supervisor'
+import { APPLICATION_ID } from './identity'
+import { NodeSidecar } from './node-sidecar'
 
-const supervisors: ServiceSupervisor[] = []
-
-afterEach(async () => {
-  for (const supervisor of supervisors) {
-    await supervisor.stop()
-  }
-  supervisors.length = 0
-})
-
-describe('desktop to service protocol', () => {
-  it('authenticates and identifies the real Rust service', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-protocol-'))
-    const endpoint =
-      process.platform === 'win32'
-        ? `agent-workspace-test-${process.pid}`
-        : join(directory, 'control.sock')
-    const executable =
-      process.platform === 'win32' ? `${SERVICE_BINARY_NAME}.exe` : SERVICE_BINARY_NAME
-    const servicePath = resolve(process.cwd(), '..', '..', 'target', 'debug', executable)
-    const token = '0123456789abcdef0123456789abcdef0123456789abcdef'
-    const supervisor = new ServiceSupervisor(
-      endpoint,
-      token,
-      servicePath,
-      join(directory, 'state', 'workspace.sqlite'),
-      directory
-    )
-    supervisors.push(supervisor)
-
+describe('desktop to Node service protocol', () => {
+  it('authenticates and identifies the real Node service', async () => {
+    const { directory, sidecar } = await startNativeFixture()
     try {
-      const client = await supervisor.start()
-      const identity = await client.identify()
-
+      const identity = await sidecar.client.identify()
       expect(identity.application).toBe(APPLICATION_ID)
-      expect(identity.protocolVersion).toBe(1)
+      expect(identity.apiVersion).toBe(1)
       expect(identity.capabilities).toEqual(
-        expect.arrayContaining([
-          'system.identify',
-          'terminal.attach',
-          'terminal.events',
-          'terminal.runtimeMetadata',
-          'tab.openTerminal'
-        ])
+        expect.arrayContaining(['terminal.attach', 'terminal.events', 'tab.openTerminal'])
       )
-      expect(identity.capabilities).not.toContain('terminal.create')
-      expect(identity.capabilities).not.toContain('terminal.terminate')
+      const unauthenticated = new AgentWorkspaceClient(sidecar.baseUrl, 'incorrect-token')
+      await expect(unauthenticated.identify()).rejects.toMatchObject({ status: 401 })
     } finally {
-      await supervisor.stop()
-      await rm(directory, { force: true, recursive: true })
+      await sidecar.stop()
+      await rm(directory, { recursive: true, force: true })
     }
   }, 30_000)
 
   it('reattaches to a live PTY and reconstructs checkpointed output without new output', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-terminal-'))
-    const endpoint =
-      process.platform === 'win32'
-        ? `agent-workspace-terminal-${process.pid}`
-        : join(directory, 'control.sock')
-    const executable =
-      process.platform === 'win32' ? `${SERVICE_BINARY_NAME}.exe` : SERVICE_BINARY_NAME
-    const servicePath = resolve(process.cwd(), '..', '..', 'target', 'debug', executable)
-    const token = 'abcdef0123456789abcdef0123456789abcdef0123456789'
-    const supervisor = new ServiceSupervisor(
-      endpoint,
-      token,
-      servicePath,
-      join(directory, 'state', 'workspace.sqlite'),
-      directory
-    )
-    supervisors.push(supervisor)
-    let reloadedClient: ControlClient | undefined
-
+    const { directory, sidecar, windowId } = await startNativeFixture()
+    const listeners = new Set<(event: TerminalEventMessage) => void>()
+    const emit = (value: unknown): void => {
+      const event = terminalEventSchema.parse(value)
+      for (const listener of listeners) listener(event)
+    }
     try {
-      const client = await supervisor.start()
-      const bootstrapProof = supervisor.getDesktopBootstrapProof()
-      if (!bootstrapProof) throw new Error('The desktop-provider bootstrap proof is missing')
-      const windows = await client.listWindows()
-      const window = windows.windows.find(({ windowId }) => windowId === windows.focusedWindowId)
-      if (!window) throw new Error('The focused window placement is missing')
-      const claim = { windowId: window.windowId, generation: 1 }
-      const registration = await client.registerDesktopProvider({
-        bootstrapProof,
-        instanceId: '10000000-0000-4000-8000-000000000001',
-        capabilities: ['window-host-v1', 'tab-transfer-v1', 'browser-transfer-v1'],
-        windows: [claim]
-      })
-      const identity = {
-        providerId: registration.providerId,
-        providerEpoch: registration.providerEpoch,
-        leaseId: registration.leaseId
-      }
-      await client.bindWindow({ identity, window: claim })
-      const { terminalId, tabId, workspaceId } = await openManagedTestTerminal(client, directory)
-      await client.attachTerminal(terminalId)
-
-      const firstOutput = waitForTerminalOutput(client, terminalId, 'before-reload')
-      await client.sendTerminalInput(
-        terminalId,
-        process.platform === 'win32' ? 'echo before-reload\r\n' : 'before-reload\n'
+      const { terminalId, tabId, workspaceId } = await openManagedTestTerminal(
+        sidecar,
+        windowId,
+        directory
       )
-      const first = await firstOutput
-      await client.checkpointTerminal(terminalId, {
-        sequence: first.sequence,
-        rows: 24,
-        cols: 80,
-        activeBuffer: 'normal',
-        data: 'serialized-before-reload'
-      })
-
-      reloadedClient = new ControlClient(endpoint, token)
-      await reloadedClient.connect()
-      await reloadedClient.bindWindow({ identity, window: claim })
-      let receivedWhileDetached = false
-      const removeDetachedListener = reloadedClient.onTerminalEvent((event) => {
-        if (event.event === 'terminal.output' && event.data.terminalId === terminalId) {
-          receivedWhileDetached = true
-        }
-      })
-      const journalOutput = waitForTerminalOutput(client, terminalId, 'journal-before-attach')
-      await client.sendTerminalInput(
-        terminalId,
-        process.platform === 'win32' ? 'echo journal-before-attach\r\n' : 'journal-before-attach\n'
+      await sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.terminalAttach, [terminalId], emit)
+      const before = waitForTerminalOutput(listeners, terminalId, 'before-reload')
+      await sendInput(sidecar, windowId, terminalId, 'before-reload')
+      const first = await before
+      await sidecar.invokeDesktopCore(
+        windowId,
+        DESKTOP_IPC.terminalCheckpoint,
+        [
+          terminalId,
+          {
+            sequence: first.sequence,
+            rows: 24,
+            cols: 80,
+            activeBuffer: 'normal',
+            data: 'serialized-before-reload'
+          }
+        ],
+        emit
       )
-      await journalOutput
-      await delay(50)
-      expect(receivedWhileDetached).toBe(false)
-      removeDetachedListener()
-
-      const snapshot = await reloadedClient.attachTerminal(terminalId)
-      await expect(reloadedClient.getTerminalRuntimeMetadata(terminalId)).resolves.toEqual({
-        terminalId,
-        listeningPorts: []
+      await sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.terminalDetach, [terminalId], emit)
+      let detachedOutput = false
+      listeners.add(() => {
+        detachedOutput = true
       })
-      const replayed = snapshot.output
-        .map((chunk) => Buffer.from(chunk.data, 'base64').toString('utf8'))
-        .join('')
-
+      await sendInput(sidecar, windowId, terminalId, 'journal-before-attach')
+      await waitForJournal(sidecar, terminalId, 'journal-before-attach')
+      expect(detachedOutput).toBe(false)
+      listeners.clear()
+      const attached = await sidecar.invokeDesktopCore(
+        windowId,
+        DESKTOP_IPC.terminalAttach,
+        [terminalId],
+        emit
+      )
+      const snapshot = terminalAttachResultSchema.parse(attached.value)
       expect(snapshot.terminal.id).toBe(terminalId)
       expect(snapshot.terminal.exited).toBe(false)
       expect(snapshot.checkpoint?.data).toBe('serialized-before-reload')
-      expect(replayed).toContain('journal-before-attach')
-
-      const attachedOutput = waitForTerminalOutput(
-        reloadedClient,
-        terminalId,
-        'visible-after-attach'
+      expect(
+        snapshot.output.map((chunk) => Buffer.from(chunk.data, 'base64').toString('utf8')).join('')
+      ).toContain('journal-before-attach')
+      const visible = waitForTerminalOutput(listeners, terminalId, 'visible-after-attach')
+      await sendInput(sidecar, windowId, terminalId, 'visible-after-attach')
+      await visible
+      await sidecar.invokeDesktopCore(
+        windowId,
+        DESKTOP_IPC.tabClose,
+        [{ workspaceId, tabId }],
+        emit
       )
-      await client.sendTerminalInput(
-        terminalId,
-        process.platform === 'win32' ? 'echo visible-after-attach\r\n' : 'visible-after-attach\n'
-      )
-      await attachedOutput
-
-      await reloadedClient.detachTerminal(terminalId)
-      let receivedAfterDetach = false
-      const removeAfterDetachListener = reloadedClient.onTerminalEvent((event) => {
-        if (event.event === 'terminal.output' && event.data.terminalId === terminalId) {
-          receivedAfterDetach = true
-        }
-      })
-      const originalOutput = waitForTerminalOutput(client, terminalId, 'hidden-after-detach')
-      await client.sendTerminalInput(
-        terminalId,
-        process.platform === 'win32' ? 'echo hidden-after-detach\r\n' : 'hidden-after-detach\n'
-      )
-      await originalOutput
-      await delay(50)
-      removeAfterDetachListener()
-      expect(receivedAfterDetach).toBe(false)
-      await reloadedClient.closeTab({ workspaceId, tabId })
     } finally {
-      reloadedClient?.close()
-      await supervisor.stop()
-      await rm(directory, { force: true, recursive: true })
+      await sidecar.stop()
+      await rm(directory, { recursive: true, force: true })
     }
   }, 30_000)
 
   it('reports a native TCP listener owned by a managed terminal', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-listener-'))
-    const endpoint =
-      process.platform === 'win32'
-        ? `agent-workspace-listener-${process.pid}`
-        : join(directory, 'control.sock')
-    const executable =
-      process.platform === 'win32' ? `${SERVICE_BINARY_NAME}.exe` : SERVICE_BINARY_NAME
-    const servicePath = resolve(process.cwd(), '..', '..', 'target', 'debug', executable)
-    const supervisor = new ServiceSupervisor(
-      endpoint,
-      'fedcba9876543210fedcba9876543210fedcba9876543210',
-      servicePath,
-      join(directory, 'state', 'workspace.sqlite'),
-      directory
-    )
-    supervisors.push(supervisor)
-
+    const { directory, sidecar, windowId } = await startNativeFixture()
     try {
-      const client = await supervisor.start()
-      const listenerProgram = [
-        "const net = require('node:net')",
-        'const server = net.createServer()',
-        "server.listen(0, '127.0.0.1')"
-      ].join(';')
-      const { terminalId, tabId, workspaceId } = await openManagedTestTerminal(client, directory, [
-        process.execPath,
-        '-e',
-        listenerProgram
-      ])
-
-      const metadata = await waitForListeningPorts(client, terminalId)
-      expect(metadata.terminalId).toBe(terminalId)
+      const program =
+        "const net = require('node:net'); const server = net.createServer(); server.listen(0, '127.0.0.1')"
+      const { terminalId, tabId, workspaceId } = await openManagedTestTerminal(
+        sidecar,
+        windowId,
+        directory,
+        [process.execPath, '-e', program]
+      )
+      const deadline = Date.now() + 5_000
+      let metadata = await sidecar.client.runtimeMetadata(terminalId)
+      while (metadata.listeningPorts.length === 0 && Date.now() < deadline) {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 50))
+        metadata = await sidecar.client.runtimeMetadata(terminalId)
+      }
       expect(metadata.listeningPorts).toHaveLength(1)
       expect(metadata.listeningPorts[0]).toBeGreaterThan(0)
-      await client.closeTab({ workspaceId, tabId })
+      await sidecar.invokeDesktopCore(
+        windowId,
+        DESKTOP_IPC.tabClose,
+        [{ workspaceId, tabId }],
+        () => undefined
+      )
     } finally {
-      await supervisor.stop()
-      await rm(directory, { force: true, recursive: true })
+      await sidecar.stop()
+      await rm(directory, { recursive: true, force: true })
     }
   }, 30_000)
 })
 
+async function startNativeFixture() {
+  const cache = process.env.RUNNER_TEMP ?? join(homedir(), '.cache', 'ternline-validation')
+  await mkdir(cache, { recursive: true })
+  const directory = await realpath(await mkdtemp(join(cache, 'desktop-protocol-')))
+  await chmod(directory, 0o700)
+  try {
+    const sidecar = await NodeSidecar.startNative({
+      native: true,
+      serverPath: resolve(process.cwd(), '..', 'server', 'dist', 'bin.mjs'),
+      liveDatabasePath: join(directory, 'workspace.sqlite'),
+      backupPath: join(directory, 'backup.sqlite'),
+      sessionFilePath: join(directory, 'session.json'),
+      defaultWorkingDirectory: directory
+    })
+    try {
+      const topology = await sidecar.client.listWindows()
+      await sidecar.reconcileHostingForTrustedOwner('registerHosting', topology.focusedWindowId, 1)
+      return { directory, sidecar, windowId: topology.focusedWindowId }
+    } catch (error) {
+      await sidecar.stop()
+      throw error
+    }
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true })
+    throw error
+  }
+}
+
 async function openManagedTestTerminal(
-  client: ControlClient,
-  workingDirectory: string,
+  sidecar: NodeSidecar,
+  windowId: string,
+  directory: string,
   command?: string[]
-): Promise<{ terminalId: string; tabId: string; workspaceId: string }> {
-  const initial = (await client.listWorkspaces()).snapshot
+) {
+  const initial = (await sidecar.client.listWorkspaces()).snapshot
   const workspace = initial.workspaces.find(({ id }) => id === initial.selectedWorkspaceId)
   if (!workspace) throw new Error('The selected workspace is missing')
-
-  const result = await client.openTerminalTab({
-    workspaceId: workspace.id,
-    paneId: workspace.selectedPaneId,
-    launch: {
-      cwd: workingDirectory,
-      rows: 24,
-      cols: 80,
-      command:
-        command ??
-        (process.platform === 'win32'
-          ? ['cmd.exe', '/Q']
-          : ['/bin/sh', '-c', 'stty -echo; exec /bin/cat'])
-    }
-  })
-  const updated = result.snapshot.workspaces.find(({ id }) => id === workspace.id)
+  const opened = await sidecar.invokeDesktopCore(
+    windowId,
+    DESKTOP_IPC.tabOpenTerminal,
+    [
+      {
+        workspaceId: workspace.id,
+        paneId: workspace.selectedPaneId,
+        launch: {
+          cwd: directory,
+          rows: 24,
+          cols: 80,
+          command:
+            command ??
+            (process.platform === 'win32'
+              ? ['cmd.exe', '/Q']
+              : ['/bin/sh', '-c', 'stty -echo; exec /bin/cat'])
+        }
+      }
+    ],
+    () => undefined
+  )
+  const updated = mutationResultSchema
+    .parse(opened.value)
+    .snapshot.workspaces.find(({ id }) => id === workspace.id)
   const pane = updated?.panes.find(({ id }) => id === workspace.selectedPaneId)
   const tab = updated?.tabs.find(({ id }) => id === pane?.selectedTabId)
   const terminalId = tab?.content.kind === 'terminal' ? tab.content.runtimeSessionId : undefined
-  if (!pane || !tab || !terminalId) throw new Error('The managed terminal was not created')
-
+  if (!tab || !terminalId) throw new Error('The managed terminal was not created')
   return { terminalId, tabId: tab.id, workspaceId: workspace.id }
 }
 
-async function waitForListeningPorts(client: ControlClient, terminalId: string) {
+function sendInput(sidecar: NodeSidecar, windowId: string, terminalId: string, marker: string) {
+  return sidecar.invokeDesktopCore(
+    windowId,
+    DESKTOP_IPC.terminalSend,
+    [terminalId, process.platform === 'win32' ? `echo ${marker}\r\n` : `${marker}\n`],
+    () => undefined
+  )
+}
+
+async function waitForJournal(sidecar: NodeSidecar, terminalId: string, expected: string) {
   const deadline = Date.now() + 5_000
   do {
-    const metadata = await client.getTerminalRuntimeMetadata(terminalId)
-    if (metadata.listeningPorts.length > 0) return metadata
-    await delay(50)
+    const snapshot = await sidecar.client.attach(terminalId)
+    if (
+      snapshot.output.some((chunk) =>
+        Buffer.from(chunk.data, 'base64').toString('utf8').includes(expected)
+      )
+    )
+      return
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 20))
   } while (Date.now() < deadline)
-  throw new Error('Timed out waiting for terminal listening-port metadata')
+  throw new Error('Timed out waiting for detached terminal journal')
 }
 
 function waitForTerminalOutput(
-  client: ControlClient,
+  listeners: Set<(event: TerminalEventMessage) => void>,
   terminalId: string,
   expected: string
-): Promise<{ sequence: number; text: string }> {
+): Promise<{ sequence: number }> {
   return new Promise((resolveOutput, rejectOutput) => {
     let text = ''
-    let removeListener = (): void => undefined
     const timeout = setTimeout(() => {
-      removeListener()
+      listeners.delete(listener)
       rejectOutput(new Error(`Timed out waiting for terminal output: ${expected}`))
     }, 5_000)
-    removeListener = client.onTerminalEvent((event: TerminalEventMessage) => {
-      if (event.event !== 'terminal.output' || event.data.terminalId !== terminalId) {
-        return
-      }
+    const listener = (event: TerminalEventMessage): void => {
+      if (event.event !== 'terminal.output' || event.data.terminalId !== terminalId) return
       text += Buffer.from(event.data.chunk.data, 'base64').toString('utf8')
       if (text.includes(expected)) {
         clearTimeout(timeout)
-        removeListener()
-        resolveOutput({ sequence: event.data.chunk.sequence, text })
+        listeners.delete(listener)
+        resolveOutput({ sequence: event.data.chunk.sequence })
       }
-    })
+    }
+    listeners.add(listener)
   })
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds))
 }

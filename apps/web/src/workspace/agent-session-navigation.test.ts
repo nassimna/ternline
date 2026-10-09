@@ -30,7 +30,7 @@ it('reconciles a stale renderer and skips already-selected pane and tab mutation
   const applyMutation = vi.fn()
   const waitUntilVisible = vi.fn().mockResolvedValue(true)
   await navigateToAgentBinding(binding, {
-    loadSnapshot: async () => snapshot,
+    loadSnapshot: () => Promise.resolve(snapshot),
     selectWorkspace,
     focusPane,
     selectTab,

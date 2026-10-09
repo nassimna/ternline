@@ -8,9 +8,18 @@ import {
 
 import type { ApplicationStateStore } from '../persistence/application-state-store'
 import { RemoteCatalogError } from '../persistence/remote-catalog'
-import { CredentialError, CredentialReference, type CredentialProvider } from './credential-provider'
+import {
+  CredentialError,
+  CredentialReference,
+  type CredentialProvider
+} from './credential-provider'
 import { HostKeyAuthorityError, type HostKeyAuthority } from './host-key-authority'
-import { SshLaunchError, SshLaunchPlan, resolveSshExecutable, verifyRemoteTarget } from './ssh-launch-plan'
+import {
+  SshLaunchError,
+  SshLaunchPlan,
+  resolveSshExecutable,
+  verifyRemoteTarget
+} from './ssh-launch-plan'
 import {
   sharedRemoteTargetOperationLock,
   type RemoteTargetOperationLock
@@ -97,11 +106,16 @@ export class RemoteTmuxDiscoveryService {
           })
           const currentSession = this.state.getRemoteSession(session.remoteSessionId).session
           const currentTarget = this.state.getRemoteTarget(target.remoteTargetId).target
-          if (currentSession.revision !== session.revision ||
-              currentSession.attemptGeneration !== session.attemptGeneration ||
-              currentTarget.revision !== target.revision ||
-              currentTarget.knownHostsVersion !== target.knownHostsVersion) {
-            throw new RemoteCatalogError('stale_revision', 'Remote authority changed during discovery')
+          if (
+            currentSession.revision !== session.revision ||
+            currentSession.attemptGeneration !== session.attemptGeneration ||
+            currentTarget.revision !== target.revision ||
+            currentTarget.knownHostsVersion !== target.knownHostsVersion
+          ) {
+            throw new RemoteCatalogError(
+              'stale_revision',
+              'Remote authority changed during discovery'
+            )
           }
           await plan.revalidate()
           return await execute(plan, operation.kind === 'discoverSessions')
@@ -129,9 +143,14 @@ export class RemoteTmuxDiscoveryService {
 }
 
 function safeErrorCode(error: unknown): string {
-  if (error instanceof RemoteCatalogError || error instanceof CredentialError ||
-      error instanceof HostKeyAuthorityError || error instanceof SshLaunchError ||
-      error instanceof TmuxProtocolError || error instanceof RemoteTransportError) {
+  if (
+    error instanceof RemoteCatalogError ||
+    error instanceof CredentialError ||
+    error instanceof HostKeyAuthorityError ||
+    error instanceof SshLaunchError ||
+    error instanceof TmuxProtocolError ||
+    error instanceof RemoteTransportError
+  ) {
     return error.code
   }
   return 'transport_unavailable'
@@ -154,7 +173,10 @@ async function execute(plan: SshLaunchPlan, allowEmptySessions: boolean): Promis
       failure = error
       child.kill('SIGKILL')
     }
-    const timeout = setTimeout(() => fail(new RemoteTransportError('transport_unavailable')), DISCOVERY_TIMEOUT_MS)
+    const timeout = setTimeout(
+      () => fail(new RemoteTransportError('transport_unavailable')),
+      DISCOVERY_TIMEOUT_MS
+    )
     child.stdout.on('data', (chunk: Buffer) => {
       size += chunk.length
       if (size > MAX_TMUX_DISCOVERY_BYTES) fail(new RemoteTransportError('invalid_tmux_response'))
@@ -169,9 +191,13 @@ async function execute(plan: SshLaunchPlan, allowEmptySessions: boolean): Promis
       clearTimeout(timeout)
       if (failure) reject(failure)
       else if (
-        allowEmptySessions && code === 1 && size === 0 && stderrBytes <= 512 &&
+        allowEmptySessions &&
+        code === 1 &&
+        size === 0 &&
+        stderrBytes <= 512 &&
         isNoTmuxServerResponse(stderr)
-      ) resolve(Buffer.alloc(0))
+      )
+        resolve(Buffer.alloc(0))
       else if (code !== 0) reject(new RemoteTransportError('invalid_tmux_response'))
       else resolve(Buffer.concat(chunks))
     })

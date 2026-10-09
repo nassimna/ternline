@@ -68,23 +68,24 @@ async function main(): Promise<void> {
     throw new CredentialEnrollmentUtilityError('invalid_request')
   }
   const request = requestFile(process.argv[3]!)
-  const result = request && typeof request === 'object' && 'version' in request
-    ? request.version === 8
-      ? await runNativeCredentialReplacement(request)
-      : request.version === 7
-      ? await runNativeCredentialWrite(request)
-      : request.version === 6
-      ? await runLiveCredentialNew(request)
-      : request.version === 5
-      ? await runLiveCredentialReplacement(request)
-      : request.version === 4
-      ? await runLiveCredentialV1Replacement(request)
-      : request.version === 3
-        ? await runOnlineCredentialReplacement(request)
-        : request.version === 2
-          ? await runOnlineCredentialWrite(request)
-          : await runCredentialEnrollment(request)
-    : await runCredentialEnrollment(request)
+  const result =
+    request && typeof request === 'object' && 'version' in request
+      ? request.version === 8
+        ? await runNativeCredentialReplacement(request)
+        : request.version === 7
+          ? await runNativeCredentialWrite(request)
+          : request.version === 6
+            ? await runLiveCredentialNew(request)
+            : request.version === 5
+              ? await runLiveCredentialReplacement(request)
+              : request.version === 4
+                ? await runLiveCredentialV1Replacement(request)
+                : request.version === 3
+                  ? await runOnlineCredentialReplacement(request)
+                  : request.version === 2
+                    ? await runOnlineCredentialWrite(request)
+                    : await runCredentialEnrollment(request)
+      : await runCredentialEnrollment(request)
   // The credential FD and Secret Service socket are closed before this point. End this
   // dedicated child explicitly: Node 22 can abort while polling a closed inherited FD.
   writeSync(1, `${JSON.stringify(result)}\n`)

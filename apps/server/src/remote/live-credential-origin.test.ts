@@ -95,17 +95,21 @@ it('requires a durable deletion fence for the exact live credential origin', () 
     const origins = new LiveCredentialOriginStore(database)
     origins.markV1Eligible(v1, 1)
     origins.markV1Eligible(v2, 1)
-    database.prepare(
-      `UPDATE node_live_credential_origins SET origin = 'v2_committed', committed_revision = 1
+    database
+      .prepare(
+        `UPDATE node_live_credential_origins SET origin = 'v2_committed', committed_revision = 1
        WHERE remote_target_id = ?`
-    ).run(v2)
+      )
+      .run(v2)
     expect(() => origins.readFencedDeletionOrigin(v1)).toThrow()
     for (const id of [v1, v2]) {
-      database.prepare(
-        `INSERT INTO remote_target_deletions
+      database
+        .prepare(
+          `INSERT INTO remote_target_deletions
          (remote_target_id, expected_revision, idempotency_key, request_hash, result_json, created_at_ms)
          VALUES (?, 1, ?, ?, '{}', 1)`
-      ).run(id, randomUUID(), 'b'.repeat(64))
+        )
+        .run(id, randomUUID(), 'b'.repeat(64))
     }
     expect(origins.readFencedDeletionOrigin(v1)).toBe('v1_eligible')
     expect(origins.readFencedDeletionOrigin(v2)).toBe('v2_committed')

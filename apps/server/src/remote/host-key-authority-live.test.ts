@@ -22,7 +22,7 @@ const descriptor = parseHostKeyScan(
   target.host,
   target.port
 )
-const scanner = { scan: async () => descriptor }
+const scanner = { scan: () => Promise.resolve(descriptor) }
 
 it.skipIf(process.platform !== 'linux')(
   'requires the exact live approved key before accepting a trusted target',

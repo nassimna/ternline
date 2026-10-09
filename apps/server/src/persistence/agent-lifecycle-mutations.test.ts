@@ -45,14 +45,15 @@ function fixture(lifecycle = 'created', hibernationState: string | null = null) 
 it('marks a sealed resumed session running only after the resume completes', async () => {
   const { database, request } = fixture()
   let live = false
-  const resume = vi.fn(async () => {
+  const resume = vi.fn(() => {
     live = true
+    return Promise.resolve()
   })
   const mutations = new AgentLifecycleMutations(
     database,
     {
       live: () => live,
-      canResume: async () => true,
+      canResume: () => Promise.resolve(true),
       resume
     },
     () => 10
@@ -69,7 +70,11 @@ it('does not mark an exited resumed terminal running', async () => {
   const { database, request } = fixture()
   const mutations = new AgentLifecycleMutations(
     database,
-    { live: () => false, canResume: async () => true, resume: async () => undefined },
+    {
+      live: () => false,
+      canResume: () => Promise.resolve(true),
+      resume: () => Promise.resolve(undefined)
+    },
     () => 10
   )
   await expect(mutations.restore(request)).rejects.toThrow('The resumed terminal is not live')
@@ -92,9 +97,10 @@ it('tool-resumes a hibernated thread after its short checkpoint consent proof ex
     database,
     {
       live: () => live,
-      canResume: async () => true,
-      resume: async () => {
+      canResume: () => Promise.resolve(true),
+      resume: () => {
         live = true
+        return Promise.resolve()
       }
     },
     () => 100_000
@@ -114,7 +120,7 @@ it('synchronizes a verified live reattachment and refuses an active hibernation'
     database,
     {
       live: () => true,
-      canResume: async () => false
+      canResume: () => Promise.resolve(false)
     },
     () => 10
   )
@@ -128,7 +134,7 @@ it('synchronizes a verified live reattachment and refuses an active hibernation'
     pending.database,
     {
       live: () => true,
-      canResume: async () => false
+      canResume: () => Promise.resolve(false)
     },
     () => 10
   )

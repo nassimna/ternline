@@ -19,8 +19,11 @@ builds the Ternline website with matching, versioned download URLs.
 4. Dispatch **Release** from the PR branch with `version: VERSION` and `publish: false` to build
    and test every platform before merging. Inspect its logs and retained smoke evidence.
 5. Merge the qualified source, create the annotated `vVERSION` tag on that commit, and push it.
-   A tag run publishes the prerelease after every platform succeeds. A manual publication also
+   A tag run creates a draft prerelease after every platform succeeds. A manual draft build also
    requires the workflow ref to be that exact tag.
+6. Download and qualify the exact signed Arch package from the draft as described below. Record
+   its hash and native results, then publish the unchanged draft with
+   `gh release edit vVERSION --draft=false`. Do not rebuild or replace qualified assets.
 
 Builds use the frozen lockfile, cached pnpm downloads, pinned actions, and Node 22.23.3.
 Release concurrency prevents overlapping runs for the same ref. PR CI runs Node validation and

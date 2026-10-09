@@ -7,7 +7,7 @@ import { AgentMutationError } from '../persistence/agent-mutations'
 import type { ApplicationStateStore } from '../persistence/application-state-store'
 import type { AgentRegistrationService } from '../agents/agent-registration-service'
 import type { WorkspaceTerminalRuntime } from '../domain/workspace-terminal-runtime'
-import { TerminalService, type PtyAdapter } from '../terminal/terminal-service'
+import { TerminalService } from '../terminal/terminal-service'
 import { createApp } from './app'
 
 const token = 'hibernation-http-test-token-0123456789abcdef'
@@ -15,7 +15,7 @@ const token = 'hibernation-http-test-token-0123456789abcdef'
 it('exposes hibernation only with private authority and forwards lease rejection', async () => {
   const service = new TerminalService({
     spawn: () => Promise.reject(new Error('unused'))
-  } as PtyAdapter)
+  })
   const state = { currentIdempotencyEpoch: () => 1 } as unknown as ApplicationStateStore
   const runtime = {
     uses: (candidate: TerminalService) => candidate === service,
@@ -37,9 +37,10 @@ it('exposes hibernation only with private authority and forwards lease rejection
     hibernationAvailable: () => false,
     providerProfileQualified: () => false,
     forkAvailable: () => false,
-    hibernatePreflight: async () => {
-      throw new AgentMutationError('provider_unavailable', 'Hibernation authority is unavailable')
-    }
+    hibernatePreflight: () =>
+      Promise.reject(
+        new AgentMutationError('provider_unavailable', 'Hibernation authority is unavailable')
+      )
   } as unknown as AgentRegistrationService
   const app = createApp(
     service,
@@ -143,7 +144,7 @@ it('exposes hibernation only with private authority and forwards lease rejection
       expiresAtMs: Date.now() + 30_000
     }
   }
-  registration.hibernatePreflight = async () => prepared
+  registration.hibernatePreflight = () => Promise.resolve(prepared)
   expect(await client.preflightAgentHibernation(request)).toEqual(prepared)
   registration.hibernateCancel = () => ({ state: 'canceled' })
   expect(
@@ -152,7 +153,7 @@ it('exposes hibernation only with private authority and forwards lease rejection
       operation: request.operation
     })
   ).toEqual({ state: 'canceled' })
-  registration.hibernateConfirm = async () => ({ state: 'terminatedAfterWarning' })
+  registration.hibernateConfirm = () => Promise.resolve({ state: 'terminatedAfterWarning' })
   expect(
     await client.confirmAgentHibernation({
       agentSessionId: request.agentSessionId,

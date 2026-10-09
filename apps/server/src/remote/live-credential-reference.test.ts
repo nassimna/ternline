@@ -5,7 +5,10 @@ import { join } from 'node:path'
 
 import { expect, it } from 'vitest'
 
-import { activeCredentialReference, SecretServiceCredentialProvider } from './credential-secret-service'
+import {
+  activeCredentialReference,
+  SecretServiceCredentialProvider
+} from './credential-secret-service'
 import { IsolatedCredentialScope } from './credential-scope'
 
 const targetId = '00000000-0000-4000-8000-000000000001'

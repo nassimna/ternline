@@ -25,15 +25,25 @@ it('preserves a marked live v1 item across abort and crash, then commits v2 with
     await chmod(directory, 0o700)
     db = new Database(statePath)
     for (const table of [
-      'idempotency_results', 'remote_targets', 'remote_credential_enrollments',
-      'remote_target_deletions', 'remote_sessions'
-    ] as const) db.exec(RUST_SCHEMA_V15_SQL[table])
+      'idempotency_results',
+      'remote_targets',
+      'remote_credential_enrollments',
+      'remote_target_deletions',
+      'remote_sessions'
+    ] as const)
+      db.exec(RUST_SCHEMA_V15_SQL[table])
     db.pragma('user_version = 15')
     const targetId = randomUUID()
     new RemoteCatalog(db, () => 42).createTarget({
-      remoteTargetId: targetId, label: 'SSH', host: 'example.com', port: 22,
-      user: 'alice', mutation: {
-        expectedRevision: 0, idempotencyKey: randomUUID(), requestHash: 'a'.repeat(64)
+      remoteTargetId: targetId,
+      label: 'SSH',
+      host: 'example.com',
+      port: 22,
+      user: 'alice',
+      mutation: {
+        expectedRevision: 0,
+        idempotencyKey: randomUUID(),
+        requestHash: 'a'.repeat(64)
       }
     })
     const origins = new LiveCredentialOriginStore(db)
@@ -43,16 +53,24 @@ it('preserves a marked live v1 item across abort and crash, then commits v2 with
     await chmod(statePath, 0o600)
     const v1 = new Map<string, string>([[targetId, 'old']])
     const v2 = new Map<string, string>()
-    const deleteV2 = vi.fn((id: string) => { v2.delete(id); return Promise.resolve() })
+    const deleteV2 = vi.fn((id: string) => {
+      v2.delete(id)
+      return Promise.resolve()
+    })
     const keyring = {
       validateInheritedFd: () => undefined,
-      enrollFromInheritedFd: (id: string) => { v2.set(id, 'new'); return Promise.resolve() },
+      enrollFromInheritedFd: (id: string) => {
+        v2.set(id, 'new')
+        return Promise.resolve()
+      },
       has: (id: string) => Promise.resolve(v2.has(id)),
       hasV1: (id: string) => Promise.resolve(v1.has(id)),
       delete: deleteV2
     }
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: () => Promise.resolve()
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: () => Promise.resolve()
     })
     db = new Database(statePath)
     const first = randomUUID()
@@ -69,19 +87,32 @@ it('preserves a marked live v1 item across abort and crash, then commits v2 with
       assertDatabasePath: vi.fn((path: string) => expect(path).toBe(statePath)),
       assertDatabaseUnchanged: vi.fn()
     }
-    await expect(RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: () => Promise.resolve(),
-      preserveLiveV1Replacement: {
-        targetId, enrollmentId: interrupted, expectedRevision: 1, owner
-      }
-    })).rejects.toMatchObject({ code: 'storage_unavailable' })
+    await expect(
+      RemoteCredentialEnrollmentService.create({
+        workingStatePath: statePath,
+        keyring,
+        revokeTargetTransports: () => Promise.resolve(),
+        preserveLiveV1Replacement: {
+          targetId,
+          enrollmentId: interrupted,
+          expectedRevision: 1,
+          owner
+        }
+      })
+    ).rejects.toMatchObject({ code: 'storage_unavailable' })
     expect(v2.get(targetId)).toBe('interrupted')
     db.prepare(
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES (?,?,?,?,?,?)`
-    ).run(ONLINE_REPLACEMENT_MARKER_NAMESPACE, ONLINE_ENROLLMENT_MARKER_EPOCH,
-      interrupted, targetId, '{"status":"stored"}', 43)
+    ).run(
+      ONLINE_REPLACEMENT_MARKER_NAMESPACE,
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      interrupted,
+      targetId,
+      '{"status":"stored"}',
+      43
+    )
     const unrelatedTarget = randomUUID()
     v2.set(unrelatedTarget, 'orphan')
     db.prepare(
@@ -89,21 +120,29 @@ it('preserves a marked live v1 item across abort and crash, then commits v2 with
        (enrollment_id,remote_target_id,expected_revision,created_at_ms) VALUES (?,?,0,43)`
     ).run(randomUUID(), unrelatedTarget)
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: () => Promise.resolve(),
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: () => Promise.resolve(),
       preserveLiveV1Replacement: {
-        targetId, enrollmentId: interrupted, expectedRevision: 1, owner
+        targetId,
+        enrollmentId: interrupted,
+        expectedRevision: 1,
+        owner
       }
     })
     expect(owner.assertDatabasePath).toHaveBeenCalledWith(statePath)
     expect(owner.assertDatabaseUnchanged).toHaveBeenCalled()
-    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get())
-      .toEqual({ count: 1 })
+    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get()).toEqual(
+      { count: 1 }
+    )
     expect(v1.get(targetId)).toBe('old')
     expect(v2.get(targetId)).toBe('interrupted')
     expect(v2.has(unrelatedTarget)).toBe(false)
     service.close()
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: () => Promise.resolve()
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: () => Promise.resolve()
     })
     expect(v1.get(targetId)).toBe('old')
     expect(v2.has(targetId)).toBe(false)
@@ -117,17 +156,30 @@ it('preserves a marked live v1 item across abort and crash, then commits v2 with
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES (?,?,?,?,?,?)`
-    ).run(ONLINE_REPLACEMENT_MARKER_NAMESPACE, ONLINE_ENROLLMENT_MARKER_EPOCH,
-      second, targetId, '{"status":"stored"}', 43)
-    await service.commitOnlineReplacement(second, targetId, 1,
-      () => Promise.resolve(new RemoteCatalog(db!, () => 42).getTarget(targetId)), true)
+    ).run(
+      ONLINE_REPLACEMENT_MARKER_NAMESPACE,
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      second,
+      targetId,
+      '{"status":"stored"}',
+      43
+    )
+    await service.commitOnlineReplacement(
+      second,
+      targetId,
+      1,
+      () => Promise.resolve(new RemoteCatalog(db!, () => 42).getTarget(targetId)),
+      true
+    )
     expect(new LiveCredentialOriginStore(db).read(targetId)).toBe('v2_committed')
     expect(v1.get(targetId)).toBe('old')
     expect(v2.get(targetId)).toBe('new')
     expect(new RemoteCatalog(db, () => 42).getTarget(targetId).target.revision).toBe(2)
     service.close()
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: () => Promise.resolve()
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: () => Promise.resolve()
     })
     expect(v2.get(targetId)).toBe('new')
     expect(v1.get(targetId)).toBe('old')
@@ -147,9 +199,12 @@ it('requires the exact helper completion and a fresh create key before publishin
     await chmod(directory, 0o700)
     db = new Database(statePath)
     for (const table of [
-      'idempotency_results', 'remote_targets', 'remote_credential_enrollments',
+      'idempotency_results',
+      'remote_targets',
+      'remote_credential_enrollments',
       'remote_target_deletions'
-    ] as const) db.exec(RUST_SCHEMA_V15_SQL[table])
+    ] as const)
+      db.exec(RUST_SCHEMA_V15_SQL[table])
     db.close()
     db = undefined
     await chmod(statePath, 0o600)
@@ -183,9 +238,10 @@ it('requires the exact helper completion and a fresh create key before publishin
       mutation: { expectedRevision: 0, idempotencyKey, requestHash: 'a'.repeat(64) }
     })
     await service.beginOnlineNew(targetId, enrollmentId)
-    const commit = (key: string) => service!.commitOnlineNew(
-      enrollmentId, targetId, () => Promise.resolve(catalog.commitEnrolledTarget(request(key), enrollmentId))
-    )
+    const commit = (key: string) =>
+      service!.commitOnlineNew(enrollmentId, targetId, () =>
+        Promise.resolve(catalog.commitEnrolledTarget(request(key), enrollmentId))
+      )
 
     await expect(commit(randomUUID())).rejects.toMatchObject({ code: 'stale_revision' })
     expect(db.prepare('SELECT count(*) AS count FROM remote_targets').get()).toEqual({ count: 0 })
@@ -194,26 +250,41 @@ it('requires the exact helper completion and a fresh create key before publishin
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES (?,?,?,?,?,?)`
-    ).run(ONLINE_ENROLLMENT_MARKER_NAMESPACE, ONLINE_ENROLLMENT_MARKER_EPOCH,
-      enrollmentId, targetId, '{"status":"stored"}', 42)
+    ).run(
+      ONLINE_ENROLLMENT_MARKER_NAMESPACE,
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      enrollmentId,
+      targetId,
+      '{"status":"stored"}',
+      42
+    )
     db.prepare(
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES ('remote.target.create',?,?,?,?,?)`
-    ).run(ONLINE_ENROLLMENT_MARKER_EPOCH, deletedKey, 'a'.repeat(64),
-      JSON.stringify({ target: { remoteTargetId: targetId } }), 41)
+    ).run(
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      deletedKey,
+      'a'.repeat(64),
+      JSON.stringify({ target: { remoteTargetId: targetId } }),
+      41
+    )
     await expect(commit(deletedKey)).rejects.toMatchObject({ code: 'idempotency_conflict' })
     expect(db.prepare('SELECT count(*) AS count FROM remote_targets').get()).toEqual({ count: 0 })
-    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get())
-      .toEqual({ count: 1 })
+    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get()).toEqual(
+      { count: 1 }
+    )
 
     const result = await commit(randomUUID())
     expect(result.target).toMatchObject({ remoteTargetId: targetId, revision: 1 })
-    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get())
-      .toEqual({ count: 0 })
-    expect(db.prepare(
-      'SELECT count(*) AS count FROM idempotency_results WHERE namespace = ?'
-    ).get(ONLINE_ENROLLMENT_MARKER_NAMESPACE)).toEqual({ count: 0 })
+    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get()).toEqual(
+      { count: 0 }
+    )
+    expect(
+      db
+        .prepare('SELECT count(*) AS count FROM idempotency_results WHERE namespace = ?')
+        .get(ONLINE_ENROLLMENT_MARKER_NAMESPACE)
+    ).toEqual({ count: 0 })
     expect(remove).not.toHaveBeenCalled()
   } finally {
     service?.close()
@@ -231,23 +302,42 @@ it('fences activation, commits a replacement, and restores the prior key after a
     await chmod(directory, 0o700)
     db = new Database(statePath)
     for (const table of [
-      'idempotency_results', 'remote_targets', 'remote_credential_enrollments',
-      'remote_target_deletions', 'remote_sessions'
-    ] as const) db.exec(RUST_SCHEMA_V15_SQL[table])
+      'idempotency_results',
+      'remote_targets',
+      'remote_credential_enrollments',
+      'remote_target_deletions',
+      'remote_sessions'
+    ] as const)
+      db.exec(RUST_SCHEMA_V15_SQL[table])
     const targetId = randomUUID()
     const sessionId = randomUUID()
-    new RemoteCatalog(db, () => 42).createTarget({ remoteTargetId: targetId, label: 'SSH', host: 'example.com',
-      port: 22, user: 'alice', mutation: {
-        expectedRevision: 0, idempotencyKey: randomUUID(), requestHash: 'a'.repeat(64)
-      } })
+    new RemoteCatalog(db, () => 42).createTarget({
+      remoteTargetId: targetId,
+      label: 'SSH',
+      host: 'example.com',
+      port: 22,
+      user: 'alice',
+      mutation: {
+        expectedRevision: 0,
+        idempotencyKey: randomUUID(),
+        requestHash: 'a'.repeat(64)
+      }
+    })
     db.prepare(
       `INSERT INTO remote_sessions
        (remote_session_id,remote_target_id,workspace_id,pane_id,tab_id,tmux_mode,tmux_name,
         state,observation,attempt_generation,reconnect_max_attempts,reconnect_initial_delay_ms,
         reconnect_max_delay_ms,revision,idempotency_key,request_hash,created_at_ms,updated_at_ms)
        VALUES (?,?,?,?,?,'attach','main','connected','lastVerified',2,3,500,5000,3,?,?,1,1)`
-    ).run(sessionId, targetId, randomUUID(), randomUUID(), randomUUID(),
-      randomUUID(), 'b'.repeat(64))
+    ).run(
+      sessionId,
+      targetId,
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      'b'.repeat(64)
+    )
     db.close()
     db = undefined
     await chmod(statePath, 0o600)
@@ -281,41 +371,65 @@ it('fences activation, commits a replacement, and restores the prior key after a
       }
     }
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: revoke
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: revoke
     })
     db = new Database(statePath)
     const catalog = new RemoteCatalog(db, () => 42)
-    await expect(service.beginOnlineReplacement(targetId, targetId, 1))
-      .rejects.toMatchObject({ code: 'invalid_target' })
+    await expect(service.beginOnlineReplacement(targetId, targetId, 1)).rejects.toMatchObject({
+      code: 'invalid_target'
+    })
     const first = randomUUID()
     await service.beginOnlineReplacement(targetId, first, 1)
-    await expect(service.commitOnlineReplacement(first, targetId, 1,
-      () => Promise.resolve(catalog.getTarget(targetId))))
-      .rejects.toMatchObject({ code: 'stale_revision' })
+    await expect(
+      service.commitOnlineReplacement(first, targetId, 1, () =>
+        Promise.resolve(catalog.getTarget(targetId))
+      )
+    ).rejects.toMatchObject({ code: 'stale_revision' })
     expect(revoke).not.toHaveBeenCalled()
-    expect(() => catalog.beginActivation(sessionId, {
-      expectedRevision: 3, idempotencyKey: randomUUID(), requestHash: 'c'.repeat(64)
-    })).toThrowError(expect.objectContaining({ code: 'invalid_state' }))
+    expect(() =>
+      catalog.beginActivation(sessionId, {
+        expectedRevision: 3,
+        idempotencyKey: randomUUID(),
+        requestHash: 'c'.repeat(64)
+      })
+    ).toThrowError(expect.objectContaining({ code: 'invalid_state' }))
     await keyring.backupForReplacement(targetId, first)
     items.set(targetId, 'new')
     db.prepare(
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES (?,?,?,?,?,?)`
-    ).run(ONLINE_REPLACEMENT_MARKER_NAMESPACE, ONLINE_ENROLLMENT_MARKER_EPOCH,
-      first, targetId, '{"status":"stored"}', 42)
-    await service.commitOnlineReplacement(first, targetId, 1,
-      () => Promise.resolve(catalog.getTarget(targetId)))
+    ).run(
+      ONLINE_REPLACEMENT_MARKER_NAMESPACE,
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      first,
+      targetId,
+      '{"status":"stored"}',
+      42
+    )
+    await service.commitOnlineReplacement(first, targetId, 1, () =>
+      Promise.resolve(catalog.getTarget(targetId))
+    )
     expect(revoke).toHaveBeenCalledWith(targetId)
     expect(items.get(targetId)).toBe('new')
     expect(items.has(first)).toBe(false)
     expect(catalog.getTarget(targetId).target.revision).toBe(2)
-    await expect(service.beginOnlineReplacement(targetId, randomUUID(), 2, true))
-      .rejects.toMatchObject({ code: 'stale_revision' })
-    expect(db.prepare(
-      'SELECT state,observation,attempt_generation,revision FROM remote_sessions WHERE remote_session_id = ?'
-    ).get(sessionId)).toEqual({
-      state: 'failed', observation: 'lost', attempt_generation: 3, revision: 4
+    await expect(
+      service.beginOnlineReplacement(targetId, randomUUID(), 2, true)
+    ).rejects.toMatchObject({ code: 'stale_revision' })
+    expect(
+      db
+        .prepare(
+          'SELECT state,observation,attempt_generation,revision FROM remote_sessions WHERE remote_session_id = ?'
+        )
+        .get(sessionId)
+    ).toEqual({
+      state: 'failed',
+      observation: 'lost',
+      attempt_generation: 3,
+      revision: 4
     })
 
     const second = randomUUID()
@@ -325,21 +439,32 @@ it('fences activation, commits a replacement, and restores the prior key after a
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES (?,?,?,?,?,?)`
-    ).run(ONLINE_REPLACEMENT_MARKER_NAMESPACE, ONLINE_ENROLLMENT_MARKER_EPOCH,
-      second, targetId, '{"status":"backupReady"}', 43)
+    ).run(
+      ONLINE_REPLACEMENT_MARKER_NAMESPACE,
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      second,
+      targetId,
+      '{"status":"backupReady"}',
+      43
+    )
     items.set(targetId, 'interrupted')
     service.close()
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: revoke
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: revoke
     })
     expect(items.get(targetId)).toBe('new')
     expect(items.has(second)).toBe(false)
     expect(catalog.getTarget(targetId).target.revision).toBe(2)
-    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get())
-      .toEqual({ count: 0 })
-    expect(db.prepare(
-      'SELECT count(*) AS count FROM idempotency_results WHERE namespace = ?'
-    ).get(ONLINE_REPLACEMENT_MARKER_NAMESPACE)).toEqual({ count: 0 })
+    expect(db.prepare('SELECT count(*) AS count FROM remote_credential_enrollments').get()).toEqual(
+      { count: 0 }
+    )
+    expect(
+      db
+        .prepare('SELECT count(*) AS count FROM idempotency_results WHERE namespace = ?')
+        .get(ONLINE_REPLACEMENT_MARKER_NAMESPACE)
+    ).toEqual({ count: 0 })
 
     const third = randomUUID()
     await service.beginOnlineReplacement(targetId, third, 2)
@@ -349,17 +474,27 @@ it('fences activation, commits a replacement, and restores the prior key after a
       `INSERT INTO idempotency_results
        (namespace,epoch,idempotency_key,request_hash,result_json,completed_at_ms)
        VALUES (?,?,?,?,?,?)`
-    ).run(ONLINE_REPLACEMENT_MARKER_NAMESPACE, ONLINE_ENROLLMENT_MARKER_EPOCH,
-      third, targetId, '{"status":"stored"}', 44)
+    ).run(
+      ONLINE_REPLACEMENT_MARKER_NAMESPACE,
+      ONLINE_ENROLLMENT_MARKER_EPOCH,
+      third,
+      targetId,
+      '{"status":"stored"}',
+      44
+    )
     failBackupDeletion = true
-    await expect(service.commitOnlineReplacement(third, targetId, 2,
-      () => Promise.resolve(catalog.getTarget(targetId))))
-      .rejects.toMatchObject({ code: 'cleanup_required' })
+    await expect(
+      service.commitOnlineReplacement(third, targetId, 2, () =>
+        Promise.resolve(catalog.getTarget(targetId))
+      )
+    ).rejects.toMatchObject({ code: 'cleanup_required' })
     expect(catalog.getTarget(targetId).target.revision).toBe(3)
     expect(items.has(third)).toBe(true)
     service.close()
     service = await RemoteCredentialEnrollmentService.create({
-      workingStatePath: statePath, keyring, revokeTargetTransports: revoke
+      workingStatePath: statePath,
+      keyring,
+      revokeTargetTransports: revoke
     })
     expect(items.has(third)).toBe(false)
     expect(items.get(targetId)).toBe('third')

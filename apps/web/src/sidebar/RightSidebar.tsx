@@ -1425,9 +1425,9 @@ function RecentlyClosed({ workspaceId, paneId }: { workspaceId: string; paneId: 
   }
   const reopen = async (record: RecentlyClosedRecord): Promise<void> => {
     try {
-      const restore = window.desktopBridge.reopenRecentlyClosed
-      if (!restore) throw new Error('Recently closed is unavailable.')
-      await restore({
+      const bridge = window.desktopBridge
+      if (!bridge.reopenRecentlyClosed) throw new Error('Recently closed is unavailable.')
+      await bridge.reopenRecentlyClosed({
         record: {
           recentlyClosedId: record.recentlyClosedId,
           authorizedDescriptorId: record.authorizedDescriptorId,

@@ -113,7 +113,13 @@ export class CredentialBrokerLease {
       throw new CredentialError('credential_revoked', 'Invalid credential attempt')
     }
     const { createSigningBroker } = await import('./credential-agent-broker')
-    const handle = await createSigningBroker(brokerRoot, targetId, generation, secret, hostPublicKey)
+    const handle = await createSigningBroker(
+      brokerRoot,
+      targetId,
+      generation,
+      secret,
+      hostPublicKey
+    )
     try {
       await validateAgentSocket(handle.socketPath)
       return new CredentialBrokerLease(
@@ -165,12 +171,5 @@ export interface CredentialProvider {
 
 /** Safe production default until an exact Secret Service lookup and signing broker are installed. */
 export class UnavailableCredentialProvider implements CredentialProvider {
-  public async acquire(
-    _reference: CredentialReference,
-    _targetId: string,
-    _generation: number,
-    _hostPublicKey: string
-  ): Promise<CredentialBrokerLease> {
-    throw unavailable()
-  }
+  public acquire: CredentialProvider['acquire'] = () => Promise.reject(unavailable())
 }

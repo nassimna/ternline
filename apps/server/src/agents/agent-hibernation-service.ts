@@ -210,7 +210,7 @@ export class AgentHibernationService {
         replay.terminal_code !== 'hibernated'
       )
         throw new AgentMutationError('invalid_state', 'Confirmation did not complete')
-      return { state: replay.terminal_code as 'hibernated' | 'terminatedAfterWarning' }
+      return { state: replay.terminal_code }
     }
     if (params.choice !== 'terminateAfterWarning')
       throw new AgentMutationError('invalid_params', 'Use cancel to leave the process running')

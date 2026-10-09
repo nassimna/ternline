@@ -39,7 +39,7 @@ it('exposes caller automation with a runtime while keeping provider HTTP behind 
     updatedAtMs: 1,
     expiresAtMs: 2
   }
-  const createSession = vi.fn(async () => snapshot)
+  const createSession = vi.fn(() => Promise.resolve(snapshot))
   const listSessions = vi.fn(() => [])
   const getSession = vi.fn(() => snapshot)
   const cancelOperation = vi.fn(() => ({
@@ -55,9 +55,7 @@ it('exposes caller automation with a runtime while keeping provider HTTP behind 
   }))
   const token = 'browser-test-token-0123456789-0123456789'
   const service = new TerminalService({
-    spawn: async () => {
-      throw new Error('unexpected PTY')
-    }
+    spawn: () => Promise.reject(new Error('unexpected PTY'))
   })
   const running = startServer({
     service,

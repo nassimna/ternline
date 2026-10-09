@@ -1004,6 +1004,27 @@ describe('desktop IPC boundary', () => {
     expect(listNode).toHaveBeenCalledTimes(1)
   })
 
+  it('tests SSH details and rejects invalid connection profiles', async () => {
+    const testConnection = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    registerDesktopHandlers(window, {} as ControlClient, browserViews, {
+      testSshConnection: testConnection
+    })
+    const event = { sender: webContents, senderFrame: mainFrame }
+    const profile = { host: 'prod', user: 'deploy', port: 22 }
+    await expect(
+      electron.handlers.get(DESKTOP_IPC.sshTestConnection)!(event, profile)
+    ).rejects.toThrow('Permission denied')
+    testConnection.mockResolvedValue(undefined)
+    await expect(
+      electron.handlers.get(DESKTOP_IPC.sshTestConnection)!(event, profile)
+    ).resolves.toBeUndefined()
+    expect(testConnection).toHaveBeenLastCalledWith(profile)
+    await expect(
+      electron.handlers.get(DESKTOP_IPC.sshTestConnection)!(event, { ...profile, host: '-bad' })
+    ).rejects.toThrow()
+    expect(testConnection).toHaveBeenCalledTimes(2)
+  })
+
   it('selects an SSH key through the trusted native picker and handles cancellation', async () => {
     electron.showOpenDialog.mockResolvedValueOnce({
       canceled: false,

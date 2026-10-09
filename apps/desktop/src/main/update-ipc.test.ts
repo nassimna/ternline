@@ -13,7 +13,10 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { DESKTOP_IPC, type DesktopUpdateState } from '@agent-workspace/contracts/desktop/desktop-bridge'
+import {
+  DESKTOP_IPC,
+  type DesktopUpdateState
+} from '@agent-workspace/contracts/desktop/desktop-bridge'
 import {
   DESKTOP_UPDATE_INVOKE_CHANNELS,
   registerDesktopUpdateHandlers,

@@ -35,6 +35,7 @@ import type { ApplicationStateStore } from '../persistence/application-state-sto
 import { serviceLogger } from '../logging/service-logger'
 import type { TerminalReopenAdapter } from '../persistence/recently-closed-service'
 import { RecentlyClosedError } from './recently-closed-mutations'
+import { testSshConnection } from '../remote/ssh-workspace-connection'
 import { TerminalServiceError, type TerminalService } from '../terminal/terminal-service'
 
 /** Owns the ephemeral terminal identities rebuilt from durable tab launch specs. */
@@ -45,7 +46,8 @@ export class WorkspaceTerminalRuntime {
 
   public constructor(
     private readonly terminals: TerminalService,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly checkSshConnection: typeof testSshConnection = testSshConnection
   ) {}
 
   private createWorkspaceTerminal(
@@ -237,7 +239,7 @@ export class WorkspaceTerminalRuntime {
         this.terminals.close(terminal.id)
       } catch (rollbackError) {
         throw new AggregateError([error, rollbackError], 'Agent terminal rollback failed', {
-          cause: error
+          cause: rollbackError
         })
       }
       throw error
@@ -448,6 +450,7 @@ export class WorkspaceTerminalRuntime {
       const createdAt = this.now()
       const replay = store.preflightWorkspaceCreate(request, ids, createdAt)
       if (replay) return { ...replay, terminalId: this.sessionForTab(replay.tabId) ?? null }
+      if (request.ssh) await this.checkSshConnection(request.ssh)
 
       const launch = request.initialTerminal
       const { terminal } = await this.createWorkspaceTerminal(

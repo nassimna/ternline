@@ -3,9 +3,14 @@ import type { BrowserViewManager } from './browser-view-manager'
 type BrowserDescriptor = ReturnType<BrowserViewManager['ownedTransferDescriptors']>[number]
 
 export interface NodeBrowserRehome {
-  source: Pick<BrowserViewManager, 'ownedTransferDescriptors' | 'suspendOwnedSession' | 'destroyOwnedSession'>
-  target: Pick<BrowserViewManager,
-    'ownsSession' | 'mountTransferred' | 'destroyOwnedSession' | 'activateTransferredSession'>
+  source: Pick<
+    BrowserViewManager,
+    'ownedTransferDescriptors' | 'suspendOwnedSession' | 'destroyOwnedSession'
+  >
+  target: Pick<
+    BrowserViewManager,
+    'ownsSession' | 'mountTransferred' | 'destroyOwnedSession' | 'activateTransferredSession'
+  >
   sourceWorkspaceIds: ReadonlySet<string>
   assertCurrent(): void
   commit(): Promise<void>
@@ -58,9 +63,12 @@ export async function rehomeNodeBrowsers(input: NodeBrowserRehome): Promise<void
     if (outcome === 'unknown') {
       // The close may have committed. Keep source input suspended and the hidden
       // target views alive until the service topology can be reconciled.
-      throw new Error('Node window close outcome is unknown; native browser transfer is quarantined', {
-        cause: error
-      })
+      throw new Error(
+        'Node window close outcome is unknown; native browser transfer is quarantined',
+        {
+          cause: error
+        }
+      )
     }
   }
 

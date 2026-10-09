@@ -64,13 +64,19 @@ it('advertises only live v1 replacement and passes the v1-only guard to the serv
     const unauthenticated = await fetch(`${baseUrl}/v1/remote-targets/replacement/begin`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ remoteTargetId: targetId, enrollmentId: randomUUID(), expectedRevision: 1 })
+      body: JSON.stringify({
+        remoteTargetId: targetId,
+        enrollmentId: randomUUID(),
+        expectedRevision: 1
+      })
     })
     expect(unauthenticated.status).toBe(401)
 
     const enrollmentId = randomUUID()
     const response = await client.beginRemoteCredentialReplacement({
-      remoteTargetId: targetId, enrollmentId, expectedRevision: 1
+      remoteTargetId: targetId,
+      enrollmentId,
+      expectedRevision: 1
     })
     expect(response.remoteTargetId).toBe(targetId)
     expect(beginOnlineReplacement).toHaveBeenCalledWith(targetId, enrollmentId, 1, true)
@@ -82,7 +88,8 @@ it('advertises only live v1 replacement and passes the v1-only guard to the serv
 it('advertises generic live replacement without enabling enrollment or deletion', async () => {
   const service = new TerminalService({ spawn: () => Promise.reject(new Error('unexpected PTY')) })
   const stateStore = {
-    currentIdempotencyEpoch: () => randomUUID(), close: () => undefined
+    currentIdempotencyEpoch: () => randomUUID(),
+    close: () => undefined
   } as unknown as ApplicationStateStore
   const remoteInteractive = {
     uses: (candidate: TerminalService) => candidate === service,
@@ -98,7 +105,12 @@ it('advertises generic live replacement without enabling enrollment or deletion'
     close: vi.fn()
   } as unknown as RemoteCredentialEnrollmentService
   const running = startServer({
-    service, token, port: 0, stateStore, remoteInteractive, remoteActivation,
+    service,
+    token,
+    port: 0,
+    stateStore,
+    remoteInteractive,
+    remoteActivation,
     hostKeyAuthority: {} as HostKeyAuthority,
     remoteCredentialLiveReplacement: replacement
   })
@@ -113,7 +125,9 @@ it('advertises generic live replacement without enabling enrollment or deletion'
     expect(capabilities).not.toContain('remote.target.delete')
     const enrollmentId = randomUUID()
     await client.beginRemoteCredentialReplacement({
-      remoteTargetId: targetId, enrollmentId, expectedRevision: 1
+      remoteTargetId: targetId,
+      enrollmentId,
+      expectedRevision: 1
     })
     expect(beginOnlineReplacement).toHaveBeenCalledWith(targetId, enrollmentId, 1, false)
   } finally {

@@ -20,10 +20,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import { DESKTOP_IPC } from '@agent-workspace/contracts/desktop/desktop-bridge'
 import { ServerError } from '@agent-workspace/client-runtime'
-import { browserSessionStateSchema } from '@agent-workspace/protocol-client'
+import {
+  browserSessionStateSchema,
+  shortcutOverrideSchema,
+  notificationSettingsSchema
+} from '@agent-workspace/protocol-client'
 import projection from '../../../../packages/protocol-client/fixtures/milestone2-projection.json'
 import settings from '../../../../packages/protocol-client/fixtures/milestone2-settings.json'
 import { NodeSidecar } from './node-sidecar'
@@ -342,13 +347,20 @@ it.skipIf(process.platform !== 'linux' || process.env.RUN_NODE_SIDECAR_LIVE !== 
         { cwd: repository, timeout: 300_000, stdio: 'pipe' }
       )
       await chmod(state, 0o600)
-      const snapshot = JSON.parse(
-        execFileSync(
-          'sqlite3',
-          [state, 'SELECT json_payload FROM application_snapshot WHERE singleton = 1'],
-          { encoding: 'utf8', timeout: 10_000 }
+      const snapshot = z
+        .object({
+          shortcutOverrides: z.array(shortcutOverrideSchema),
+          notificationSettings: notificationSettingsSchema
+        })
+        .parse(
+          JSON.parse(
+            execFileSync(
+              'sqlite3',
+              [state, 'SELECT json_payload FROM application_snapshot WHERE singleton = 1'],
+              { encoding: 'utf8', timeout: 10_000 }
+            )
+          )
         )
-      )
       const configBytes = Buffer.from(
         JSON.stringify({
           schemaVersion: 2,
@@ -673,13 +685,13 @@ it('gates agent mutations on provider capabilities and fences their exact placem
   )
   expect(restoreAgentSession).toHaveBeenCalledWith(
     expect.objectContaining({
-      operation: expect.objectContaining({ sessionRevision: 7, attemptEpoch: 3 })
+      operation: expect.objectContaining({ sessionRevision: 7, attemptEpoch: 3 }) as unknown
     })
   )
   expect(forkAgentSession).toHaveBeenCalledWith(
     expect.objectContaining({
       destination,
-      operation: expect.objectContaining({ sessionRevision: 7, attemptEpoch: 3 })
+      operation: expect.objectContaining({ sessionRevision: 7, attemptEpoch: 3 }) as unknown
     })
   )
 })
@@ -1071,7 +1083,7 @@ it.each(['terminal', 'browser'] as const)(
             {
               tabs: expect.arrayContaining([
                 expect.objectContaining({ id: tab.id, title: 'Renamed', customTitle: 'Pinned' })
-              ])
+              ]) as unknown
             }
           ]
         }
@@ -1571,7 +1583,12 @@ it('reads and saves sidebar placement for the bound window with the Rust width c
     selected: 'textBox'
   }
   const getSidebarPlacement = vi.fn().mockResolvedValue(current)
-  const saveSidebarPlacement = vi.fn().mockImplementation(async ({ placement }) => placement)
+  const saveSidebarPlacement = vi
+    .fn()
+    .mockImplementation(
+      ({ placement }: Parameters<NodeSidecar['client']['saveSidebarPlacement']>[0]) =>
+        Promise.resolve(placement)
+    )
   Object.assign(sidecar, {
     listWindowsForTrustedOwner: vi.fn().mockResolvedValue({ windows: [{ windowId }] })
   })
@@ -1598,8 +1615,11 @@ it('reads and saves sidebar placement for the bound window with the Rust width c
     }
   })
   expect(saveSidebarPlacement).toHaveBeenCalledWith({
-    placement: expect.objectContaining({ windowId, revision: 3, width: 360 }),
-    mutation: expect.objectContaining({ expectedRevision: 2, requestHash: expect.any(String) })
+    placement: expect.objectContaining({ windowId, revision: 3, width: 360 }) as unknown,
+    mutation: expect.objectContaining({
+      expectedRevision: 2,
+      requestHash: expect.any(String) as unknown
+    }) as unknown
   })
   await expect(
     sidecar.invokeDesktopCore(
@@ -1751,7 +1771,10 @@ it('lists Recently Closed through the sender capability and reopens into the exa
         destinationIndex: pane.tabIds.length,
         expectedWindowRevision: 3
       },
-      mutation: expect.objectContaining({ expectedRevision: 9, requestHash: expect.any(String) })
+      mutation: expect.objectContaining({
+        expectedRevision: 9,
+        requestHash: expect.any(String) as unknown
+      }) as unknown
     },
     'a'.repeat(43)
   )
@@ -1762,7 +1785,7 @@ it('lists Recently Closed through the sender capability and reopens into the exa
     expect.objectContaining({
       event: 'workspace.changed',
       revision: 10,
-      data: expect.objectContaining({ reason: 'recentlyClosed.reopen' })
+      data: expect.objectContaining({ reason: 'recentlyClosed.reopen' }) as unknown
     })
   )
 })
@@ -1887,7 +1910,12 @@ it('retries a lost Recently Closed response with the original mutation', async (
 it('creates the Rust default sidebar in the Node copy and rejects a stale sender', async () => {
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
   const windowId = randomUUID()
-  const saveSidebarPlacement = vi.fn().mockImplementation(async ({ placement }) => placement)
+  const saveSidebarPlacement = vi
+    .fn()
+    .mockImplementation(
+      ({ placement }: Parameters<NodeSidecar['client']['saveSidebarPlacement']>[0]) =>
+        Promise.resolve(placement)
+    )
   const listWindowsForTrustedOwner = vi.fn().mockResolvedValue({ windows: [{ windowId }] })
   Object.assign(sidecar, { listWindowsForTrustedOwner })
   sidecar.client = {
@@ -1909,8 +1937,8 @@ it('creates the Rust default sidebar in the Node copy and rejects a stale sender
     }
   })
   expect(saveSidebarPlacement).toHaveBeenCalledWith({
-    placement: expect.objectContaining({ windowId, revision: 1 }),
-    mutation: expect.objectContaining({ expectedRevision: 0 })
+    placement: expect.objectContaining({ windowId, revision: 1 }) as unknown,
+    mutation: expect.objectContaining({ expectedRevision: 0 }) as unknown
   })
 
   listWindowsForTrustedOwner.mockRejectedValueOnce(new Error('binding changed'))
@@ -2056,8 +2084,8 @@ it('applies a layout to the authenticated window and retires only replaced nativ
     emitDomainEvent.mock.invocationCallOrder[0]!
   )
 
-  vi.mocked(sidecar.listWorkspacesForTrustedOwner)
-    .mockResolvedValueOnce({ snapshot: before } as never)
+  vi.mocked(sidecar)
+    .listWorkspacesForTrustedOwner.mockResolvedValueOnce({ snapshot: before } as never)
     .mockResolvedValueOnce({ snapshot: { ...after, revision: 11 } } as never)
   detachTerminal.mockClear()
   destroySession.mockClear()
@@ -2540,232 +2568,283 @@ it('rejects remote replacement before opening a key when the verified sidecar la
   expect(pickCredential).not.toHaveBeenCalled()
 })
 
-it('publishes a live target only after reservation and the pinned credential handoff', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-new-'))
+it('rejects a writable credential descriptor before reserving a live target', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-writable-credential-'))
   const keyPath = join(directory, 'test-key')
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
-  const proof = {
-    liveStatePath: join(directory, 'state.sqlite3'),
-    backupStatePath: join(directory, 'backup.sqlite3'),
-    liveStateIdentity: '1:2',
-    backupStateIdentity: '1:3',
-    backupSha256: 'a'.repeat(64)
-  }
-  const draft = { label: 'Task target', host: 'example.com', port: 22, user: 'alice' }
-  const order: string[] = []
-  const begin = vi.fn(() => {
-    order.push('reserve')
-    return Promise.resolve()
-  })
-  const handoff = vi.fn(() => {
-    order.push('handoff')
-    return Promise.resolve()
-  })
-  const commit = vi.fn(({ target }: { target: { remoteTargetId: string } }) => {
-    order.push('commit')
-    return Promise.resolve({
-      target: {
-        ...draft,
-        remoteTargetId: target.remoteTargetId,
-        authentication: 'publicKey',
-        hostKeyState: 'untrusted',
-        knownHostsVersion: 1,
-        revision: 1
-      }
-    })
-  })
+  const beginRemoteTargetEnrollment = vi.fn()
+  const liveBackupProof = vi.fn()
   try {
     await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
-    const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const credentialFd = handle.fd
+    const handle = await open(keyPath, constants.O_RDWR | constants.O_NOFOLLOW)
     Object.assign(sidecar, {
       stopped: false,
       options: {
         remoteTransport: true,
-        liveDatabasePath: proof.liveStatePath,
-        backupPath: proof.backupStatePath
+        liveDatabasePath: '/unused/state',
+        backupPath: '/unused/backup'
       },
       remoteEnrollmentEnabled: true,
-      client: { beginRemoteTargetEnrollment: begin, commitRemoteTargetEnrollment: commit },
-      ownerChannel: {
-        liveBackupProof: () => {
-          order.push('proof')
-          return Promise.resolve(proof)
-        }
-      },
-      enrollLiveRemoteTarget: handoff
-    })
-    const result = await sidecar.invokeDesktopCore(
-      randomUUID(),
-      DESKTOP_IPC.remoteTargetEnroll,
-      [draft],
-      vi.fn(),
-      undefined,
-      { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
-    )
-    expect(result.handled).toBe(true)
-    expect(order).toEqual(['reserve', 'proof', 'handoff', 'commit'])
-    expect(handoff).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      proof,
-      credentialFd
-    )
-    await expect(handle.stat()).rejects.toThrow()
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-it('reserves and commits a live replacement only after the pinned handoff and observed revision', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-replace-'))
-  const keyPath = join(directory, 'test-key')
-  const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
-  const proof = {
-    liveStatePath: join(directory, 'state.sqlite3'),
-    backupStatePath: join(directory, 'backup.sqlite3'),
-    liveStateIdentity: '1:2',
-    backupStateIdentity: '1:3',
-    backupSha256: 'a'.repeat(64)
-  }
-  const target = {
-    remoteTargetId: targetId,
-    label: 'Test',
-    host: 'example.com',
-    port: 22,
-    user: 'alice',
-    authentication: 'publicKey' as const,
-    hostKeyState: 'untrusted' as const,
-    knownHostsVersion: 1,
-    revision: 2
-  }
-  const order: string[] = []
-  const getRemoteTarget = vi
-    .fn()
-    .mockImplementationOnce(() => {
-      order.push('read-before')
-      return Promise.resolve({ target })
-    })
-    .mockImplementationOnce(() => {
-      order.push('read-after')
-      return Promise.resolve({ target: { ...target, revision: 3 } })
-    })
-  const beginRemoteCredentialReplacement = vi.fn(() => {
-    order.push('reserve')
-    return Promise.resolve()
-  })
-  const commitRemoteCredentialReplacement = vi.fn(() => {
-    order.push('commit')
-    return Promise.resolve({ target: { ...target, revision: 3 } })
-  })
-  const liveBackupProof = vi.fn(() => {
-    order.push('proof')
-    return Promise.resolve(proof)
-  })
-  const handoff = vi.fn(() => {
-    order.push('handoff')
-    return Promise.resolve()
-  })
-  try {
-    await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
-    const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
-    const credentialFd = handle.fd
-    Object.assign(sidecar, {
-      stopped: false,
-      options: {
-        remoteTransport: true,
-        liveDatabasePath: proof.liveStatePath,
-        backupPath: proof.backupStatePath
-      },
-      remoteReplacementEnabled: true,
-      client: {
-        getRemoteTarget,
-        beginRemoteCredentialReplacement,
-        commitRemoteCredentialReplacement
-      },
-      ownerChannel: { liveBackupProof },
-      replaceLiveRemoteCredential: handoff
+      client: { beginRemoteTargetEnrollment },
+      ownerChannel: { liveBackupProof }
     })
     await expect(
       sidecar.invokeDesktopCore(
         randomUUID(),
-        DESKTOP_IPC.remoteCredentialReplace,
-        [{ remoteTargetId: targetId }],
+        DESKTOP_IPC.remoteTargetEnroll,
+        [{ label: 'Test', host: 'example.com', port: 22, user: 'alice' }],
         vi.fn(),
         undefined,
         { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
       )
-    ).resolves.toEqual({ handled: true, value: true })
-    expect(order).toEqual(['read-before', 'reserve', 'proof', 'handoff', 'commit', 'read-after'])
-    expect(handoff).toHaveBeenCalledWith(
-      expect.objectContaining({ remoteTargetId: targetId, expectedRevision: 2 }),
-      proof,
-      credentialFd
-    )
+    ).rejects.toThrow('private read-only regular file')
+    expect(beginRemoteTargetEnrollment).not.toHaveBeenCalled()
+    expect(liveBackupProof).not.toHaveBeenCalled()
     await expect(handle.stat()).rejects.toThrow()
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
 
-it('leaves a failed live restart stopped and does not send a stale rollback request', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-restart-'))
-  const keyPath = join(directory, 'test-key')
-  const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
-  const abortRemoteCredentialReplacement = vi.fn()
-  const target = {
-    remoteTargetId: targetId,
-    label: 'Test',
-    host: 'example.com',
-    port: 22,
-    user: 'alice',
-    authentication: 'publicKey',
-    hostKeyState: 'untrusted',
-    knownHostsVersion: 1,
-    revision: 2
-  }
-  try {
-    await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
-    const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
-    Object.assign(sidecar, {
-      stopped: false,
-      options: { remoteTransport: true, liveDatabasePath: '/tmp/state', backupPath: '/tmp/backup' },
-      remoteReplacementEnabled: true,
-      client: {
-        getRemoteTarget: vi.fn().mockResolvedValue({ target }),
-        beginRemoteCredentialReplacement: vi.fn().mockResolvedValue(undefined),
-        abortRemoteCredentialReplacement
-      },
-      ownerChannel: {
-        liveBackupProof: vi.fn().mockResolvedValue({
-          liveStatePath: '/tmp/state',
-          backupStatePath: '/tmp/backup',
-          liveStateIdentity: '1:2',
-          backupStateIdentity: '1:3',
-          backupSha256: 'a'.repeat(64)
-        })
-      },
-      replaceLiveRemoteCredential: vi.fn(() => {
-        sidecar['stopped'] = true
-        return Promise.reject(new Error('restart failed'))
+it.skipIf(process.platform !== 'linux')(
+  'publishes a live target only after reservation and the pinned credential handoff',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-new-'))
+    const keyPath = join(directory, 'test-key')
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    const proof = {
+      liveStatePath: join(directory, 'state.sqlite3'),
+      backupStatePath: join(directory, 'backup.sqlite3'),
+      liveStateIdentity: '1:2',
+      backupStateIdentity: '1:3',
+      backupSha256: 'a'.repeat(64)
+    }
+    const draft = { label: 'Task target', host: 'example.com', port: 22, user: 'alice' }
+    const order: string[] = []
+    const begin = vi.fn(() => {
+      order.push('reserve')
+      return Promise.resolve()
+    })
+    const handoff = vi.fn(() => {
+      order.push('handoff')
+      return Promise.resolve()
+    })
+    const commit = vi.fn(({ target }: { target: { remoteTargetId: string } }) => {
+      order.push('commit')
+      return Promise.resolve({
+        target: {
+          ...draft,
+          remoteTargetId: target.remoteTargetId,
+          authentication: 'publicKey',
+          hostKeyState: 'untrusted',
+          knownHostsVersion: 1,
+          revision: 1
+        }
       })
     })
-    await expect(
-      sidecar.invokeDesktopCore(
+    try {
+      await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
+      const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+      const credentialFd = handle.fd
+      Object.assign(sidecar, {
+        stopped: false,
+        options: {
+          remoteTransport: true,
+          liveDatabasePath: proof.liveStatePath,
+          backupPath: proof.backupStatePath
+        },
+        remoteEnrollmentEnabled: true,
+        client: { beginRemoteTargetEnrollment: begin, commitRemoteTargetEnrollment: commit },
+        ownerChannel: {
+          liveBackupProof: () => {
+            order.push('proof')
+            return Promise.resolve(proof)
+          }
+        },
+        enrollLiveRemoteTarget: handoff
+      })
+      const result = await sidecar.invokeDesktopCore(
         randomUUID(),
-        DESKTOP_IPC.remoteCredentialReplace,
-        [{ remoteTargetId: targetId }],
+        DESKTOP_IPC.remoteTargetEnroll,
+        [draft],
         vi.fn(),
         undefined,
         { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
       )
-    ).rejects.toThrow('pending recovery')
-    expect(abortRemoteCredentialReplacement).not.toHaveBeenCalled()
-    await expect(handle.stat()).rejects.toThrow()
-  } finally {
-    await rm(directory, { recursive: true, force: true })
+      expect(result.handled).toBe(true)
+      expect(order).toEqual(['reserve', 'proof', 'handoff', 'commit'])
+      expect(handoff).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        proof,
+        credentialFd
+      )
+      await expect(handle.stat()).rejects.toThrow()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   }
-})
+)
+
+it.skipIf(process.platform !== 'linux')(
+  'reserves and commits a live replacement only after the pinned handoff and observed revision',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-replace-'))
+    const keyPath = join(directory, 'test-key')
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    const proof = {
+      liveStatePath: join(directory, 'state.sqlite3'),
+      backupStatePath: join(directory, 'backup.sqlite3'),
+      liveStateIdentity: '1:2',
+      backupStateIdentity: '1:3',
+      backupSha256: 'a'.repeat(64)
+    }
+    const target = {
+      remoteTargetId: targetId,
+      label: 'Test',
+      host: 'example.com',
+      port: 22,
+      user: 'alice',
+      authentication: 'publicKey' as const,
+      hostKeyState: 'untrusted' as const,
+      knownHostsVersion: 1,
+      revision: 2
+    }
+    const order: string[] = []
+    const getRemoteTarget = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        order.push('read-before')
+        return Promise.resolve({ target })
+      })
+      .mockImplementationOnce(() => {
+        order.push('read-after')
+        return Promise.resolve({ target: { ...target, revision: 3 } })
+      })
+    const beginRemoteCredentialReplacement = vi.fn(() => {
+      order.push('reserve')
+      return Promise.resolve()
+    })
+    const commitRemoteCredentialReplacement = vi.fn(() => {
+      order.push('commit')
+      return Promise.resolve({ target: { ...target, revision: 3 } })
+    })
+    const liveBackupProof = vi.fn(() => {
+      order.push('proof')
+      return Promise.resolve(proof)
+    })
+    const handoff = vi.fn(() => {
+      order.push('handoff')
+      return Promise.resolve()
+    })
+    try {
+      await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
+      const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+      const credentialFd = handle.fd
+      Object.assign(sidecar, {
+        stopped: false,
+        options: {
+          remoteTransport: true,
+          liveDatabasePath: proof.liveStatePath,
+          backupPath: proof.backupStatePath
+        },
+        remoteReplacementEnabled: true,
+        client: {
+          getRemoteTarget,
+          beginRemoteCredentialReplacement,
+          commitRemoteCredentialReplacement
+        },
+        ownerChannel: { liveBackupProof },
+        replaceLiveRemoteCredential: handoff
+      })
+      await expect(
+        sidecar.invokeDesktopCore(
+          randomUUID(),
+          DESKTOP_IPC.remoteCredentialReplace,
+          [{ remoteTargetId: targetId }],
+          vi.fn(),
+          undefined,
+          { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
+        )
+      ).resolves.toEqual({ handled: true, value: true })
+      expect(order).toEqual(['read-before', 'reserve', 'proof', 'handoff', 'commit', 'read-after'])
+      expect(handoff).toHaveBeenCalledWith(
+        expect.objectContaining({ remoteTargetId: targetId, expectedRevision: 2 }),
+        proof,
+        credentialFd
+      )
+      await expect(handle.stat()).rejects.toThrow()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
+
+it.skipIf(process.platform !== 'linux')(
+  'leaves a failed live restart stopped and does not send a stale rollback request',
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'agent-workspace-live-restart-'))
+    const keyPath = join(directory, 'test-key')
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    const abortRemoteCredentialReplacement = vi.fn()
+    const target = {
+      remoteTargetId: targetId,
+      label: 'Test',
+      host: 'example.com',
+      port: 22,
+      user: 'alice',
+      authentication: 'publicKey',
+      hostKeyState: 'untrusted',
+      knownHostsVersion: 1,
+      revision: 2
+    }
+    try {
+      await writeFile(keyPath, 'disposable test bytes', { mode: 0o600 })
+      const handle = await open(keyPath, constants.O_RDONLY | constants.O_NOFOLLOW)
+      Object.assign(sidecar, {
+        stopped: false,
+        options: {
+          remoteTransport: true,
+          liveDatabasePath: '/tmp/state',
+          backupPath: '/tmp/backup'
+        },
+        remoteReplacementEnabled: true,
+        client: {
+          getRemoteTarget: vi.fn().mockResolvedValue({ target }),
+          beginRemoteCredentialReplacement: vi.fn().mockResolvedValue(undefined),
+          abortRemoteCredentialReplacement
+        },
+        ownerChannel: {
+          liveBackupProof: vi.fn().mockResolvedValue({
+            liveStatePath: '/tmp/state',
+            backupStatePath: '/tmp/backup',
+            liveStateIdentity: '1:2',
+            backupStateIdentity: '1:3',
+            backupSha256: 'a'.repeat(64)
+          })
+        },
+        replaceLiveRemoteCredential: vi.fn(() => {
+          sidecar['stopped'] = true
+          return Promise.reject(new Error('restart failed'))
+        })
+      })
+      await expect(
+        sidecar.invokeDesktopCore(
+          randomUUID(),
+          DESKTOP_IPC.remoteCredentialReplace,
+          [{ remoteTargetId: targetId }],
+          vi.fn(),
+          undefined,
+          { pickCredential: () => Promise.resolve(handle), isCurrent: () => true, confirm: vi.fn() }
+        )
+      ).rejects.toThrow('pending recovery')
+      expect(abortRemoteCredentialReplacement).not.toHaveBeenCalled()
+      await expect(handle.stat()).rejects.toThrow()
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+)
 
 it('reads the isolated agent catalog and rejects assessment outside the owning window', async () => {
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
@@ -2906,12 +2985,12 @@ it('routes team and attention mutations through the owning Node window with revi
 
   expect(client.createAgentTeam).toHaveBeenCalledWith(
     expect.objectContaining({
-      teamId: expect.any(String),
+      teamId: expect.any(String) as unknown,
       mutation: expect.objectContaining({
         expectedCatalogRevision: 9,
-        idempotencyKey: expect.any(String),
-        requestHash: expect.stringMatching(/^[0-9a-f]{64}$/)
-      })
+        idempotencyKey: expect.any(String) as unknown,
+        requestHash: expect.stringMatching(/^[0-9a-f]{64}$/) as unknown
+      }) as unknown
     })
   )
   expect(client.updateAgentTeamMember).toHaveBeenCalledWith(
@@ -2920,13 +2999,13 @@ it('routes team and attention mutations through the owning Node window with revi
         expectedCatalogRevision: 9,
         expectedTeamRevision: 5,
         expectedMemberRevision: 4
-      })
+      }) as unknown
     })
   )
   expect(client.setAgentAttention).toHaveBeenCalledWith(
     expect.objectContaining({
       target: { target: binding, teamId, memberId },
-      operation: expect.objectContaining({ sessionRevision: 7, attemptEpoch: 3 })
+      operation: expect.objectContaining({ sessionRevision: 7, attemptEpoch: 3 }) as unknown
     })
   )
 })
@@ -3047,9 +3126,13 @@ it('routes an owned remote prepare and activation to the isolated client and bin
     attemptGeneration: 1,
     revision: 1
   }
-  const prepareRemoteSession = vi.fn().mockImplementation(async ({ remoteSessionId }) => ({
-    session: { ...session, remoteSessionId }
-  }))
+  const prepareRemoteSession = vi
+    .fn()
+    .mockImplementation(({ remoteSessionId }: { remoteSessionId: string }) =>
+      Promise.resolve({
+        session: { ...session, remoteSessionId }
+      })
+    )
   const activateRemoteSession = vi.fn().mockResolvedValue({
     session: { ...session, state: 'connected', revision: 2 }
   })
@@ -3075,8 +3158,11 @@ it('routes an owned remote prepare and activation to the isolated client and bin
   expect(prepareRemoteSession).toHaveBeenCalledWith(
     expect.objectContaining({
       ...request,
-      remoteSessionId: expect.any(String),
-      mutation: expect.objectContaining({ expectedRevision: 0, requestHash: expect.any(String) })
+      remoteSessionId: expect.any(String) as unknown,
+      mutation: expect.objectContaining({
+        expectedRevision: 0,
+        requestHash: expect.any(String) as unknown
+      }) as unknown
     })
   )
   await expect(
@@ -3128,17 +3214,25 @@ it('activates a trusted existing target during Connect', async () => {
     attemptGeneration: 1,
     revision: 1
   }
-  const activateRemoteSession = vi.fn().mockImplementation(async ({ remoteSessionId }) => ({
-    session: { ...prepared, remoteSessionId, state: 'connected', revision: 2 }
-  }))
+  const activateRemoteSession = vi
+    .fn()
+    .mockImplementation(({ remoteSessionId }: { remoteSessionId: string }) =>
+      Promise.resolve({
+        session: { ...prepared, remoteSessionId, state: 'connected', revision: 2 }
+      })
+    )
   sidecar.client = {
     stateSnapshot: vi.fn().mockResolvedValue({
       snapshot: { windowPlacements: [{ id: windowId, workspaceIds: [workspace.id] }] }
     }),
     listWorkspaces: vi.fn().mockResolvedValue({ snapshot: projection }),
-    prepareRemoteSession: vi.fn().mockImplementation(async ({ remoteSessionId }) => ({
-      session: { ...prepared, remoteSessionId }
-    })),
+    prepareRemoteSession: vi
+      .fn()
+      .mockImplementation(({ remoteSessionId }: { remoteSessionId: string }) =>
+        Promise.resolve({
+          session: { ...prepared, remoteSessionId }
+        })
+      ),
     activateRemoteSession,
     getRemoteTerminal: vi.fn().mockResolvedValue({
       terminalId: '00000000-0000-4000-8000-0000000000f5'
@@ -3150,8 +3244,8 @@ it('activates a trusted existing target during Connect', async () => {
     sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.remoteSessionConnect, [request], emit)
   ).resolves.toMatchObject({ handled: true, value: { session: { state: 'connected' } } })
   expect(activateRemoteSession).toHaveBeenCalledWith({
-    remoteSessionId: expect.any(String),
-    mutation: expect.objectContaining({ expectedRevision: prepared.revision })
+    remoteSessionId: expect.any(String) as unknown,
+    mutation: expect.objectContaining({ expectedRevision: prepared.revision }) as unknown
   })
   expect(emit).toHaveBeenCalledWith({
     event: 'terminal.resyncRequired',
@@ -3248,7 +3342,7 @@ it('confirms an exact Node host-key challenge only while the window and revision
   ).resolves.toMatchObject({ handled: true, value: { session: { state: 'credentialRequired' } } })
   expect(confirm).toHaveBeenCalledWith(
     expect.objectContaining({
-      detail: expect.stringContaining('SHA256:example')
+      detail: expect.stringContaining('SHA256:example') as unknown
     })
   )
   expect(decideRemoteHostKey).toHaveBeenCalledWith(
@@ -3256,7 +3350,7 @@ it('confirms an exact Node host-key challenge only while the window and revision
       promptId: challenge.promptId,
       presentedFingerprint: challenge.presentedFingerprint,
       decision: 'trust',
-      mutation: expect.objectContaining({ expectedRevision: target.revision })
+      mutation: expect.objectContaining({ expectedRevision: target.revision }) as unknown
     })
   )
 
@@ -3420,8 +3514,8 @@ it('routes settings reads and mutations through the isolated Node client with se
     mutation: expect.objectContaining({
       expectedRevision: 42,
       idempotencyEpoch: 'test-epoch',
-      idempotencyKey: expect.any(String)
-    })
+      idempotencyKey: expect.any(String) as unknown
+    }) as unknown
   })
   await expect(
     sidecar.invokeDesktopCore(
@@ -3437,8 +3531,8 @@ it('routes settings reads and mutations through the isolated Node client with se
     mutation: expect.objectContaining({
       expectedRevision: 42,
       idempotencyEpoch: 'test-epoch',
-      idempotencyKey: expect.any(String)
-    })
+      idempotencyKey: expect.any(String) as unknown
+    }) as unknown
   })
   await expect(
     sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.settingsUpdate, [{}], emit)
@@ -3503,7 +3597,7 @@ it('keeps Files descriptors and documents within the sender window and current p
   sidecar.client = {
     stateSnapshot: vi
       .fn()
-      .mockImplementation(async () => ({ snapshot: { windowPlacements: placements } })),
+      .mockImplementation(() => Promise.resolve({ snapshot: { windowPlacements: placements } })),
     listContentRoots,
     listContentDirectory,
     issueContentDocument,
@@ -3611,12 +3705,14 @@ it('grants search previews only for workspace results owned by the requesting wi
   Object.assign(sidecar, { encryptedSearchEnabled: true })
   const searchContent = vi
     .fn()
-    .mockImplementation(async (params: { limit: number; sourceAuthorizationIds?: string[] }) => ({
-      results: [result(documentB, workspaceB), result(documentA, workspaceA)]
-        .filter((item) => params.sourceAuthorizationIds?.includes(item.sourceAuthorizationId))
-        .slice(0, params.limit),
-      truncated: false
-    }))
+    .mockImplementation((params: { limit: number; sourceAuthorizationIds?: string[] }) =>
+      Promise.resolve({
+        results: [result(documentB, workspaceB), result(documentA, workspaceA)]
+          .filter((item) => params.sourceAuthorizationIds?.includes(item.sourceAuthorizationId))
+          .slice(0, params.limit),
+        truncated: false
+      })
+    )
   sidecar.client = {
     searchContent,
     listAgentCatalog: vi.fn().mockResolvedValue({

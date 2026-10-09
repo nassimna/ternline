@@ -91,26 +91,37 @@ function readSessionBind(frame: Buffer, pinnedHostKey: Buffer): Buffer | undefin
   if (
     !extension?.equals(Buffer.from(SESSION_BIND)) ||
     !hostKey?.equals(pinnedHostKey) ||
-    !sessionId || sessionId.length < 16 || sessionId.length > 64 ||
-    !signatureBlob || cursor.offset + 1 !== frame.length || frame[cursor.offset] !== 0
-  ) return undefined
+    !sessionId ||
+    sessionId.length < 16 ||
+    sessionId.length > 64 ||
+    !signatureBlob ||
+    cursor.offset + 1 !== frame.length ||
+    frame[cursor.offset] !== 0
+  )
+    return undefined
   const signatureCursor = { offset: 0 }
   const algorithm = readString(signatureBlob, signatureCursor)
   const signature = readString(signatureBlob, signatureCursor)
   if (
     !algorithm?.equals(Buffer.from('ssh-ed25519')) ||
-    !signature || signature.length !== 64 || signatureCursor.offset !== signatureBlob.length
-  ) return undefined
+    !signature ||
+    signature.length !== 64 ||
+    signatureCursor.offset !== signatureBlob.length
+  )
+    return undefined
   const parsed = utils.parseKey(pinnedHostKey)
-  if (parsed instanceof Error || Array.isArray(parsed) || parsed.type !== 'ssh-ed25519') return undefined
+  if (parsed instanceof Error || Array.isArray(parsed) || parsed.type !== 'ssh-ed25519')
+    return undefined
   return parsed.verify(sessionId, signature) === true ? Buffer.from(sessionId) : undefined
 }
 
 function isAuthenticationSignature(data: Buffer, sessionId: Buffer): boolean {
-  return data.length > sessionId.length + 5 &&
+  return (
+    data.length > sessionId.length + 5 &&
     data.readUInt32BE(0) === sessionId.length &&
     data.subarray(4, 4 + sessionId.length).equals(sessionId) &&
-    data[4 + sessionId.length] === 50 // SSH_MSG_USERAUTH_REQUEST
+    data[4 + sessionId.length] === 50
+  ) // SSH_MSG_USERAUTH_REQUEST
 }
 
 /** The key and socket live only for one attempt. Closing denies new and in-flight requests. */
@@ -137,8 +148,13 @@ export async function createSigningBroker(
     pinnedHostKey = Buffer.from(hostPublicKey, 'base64')
     if (pinnedHostKey.toString('base64') !== hostPublicKey) throw revoked()
     const host = utils.parseKey(pinnedHostKey)
-    if (host instanceof Error || Array.isArray(host) || host.type !== 'ssh-ed25519' ||
-        !host.getPublicSSH().equals(pinnedHostKey)) throw revoked()
+    if (
+      host instanceof Error ||
+      Array.isArray(host) ||
+      host.type !== 'ssh-ed25519' ||
+      !host.getPublicSSH().equals(pinnedHostKey)
+    )
+      throw revoked()
   } finally {
     secret.fill(0)
   }
@@ -191,9 +207,8 @@ export async function createSigningBroker(
           if (frame[4] === EXTENSION) {
             // ssh2's AgentProtocol does not implement OpenSSH's extension message.
             // A connection may bind once, before it has served a signature.
-            const sessionId = !boundSessionId && !usedForSigning
-              ? readSessionBind(frame, pinnedHostKey)
-              : undefined
+            const sessionId =
+              !boundSessionId && !usedForSigning ? readSessionBind(frame, pinnedHostKey) : undefined
             if (sessionId) boundSessionId = sessionId
             socket.write(sessionId ? AGENT_SUCCESS : AGENT_FAILURE)
           } else {

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -98,7 +98,7 @@ describe('ServiceUtilityRunner', () => {
   })
 
   it('passes credential authority only as fd 3 with redacted fixed argv and session-bus env', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'cmux-credential-runner-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'cmux-credential-runner-'))
     const executable = join(directory, 'service')
     await writeFile(executable, '#!/bin/sh\n')
     await chmod(executable, 0o700)
@@ -156,7 +156,7 @@ describe('ServiceUtilityRunner', () => {
   })
 
   it('rejects a symlinked or writable credential utility before spawn', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'cmux-untrusted-runner-'))
+    const directory = await mkdtemp(join(await realpath(tmpdir()), 'cmux-untrusted-runner-'))
     const executable = join(directory, 'service')
     await writeFile(executable, '#!/bin/sh\n')
     await chmod(executable, 0o722)
@@ -165,6 +165,20 @@ describe('ServiceUtilityRunner', () => {
       const runner = new ServiceUtilityRunner(executable, { spawnProcess })
       await expect(
         runner.runCredential(
+          '/state.sqlite',
+          '00000000-0000-4000-8000-000000000001',
+          '00000000-0000-4000-8000-000000000002',
+          0,
+          42,
+          strictValueSchema
+        )
+      ).rejects.toThrow('not trusted')
+      expect(spawnProcess).not.toHaveBeenCalled()
+      await chmod(executable, 0o700)
+      const alias = join(directory, 'service-link')
+      await symlink(executable, alias)
+      await expect(
+        new ServiceUtilityRunner(alias, { spawnProcess }).runCredential(
           '/state.sqlite',
           '00000000-0000-4000-8000-000000000001',
           '00000000-0000-4000-8000-000000000002',
