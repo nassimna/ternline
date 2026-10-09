@@ -1569,6 +1569,7 @@ function createBridge(): DesktopBridge {
       progress: null
     })
   return {
+    testSshConnection: vi.fn().mockResolvedValue(undefined),
     identify: vi.fn().mockResolvedValue({
       application: 'agent-workspace',
       version: '0.1.0',

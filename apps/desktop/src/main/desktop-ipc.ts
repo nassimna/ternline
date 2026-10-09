@@ -8,6 +8,7 @@ import { dialog, ipcMain, shell, type BrowserWindow, type IpcMainInvokeEvent } f
 import type { UpdateConfiguration } from '@agent-workspace/protocol-client'
 
 import {
+  sshWorkspaceSchema,
   actionInvocationSnapshotSchema,
   actionListResultSchema,
   actionRegistryChangedEventSchema,
@@ -211,6 +212,7 @@ import {
 import { ControlRequestError, type ControlClient } from './control-client'
 import { DesktopWindowBinding } from './desktop-window-binding'
 import type { SenderBoundIpcRouter } from './sender-bound-ipc-router'
+import { testSshConnection } from '../../../server/src/remote/ssh-workspace-connection'
 import type { WindowRegistryBinding, WindowRegistryEntry } from './window-registry'
 import { resolveWorkspaceRuntimeMetadata } from './workspace-runtime-metadata'
 import { detectWorkspacePathOpeners, launchWorkspacePathInIde } from './workspace-path-openers'
@@ -239,6 +241,7 @@ export interface DesktopUtilitySupervisor {
 }
 
 export interface DesktopHandlerDependencies {
+  testSshConnection?: typeof testSshConnection
   isNodeCoreEnabled?: () => boolean
   /** Live ownership must never fall through to a sealed Rust window binding. */
   isNodeExclusive?: () => boolean
@@ -622,6 +625,7 @@ export const DESKTOP_INVOKE_CHANNELS = [
   DESKTOP_IPC.workspaceRuntimeMetadata,
   DESKTOP_IPC.workspacePickDirectory,
   DESKTOP_IPC.sshPickIdentityFile,
+  DESKTOP_IPC.sshTestConnection,
   DESKTOP_IPC.workspacePathOpeners,
   DESKTOP_IPC.workspacePathOpen,
   DESKTOP_IPC.workspaceCreate,
@@ -915,6 +919,13 @@ export function registerDesktopHandlers(
   for (const channel of DESKTOP_INVOKE_CHANNELS) {
     router.handle(channel, async (entry, event, ...args) => {
       await dependencies.waitForWindowActivation?.(entry)
+      if (channel === DESKTOP_IPC.sshTestConnection) {
+        await (dependencies.testSshConnection ?? testSshConnection)(
+          sshWorkspaceSchema.parse(args[0])
+        )
+        return
+      }
+
       if (
         entry.binding instanceof DesktopWindowBinding &&
         entry.binding.isNodeExclusive &&

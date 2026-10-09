@@ -36,6 +36,7 @@ export class WorkspaceMutationError extends Error {
       | 'layout_limit_reached'
       | 'unauthorized_layout_path'
       | 'policy_denied'
+      | 'ssh_connection_failed'
       | 'runtime_not_bound'
       | 'workspace_already_selected'
       | 'workspace_unchanged'

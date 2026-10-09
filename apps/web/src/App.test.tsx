@@ -195,6 +195,43 @@ describe('App', () => {
     )
   })
 
+  it('requires a successful test of the current SSH details before creating a workspace', async () => {
+    const bridge = createBridge()
+    vi.mocked(bridge.testSshConnection).mockRejectedValueOnce(
+      new Error(
+        "Error invoking remote method 'ssh:testConnection': Error: SSH connection failed. Permission denied (publickey)."
+      )
+    )
+    window.desktopBridge = bridge
+    render(<App />)
+    await screen.findByText('Browser content ready')
+    fireEvent.click(screen.getByRole('button', { name: 'Create SSH workspace' }))
+    const dialog = within(screen.getByRole('dialog'))
+    fireEvent.change(dialog.getByRole('textbox', { name: 'SSH host or alias' }), {
+      target: { value: 'prod' }
+    })
+    expect(dialog.getByRole('button', { name: 'Create and pin' })).toBeDisabled()
+    fireEvent.click(dialog.getByRole('button', { name: 'Test connection' }))
+    expect(await dialog.findByRole('alert')).toHaveTextContent('Permission denied')
+    expect(dialog.getByRole('alert')).not.toHaveTextContent('ssh:testConnection')
+    expect(bridge.createWorkspace).not.toHaveBeenCalled()
+    fireEvent.click(dialog.getByRole('button', { name: 'Test connection' }))
+    await dialog.findByText('Connection successful.')
+    expect(dialog.getByRole('button', { name: 'Create and pin' })).toBeEnabled()
+    fireEvent.change(dialog.getByRole('textbox', { name: 'Username (optional)' }), {
+      target: { value: 'other' }
+    })
+    expect(dialog.getByRole('button', { name: 'Create and pin' })).toBeDisabled()
+    expect(dialog.queryByText('Connection successful.')).not.toBeInTheDocument()
+    vi.mocked(bridge.createWorkspace).mockRejectedValueOnce(new Error('Connection timed out'))
+    fireEvent.click(dialog.getByRole('button', { name: 'Test connection' }))
+    await dialog.findByText('Connection successful.')
+    fireEvent.click(dialog.getByRole('button', { name: 'Create and pin' }))
+    expect(await dialog.findByRole('alert')).toHaveTextContent('Connection timed out')
+    expect(dialog.getByRole('button', { name: 'Create and pin' })).toBeDisabled()
+    expect(localStorage.getItem('agent-workspace.ssh-workspaces.v1')).toBe('{}')
+  })
+
   it.each(['renderer', 'service'])(
     'uses the saved SSH connection for new terminal tabs, shortcuts and splits (%s)',
     async (source) => {
@@ -216,6 +253,26 @@ describe('App', () => {
       window.desktopBridge = bridge
       render(<App />)
       await screen.findByText('Browser content ready')
+      if (source === 'renderer') {
+        await waitFor(() =>
+          expect(bridge.updateWorkspace).toHaveBeenCalledWith({
+            workspaceId: workspace.id,
+            ssh: { value: ssh }
+          })
+        )
+        for (const tab of Object.values(workspace.tabs)) {
+          if (tab.content.kind === 'terminal')
+            await waitFor(() =>
+              expect(bridge.restartTerminal).toHaveBeenCalledWith({
+                workspaceId: workspace.id,
+                tabId: tab.id
+              })
+            )
+        }
+      } else {
+        expect(bridge.updateWorkspace).not.toHaveBeenCalled()
+        expect(bridge.restartTerminal).not.toHaveBeenCalled()
+      }
 
       const launch = {
         cwd: workspace.workingDirectory,
@@ -2583,6 +2640,7 @@ function createBridge(
     getWorkspaceRuntimeMetadata: vi
       .fn()
       .mockResolvedValue({ gitBranch: null, gitStatus: null, listeningPorts: [] }),
+    testSshConnection: vi.fn().mockResolvedValue(undefined),
     pickWorkspaceDirectory: vi.fn().mockResolvedValue(null),
     listWorkspacePathOpeners: vi.fn().mockResolvedValue([
       { id: 'fileManager', label: 'File Explorer', kind: 'fileManager' },

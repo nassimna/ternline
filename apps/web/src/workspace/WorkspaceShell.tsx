@@ -239,6 +239,37 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
     }
     return saved
   }, [localSshWorkspaces, projection.snapshot?.workspaces])
+  const migratedSshWorkspaces = useRef(new Set<string>())
+  useEffect(() => {
+    for (const savedWorkspace of projection.snapshot?.workspaces ?? []) {
+      const profile = localSshWorkspaces[savedWorkspace.id]
+      if (!profile || savedWorkspace.ssh || migratedSshWorkspaces.current.has(savedWorkspace.id))
+        continue
+      migratedSshWorkspaces.current.add(savedWorkspace.id)
+      void (async () => {
+        const store = useProjectionStore.getState()
+        try {
+          store.applyMutation(
+            await window.desktopBridge.updateWorkspace({
+              workspaceId: savedWorkspace.id,
+              ssh: { value: profile }
+            })
+          )
+          for (const tab of Object.values(savedWorkspace.tabs)) {
+            if (tab.content.kind !== 'terminal') continue
+            store.applyMutation(
+              await window.desktopBridge.restartTerminal({
+                workspaceId: savedWorkspace.id,
+                tabId: tab.id
+              })
+            )
+          }
+        } catch (error) {
+          store.reportMutationError(error)
+        }
+      })()
+    }
+  }, [localSshWorkspaces, projection.snapshot?.workspaces])
   const [editingSshWorkspaceId, setEditingSshWorkspaceId] = useState<string | null>(null)
   useEffect(() => {
     const syncSshWorkspaces = (): void => setSshWorkspaces(readSshWorkspaces())
@@ -582,7 +613,8 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
       return true
     } catch (error) {
       projection.reportMutationError(error)
-      return workspaceCreated
+      if (!workspaceCreated) throw error
+      return true
     }
   }
 
@@ -603,7 +635,6 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
       )
         return true
       if (
-        savedProfile &&
         !(await runMutation(
           window.desktopBridge.updateWorkspace({ workspaceId, ssh: { value: profile } })
         ))
@@ -4243,6 +4274,36 @@ function CreateWorkspaceDialog({
   const [sshPort, setSshPort] = useState('22')
   const [sshIdentityFile, setSshIdentityFile] = useState('')
   const [sshError, setSshError] = useState<string | null>(null)
+  const [testingSsh, setTestingSsh] = useState(false)
+  const [creatingSsh, setCreatingSsh] = useState(false)
+  const [testedSsh, setTestedSsh] = useState<string | null>(null)
+  const reportSshError = (error: unknown): void => {
+    setSshError(
+      error instanceof Error
+        ? error.message
+            .replace(/^Error invoking remote method '[^']+': (?:Error: )*/u, '')
+            .replace(/^\[agent-workspace-protocol-error:[^\]]+\]\s*/u, '')
+        : 'SSH connection failed.'
+    )
+  }
+  const sshDetails = JSON.stringify([sshHost, sshUser, sshPort, sshIdentityFile])
+  const connectionTested = testedSsh === sshDetails
+  const testConnection = async (): Promise<void> => {
+    if (testingSsh || creatingSsh) return
+    setTestingSsh(true)
+    setTestedSsh(null)
+    setSshError(null)
+    try {
+      const profile = parseSshWorkspace(sshHost, sshUser, Number(sshPort), sshIdentityFile)
+      await window.desktopBridge.testSshConnection(profile)
+      setTestedSsh(sshDetails)
+    } catch (error) {
+      reportSshError(error)
+    } finally {
+      setTestingSsh(false)
+    }
+  }
+
   const [choosingDirectory, setChoosingDirectory] = useState(false)
   const closedSshWorkspaces = Object.entries(savedSshWorkspaces).filter(
     ([workspaceId]) => !workspaceIds.includes(workspaceId)
@@ -4276,6 +4337,8 @@ function CreateWorkspaceDialog({
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault()
     if (mode === 'ssh') {
+      if (!connectionTested || testingSsh || creatingSsh) return
+      setCreatingSsh(true)
       try {
         const profile = parseSshWorkspace(sshHost, sshUser, Number(sshPort), sshIdentityFile)
         const name = sshName.trim() || profile.host
@@ -4289,10 +4352,14 @@ function CreateWorkspaceDialog({
           setSshUser('')
           setSshPort('22')
           setSshIdentityFile('')
+          setTestedSsh(null)
           onOpenChange(false)
         }
       } catch (error) {
-        setSshError(error instanceof Error ? error.message : 'Invalid SSH workspace')
+        setTestedSsh(null)
+        reportSshError(error)
+      } finally {
+        setCreatingSsh(false)
       }
       return
     }
@@ -4309,7 +4376,7 @@ function CreateWorkspaceDialog({
           </DialogTitle>
           <DialogDescription>
             {mode === 'ssh'
-              ? 'Create a pinned workspace with a fresh OpenSSH shell. Existing keys and host verification stay with OpenSSH. For managed tmux resume, use Settings > Remote sessions.'
+              ? 'Test the connection before creating a pinned SSH workspace. Use a trusted host and an SSH agent or key that does not require a password prompt. Saved connections reconnect when the app restarts.'
               : messages.workspaceShell.createWorkspace.description}
           </DialogDescription>
         </DialogHeader>
@@ -4361,6 +4428,8 @@ function CreateWorkspaceDialog({
                 />
               </Label>
               <SshIdentityFileField value={sshIdentityFile} onChange={setSshIdentityFile} />
+              {connectionTested ? <p role="status">Connection successful.</p> : null}
+
               {sshError ? (
                 <Alert asChild variant="destructive">
                   <p role="alert">{sshError}</p>
@@ -4403,12 +4472,27 @@ function CreateWorkspaceDialog({
             <Button onClick={() => onOpenChange(false)} type="button">
               {messages.workspaceShell.createWorkspace.cancel}
             </Button>
+            {mode === 'ssh' ? (
+              <Button
+                disabled={!sshHost.trim() || testingSsh || creatingSsh}
+                onClick={() => void testConnection()}
+                type="button"
+              >
+                {testingSsh ? 'Testing connection…' : 'Test connection'}
+              </Button>
+            ) : null}
             <Button
-              disabled={mode === 'ssh' ? !sshHost.trim() : !directory.trim()}
+              disabled={
+                mode === 'ssh' ? !connectionTested || testingSsh || creatingSsh : !directory.trim()
+              }
               type="submit"
               variant="primary"
             >
-              {mode === 'ssh' ? 'Create and pin' : messages.workspaceShell.createWorkspace.create}
+              {mode === 'ssh'
+                ? creatingSsh
+                  ? 'Connecting…'
+                  : 'Create and pin'
+                : messages.workspaceShell.createWorkspace.create}
             </Button>
           </DialogFooter>
         </form>

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 import {
+  sshWorkspaceSchema,
   actionInvocationSnapshotSchema,
   actionListResultSchema,
   agentAttentionSetResultSchema,
@@ -638,6 +639,8 @@ const desktopBridge = Object.freeze({
     }
     return result
   },
+  testSshConnection: async (profile) =>
+    invokeVoid(DESKTOP_IPC.sshTestConnection, sshWorkspaceSchema.parse(profile)),
   pickSshIdentityFile: async () => {
     const result: unknown = await ipcRenderer.invoke(DESKTOP_IPC.sshPickIdentityFile)
     if (result === null) return null

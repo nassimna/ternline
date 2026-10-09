@@ -136,7 +136,8 @@ import type {
   TaskListParams,
   TaskListResult,
   TaskActionResult,
-  RecentlyClosedListResult
+  RecentlyClosedListResult,
+  SshWorkspace
 } from '@agent-workspace/protocol-client'
 import { z } from 'zod'
 import {
@@ -968,6 +969,7 @@ export interface DesktopBridge {
   getWorkspaceRuntimeMetadata?(params: WorkspaceSnapshotParams): Promise<WorkspaceRuntimeMetadata>
   /** Optional only so older renderer test doubles remain source-compatible. The preload always provides it. */
   pickWorkspaceDirectory?(): Promise<string | null>
+  testSshConnection(profile: SshWorkspace): Promise<void>
   pickSshIdentityFile?(): Promise<string | null>
   /** Optional only so older renderer test doubles remain source-compatible. The preload always provides it. */
   listWorkspacePathOpeners?(): Promise<readonly DesktopWorkspacePathOpener[]>
@@ -1155,6 +1157,7 @@ export const DESKTOP_IPC = {
   workspaceRuntimeMetadata: 'workspace:runtimeMetadata',
   workspacePickDirectory: 'workspace:pickDirectory',
   sshPickIdentityFile: 'ssh:pickIdentityFile',
+  sshTestConnection: 'ssh:testConnection',
   workspacePathOpeners: 'workspace:pathOpeners',
   workspacePathOpen: 'workspace:pathOpen',
   workspaceCreate: 'workspace:create',

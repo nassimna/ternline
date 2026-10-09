@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 import { _electron as electron, expect, test } from '@playwright/test'
 import axe from 'axe-core'
+import electronExecutable from 'electron'
 
 import { closeElectronApplication } from './helpers/close-electron-application.mjs'
 import { createPackagedElectronHarness } from './helpers/packaged-electron-harness.mjs'
@@ -18,7 +19,26 @@ const evidenceDirectory =
   process.env.AGENT_WORKSPACE_EVIDENCE_DIR ??
   join(repositoryDirectory, 'dogfood-output/ssh-workspaces')
 
-test.skip(process.platform !== 'linux', 'The isolated OpenSSH executable fixture is Linux-only.')
+test.skip(process.platform === 'win32', 'The isolated OpenSSH fixture requires a POSIX shell.')
+
+async function createSshHarness(profileDirectory) {
+  if (process.platform === 'linux') return createPackagedElectronHarness(profileDirectory)
+  const runtimeDirectory = join(profileDirectory, 'runtime')
+  await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 })
+  return { executablePath: electronExecutable, runtimeDirectory, electronEnvironment: {} }
+}
+
+const sshFixture = `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    *invalid-host*) printf 'Permission denied (publickey).\\n' >&2; exit 255 ;;
+  esac
+  last="$arg"
+done
+if [ "$last" = true ]; then exit 0; fi
+printf "SSH_ARGS:%s\\n" "$*"
+sleep 120
+`
 
 async function auditDialog(page) {
   await page.evaluate(axe.source)
@@ -33,7 +53,7 @@ async function auditDialog(page) {
       nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary }))
     }))
   })
-  expect(violations).toEqual([])
+  expect.soft(violations).toEqual([])
 }
 
 test.beforeAll(async () => {
@@ -65,6 +85,7 @@ test('keeps output responsive and manages a saved SSH workspace', async () => {
         ...electronEnvironment,
         ...harness.electronEnvironment,
         AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: '{}',
+        AGENT_WORKSPACE_E2E_USER_DATA_DIR: profileDirectory,
         ELECTRON_DISABLE_SECURITY_WARNINGS: 'true',
         HOME: profileDirectory,
         PATH: `${binDirectory}:${process.env.PATH}`,
@@ -84,9 +105,9 @@ test('keeps output responsive and manages a saved SSH workspace', async () => {
 
   try {
     await mkdir(binDirectory)
-    await writeFile(sshExecutable, '#!/bin/sh\nprintf "SSH_ARGS:%s\\n" "$*"\nsleep 30\n')
+    await writeFile(sshExecutable, sshFixture)
     await chmod(sshExecutable, 0o700)
-    harness = await createPackagedElectronHarness(profileDirectory)
+    harness = await createSshHarness(profileDirectory)
     let page = await launch()
     await page.locator('.xterm-helper-textarea').focus()
     await page.keyboard.type('seq 1 20000; printf "OUTPUT_COMPLETE\\n"')
@@ -117,6 +138,10 @@ test('keeps output responsive and manages a saved SSH workspace', async () => {
     await page.getByRole('textbox', { name: 'SSH host or alias' }).fill('demo-host')
     await page.getByRole('textbox', { name: 'Username (optional)' }).fill('deploy')
     await page.screenshot({ path: join(evidenceDirectory, 'ssh-workspace-create.png') })
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText(
+      'Connection successful.'
+    )
     await page.getByRole('button', { name: 'Create and pin' }).click()
     await expect(page.locator('.workspace-section[data-section-kind="pinned"]')).toContainText(
       'Demo SSH'
@@ -180,6 +205,10 @@ test('keeps output responsive and manages a saved SSH workspace', async () => {
     await expect(
       page.getByRole('region', { name: 'Previously saved SSH connections' })
     ).toHaveCount(0)
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText(
+      'Connection successful.'
+    )
     await page.getByRole('button', { name: 'Create and pin' }).click()
     await expect(page.locator('.workspace-section[data-section-kind="pinned"]')).toContainText(
       'edited-host'
@@ -190,47 +219,140 @@ test('keeps output responsive and manages a saved SSH workspace', async () => {
   }
 })
 
-test('Add tab uses the saved SSH connection and subsequent edits', async () => {
-  test.setTimeout(60_000)
+test('tests SSH connections, restores remote terminals and uses saved details for new tabs', async () => {
+  test.setTimeout(120_000)
   const profileDirectory = await mkdtemp(join(homedir(), '.cache/aw-ssh-tab-'))
   const binDirectory = join(profileDirectory, 'bin')
   let application
   try {
     await mkdir(binDirectory)
     const sshExecutable = join(binDirectory, 'ssh')
-    await writeFile(sshExecutable, '#!/bin/sh\nprintf "SSH_ARGS:%s\\n" "$*"\nsleep 30\n')
+    await writeFile(sshExecutable, sshFixture)
     await chmod(sshExecutable, 0o700)
-    const harness = await createPackagedElectronHarness(profileDirectory)
-    const environment = { ...process.env }
-    delete environment.ELECTRON_RUN_AS_NODE
-    application = await electron.launch({
-      args: [dialogHarnessEntry, `--user-data-dir=${profileDirectory}`, '--disable-gpu'],
-      cwd: desktopDirectory,
-      executablePath: harness.executablePath,
-      env: {
-        ...environment,
-        ...harness.electronEnvironment,
-        AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: '{}',
-        HOME: profileDirectory,
-        PATH: `${binDirectory}:${process.env.PATH}`,
-        TMPDIR: harness.runtimeDirectory,
-        XDG_RUNTIME_DIR: harness.runtimeDirectory,
-        ZDOTDIR: profileDirectory
+    const harness = await createSshHarness(profileDirectory)
+    const launch = async () => {
+      const environment = { ...process.env }
+      delete environment.ELECTRON_RUN_AS_NODE
+      application = await electron.launch({
+        args: [dialogHarnessEntry, `--user-data-dir=${profileDirectory}`, '--disable-gpu'],
+        cwd: desktopDirectory,
+        executablePath: harness.executablePath,
+        env: {
+          ...environment,
+          ...harness.electronEnvironment,
+          AGENT_WORKSPACE_E2E_DIALOG_RESPONSES: '{}',
+          AGENT_WORKSPACE_E2E_USER_DATA_DIR: profileDirectory,
+          HOME: profileDirectory,
+          PATH: `${binDirectory}:${process.env.PATH}`,
+          TMPDIR: harness.runtimeDirectory,
+          XDG_RUNTIME_DIR: harness.runtimeDirectory,
+          ZDOTDIR: profileDirectory
+        }
+      })
+      const page = await application.firstWindow()
+      if (process.platform === 'darwin') await application.evaluate(({ app }) => app.hide())
+      expect(await application.evaluate(({ app }) => app.getPath('userData'))).toBe(
+        profileDirectory
+      )
+      await expect(page.locator('.terminal-pane')).toHaveAttribute('data-process-id', /^\d+$/)
+      await application.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setContentSize(1200, 800)
+      })
+      await page.setViewportSize({ width: 1200, height: 800 })
+      return page
+    }
+    let page = await launch()
+    await page.getByRole('button', { name: 'Create SSH workspace' }).click()
+    await page.getByRole('textbox', { name: 'Workspace name' }).fill('Demo SSH')
+    await page.getByRole('textbox', { name: 'SSH host or alias' }).fill('invalid-host')
+    await expect(page.getByRole('button', { name: 'Create and pin' })).toBeDisabled()
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(page.getByRole('alert')).toContainText('Permission denied')
+    await expect(page.getByRole('button', { name: 'Create and pin' })).toBeDisabled()
+    await page.screenshot({ path: join(evidenceDirectory, 'ssh-connection-failed.png') })
+    const countBefore = await page.evaluate(
+      async () =>
+        (await globalThis.window.desktopBridge.listWorkspaces()).snapshot.workspaces.length
+    )
+    await expect(
+      page.evaluate(() =>
+        globalThis.window.desktopBridge.createWorkspace({
+          name: 'Rejected SSH',
+          workingDirectory: '/',
+          ssh: { host: 'invalid-host', user: '', port: 22 },
+          initialTerminal: { cwd: '/', rows: 24, cols: 80 }
+        })
+      )
+    ).rejects.toThrow('SSH connection failed')
+    expect(
+      await page.evaluate(
+        async () =>
+          (await globalThis.window.desktopBridge.listWorkspaces()).snapshot.workspaces.length
+      )
+    ).toBe(countBefore)
+
+    await page.getByRole('textbox', { name: 'SSH host or alias' }).fill('demo-host')
+    await page.getByRole('textbox', { name: 'Username (optional)' }).fill('deploy')
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(page.getByRole('dialog').getByRole('status')).toContainText(
+      'Connection successful.'
+    )
+    for (const theme of ['dark', 'light']) {
+      for (const density of ['comfortable', 'compact']) {
+        for (const width of [1200, 900]) {
+          await application.evaluate(({ BrowserWindow }, width) => {
+            BrowserWindow.getAllWindows()[0]?.setContentSize(width, 800)
+          }, width)
+          await page.setViewportSize({ width, height: 800 })
+          await page.evaluate(
+            ({ theme, density }) => {
+              globalThis.document.documentElement.dataset.theme = theme
+              globalThis.document.documentElement.dataset.density = density
+            },
+            { theme, density }
+          )
+          await auditDialog(page)
+          await page.screenshot({
+            path: join(evidenceDirectory, `ssh-tested-${theme}-${density}-${width}.png`)
+          })
+        }
       }
-    })
-    const page = await application.firstWindow()
-    expect(await application.evaluate(({ app }) => app.getPath('userData'))).toBe(profileDirectory)
-    await expect(page.locator('.terminal-pane')).toHaveAttribute('data-process-id', /^\d+$/)
+    }
     await application.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.setContentSize(1200, 800)
     })
     await page.setViewportSize({ width: 1200, height: 800 })
-    await page.getByRole('button', { name: 'Create SSH workspace' }).click()
-    await page.getByRole('textbox', { name: 'Workspace name' }).fill('Demo SSH')
-    await page.getByRole('textbox', { name: 'SSH host or alias' }).fill('demo-host')
-    await page.getByRole('textbox', { name: 'Username (optional)' }).fill('deploy')
     await page.getByRole('button', { name: 'Create and pin' }).click()
     await expect(page.locator('.xterm-rows').last()).toContainText('SSH_ARGS:deploy@demo-host')
+    await closeElectronApplication(application, { gracefulTimeoutMs: 10_000 })
+    application = undefined
+    page = await launch()
+    await expect(page.locator('.workspace-section[data-section-kind="pinned"]')).toContainText(
+      'Demo SSH'
+    )
+    await page.locator('.workspace-card').filter({ hasText: 'Demo SSH' }).click()
+    await expect(page.locator('.xterm-rows').last()).toContainText('SSH_ARGS:deploy@demo-host')
+    const legacyWorkspaceId = await page.evaluate(async () => {
+      const { snapshot } = await globalThis.window.desktopBridge.listWorkspaces()
+      const sshWorkspace = snapshot.workspaces.find(({ name }) => name === 'Demo SSH')
+      await globalThis.window.desktopBridge.updateWorkspace({
+        workspaceId: sshWorkspace.id,
+        ssh: { value: null }
+      })
+      return sshWorkspace.id
+    })
+    await closeElectronApplication(application, { gracefulTimeoutMs: 10_000 })
+    application = undefined
+    page = await launch()
+    await expect(page.locator('.xterm-rows').last()).toContainText('SSH_ARGS:deploy@demo-host')
+    await expect
+      .poll(async () => {
+        const { snapshot } = await page.evaluate(() =>
+          globalThis.window.desktopBridge.listWorkspaces()
+        )
+        return snapshot.workspaces.find(({ id }) => id === legacyWorkspaceId)?.ssh?.host
+      })
+      .toBe('demo-host')
     await page.getByRole('button', { name: 'Add tab' }).click()
     await page.getByRole('menuitem', { name: 'Terminal', exact: true }).click()
     await expect(page.getByRole('tab')).toHaveCount(2)
@@ -250,7 +372,9 @@ test('Add tab uses the saved SSH connection and subsequent edits', async () => {
     await page.setViewportSize({ width: 900, height: 700 })
     await page.screenshot({ path: join(evidenceDirectory, 'ssh-add-tab-narrow.png') })
   } finally {
-    await application?.close().catch(() => undefined)
+    await closeElectronApplication(application, { gracefulTimeoutMs: 10_000 }).catch(
+      () => undefined
+    )
     await rm(profileDirectory, { force: true, recursive: true, maxRetries: 3, retryDelay: 100 })
   }
 })

@@ -7,6 +7,19 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.10] - 2026-10-09
+
+### Fixed
+
+- Migrate older SSH workspace connections into durable state and reconnect their terminals after restarting the app.
+- Require successful authentication before adding an SSH workspace through the desktop dialog, CLI, or service API. The dialog now includes Test connection and retests changed connection details.
+- Show connection failures in the dialog without creating a misleading disconnected workspace. Testing uses existing host trust and noninteractive SSH key or agent authentication.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+- Existing repository quality failures and dependency-audit findings remain open; this release does not claim stable qualification.
+
 ## [0.2.1-alpha.9] - 2026-10-08
 
 ### Added
