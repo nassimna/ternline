@@ -13,9 +13,11 @@ const documentation = `${repository}/blob/main`
 const publicPath = import.meta.env.BASE_URL.replace(/\/$/, '')
 const favicon = `${publicPath}/favicon.svg`
 const publicKey = `${publicPath}/ternline.pub`
+const canonical = 'https://ternline.com/'
+const shareImage = new URL(`${publicPath}/social-preview.png`, Astro.site).href
 const hasSignatures = process.env.RELEASE_SIGNATURES_AVAILABLE === 'true'
 const description =
-  'Connect your servers. Keep terminals, local browser previews, and context together. Let your shell or agent app drive Ternline through the CLI.'
+  'Ternline is a desktop workspace for local and SSH terminals, browser previews, and CLI automation. Linux, macOS, and Windows. Free and open source; currently in alpha.'
 const screenshotDescription =
   'Ternline in dark mode with fictional Atlas Web, API Service, Design System, and Release Tools workspaces selected in blue, green, purple, and amber, alongside development and workspace CLI terminals.'
 
@@ -64,6 +66,19 @@ const sessions = [
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Ternline — Local or remote. One place to work." />
     <meta property="og:description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={shareImage} />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta
+      property="og:image:alt"
+      content="Ternline — local and SSH terminals, browser previews, and CLI automation."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Ternline — Local or remote. One place to work." />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={shareImage} />
     <link rel="icon" href={favicon} type="image/svg+xml" />
     <title>Ternline — Local or remote. One place to work.</title>
   </head>
@@ -327,7 +342,7 @@ const sessions = [
             >
               <h3 class="text-xl font-medium">Windows</h3>
               <p class="mt-2 mb-6 text-xs leading-relaxed text-muted">
-                64-bit installer for x64 PCs.
+                Per-user installer for x64 PCs. Windows may show a publisher warning.
               </p>
               <a
                 data-download="windows-x64"
@@ -343,7 +358,7 @@ const sessions = [
             >
               <h3 class="text-xl font-medium">Linux</h3>
               <p class="mt-2 mb-6 text-xs leading-relaxed text-muted">
-                x86_64 packages for your distribution.
+                x86_64 desktop packages. OpenSSH is required; AppImage may need FUSE 2.
               </p>
               <a
                 data-download="linux-x64"
@@ -367,12 +382,19 @@ const sessions = [
                 >
                   Fedora / RHEL
                 </a>
+                <a
+                  href={`${documentation}/packaging/aur/README.md`}
+                  class="underline underline-offset-4 hover:text-ink"
+                >
+                  Arch Linux
+                </a>
               </div>
             </article>
           </div>
           <div class="mt-5 flex flex-wrap items-center justify-between gap-3 text-xs leading-relaxed text-muted">
             <p>
-              Early builds without macOS or Windows code signing.{' '}
+              Alpha: no stable support guarantee; macOS and Windows installers lack platform code
+              signing.{' '}
               <a
                 href={`${documentation}/docs/INSTALLATION.md`}
                 class="text-accent underline underline-offset-4"
@@ -754,6 +776,9 @@ const sessions = [
             .querySelector<HTMLAnchorElement>('[data-release-files]')
             ?.setAttribute('href', latest.url)
           release.textContent = `v${latest.version} · ${latest.prerelease ? 'Pre-release' : 'Release'}`
+          release.dataset['version'] = latest.version
+          const macAsset = macosDownload.href.includes('-macos-x64.dmg') ? 'mac-x64' : 'mac-arm64'
+          macosDownload.href = latest.downloads[macAsset]
           suggestDownload(cpu.architecture, cpu.bitness)
         } catch {
           // The verified build-time downloads remain available when GitHub cannot be reached.

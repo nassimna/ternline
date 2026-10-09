@@ -1,0 +1,52 @@
+# Maintainer: Nassim
+pkgname=ternline-bin
+pkgver=0.2.1alpha9
+pkgrel=1
+pkgdesc='Terminal workspace for local and remote development (alpha)'
+arch=('x86_64')
+url='https://github.com/nassimna/ternline'
+license=('GPL-3.0-or-later')
+depends=(
+  'alsa-lib' 'at-spi2-core' 'bash' 'bubblewrap' 'cairo' 'dbus' 'expat' 'gcc-libs'
+  'glib2' 'glibc' 'gtk3' 'hicolor-icon-theme' 'libcups' 'libdrm' 'libx11' 'libxcb' 'libxcomposite'
+  'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa'
+  'nspr' 'nss' 'openssh' 'pango' 'systemd'
+)
+optdepends=(
+  'git: repository metadata in terminal panes'
+  'org.freedesktop.secrets: encrypted search and managed SSH credentials'
+)
+provides=("ternline=${pkgver}")
+conflicts=('ternline' 'agent-workspace')
+options=('!strip' '!debug')
+_upstream_version=0.2.1-alpha.9
+source=(
+  "${url}/releases/download/v${_upstream_version}/agent-workspace-${_upstream_version}-${CARCH}.deb"
+  'ternline-cli'
+)
+sha256sums=(
+  'fa7643a6a22c58d57821672be4a40bd289978c6e73fe78b02292644a8a85c922'
+  'd70434075b4c101b23f6fee8c9cd2424098c04cf83a6573053c3996cb5afe559'
+)
+
+build() {
+  bsdtar -xf data.tar.xz
+}
+
+package() {
+  install -dm755 "${pkgdir}/usr/lib"
+  cp -a opt/Ternline "${pkgdir}/usr/lib/ternline"
+  cp -a usr "${pkgdir}/"
+  install -dm755 "${pkgdir}/usr/bin"
+  ln -s /usr/lib/ternline/agent-workspace "${pkgdir}/usr/bin/ternline"
+  ln -s ternline "${pkgdir}/usr/bin/agent-workspace"
+  install -Dm755 ternline-cli "${pkgdir}/usr/bin/ternline-cli"
+  sed -i 's|Exec=/opt/Ternline/agent-workspace|Exec=/usr/bin/ternline|' \
+    "${pkgdir}/usr/share/applications/agent-workspace.desktop"
+  chmod 4755 "${pkgdir}/usr/lib/ternline/chrome-sandbox"
+  # Arch packages are updated with pacman, never the upstream DEB updater.
+  printf 'arch\n' > "${pkgdir}/usr/lib/ternline/resources/package-type"
+  # Native addons are already built; Python build tools are not runtime dependencies.
+  find "${pkgdir}/usr/lib/ternline/resources" -type f -name '*.py' \
+    \( -path '*/node-gyp/*' -o -path '*/node-pty/deps/winpty/*' \) -delete
+}

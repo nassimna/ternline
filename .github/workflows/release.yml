@@ -196,9 +196,40 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  arch:
+    name: Build direct Arch package and tagged recipe
+    needs: package
+    runs-on: ubuntu-latest
+    container: archlinux:base-20260712.0.555161@sha256:fe6972d4dc1f660c0c10f4c41b2de8986bab89e7e2955378f8beadb8ebcd7433
+    timeout-minutes: 25
+    steps:
+      - name: Bootstrap existing Arch build image
+        run: pacman -Syu --noconfirm --needed base-devel git nodejs namcap
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-linux-x64
+          path: release-download
+      - name: Build and lint the exact Linux binary
+        shell: bash
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          source packaging/aur/ternline-bin/PKGBUILD
+          pacman -S --noconfirm --needed "${depends[@]}"
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- scripts/release/build-arch-package.sh "$version" \
+            "release-download/agent-workspace-${version}-x86_64.deb" dist-arch
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-arch-x64
+          path: dist-arch
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     name: Publish prerelease
-    needs: package
+    needs: [package, arch]
     if: github.event_name == 'push' || inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -222,6 +253,10 @@ jobs:
         with:
           name: release-windows-x64
           path: staged/windows
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-arch-x64
+          path: staged/arch
       - name: Aggregate exact release assets
         run: |
           ruby <<'RUBY'
@@ -229,7 +264,9 @@ jobs:
           require 'yaml'
           version = ENV.fetch('REQUESTED_VERSION', '')
           version = ENV.fetch('GITHUB_REF_NAME', '').sub(/^v/, '') if version.empty?
+          arch_version = version.sub('-alpha.', 'alpha')
           required = {
+            'arch' => ["ternline-bin-#{arch_version}-1-x86_64.pkg.tar.zst", "ternline-bin-#{version}-recipe.tar.gz"],
             'linux' => ["agent-workspace-#{version}-x86_64.AppImage", "agent-workspace-#{version}-x86_64.deb", "agent-workspace-#{version}-x86_64.rpm", 'alpha-linux.yml'],
             'macos-arm64' => ["agent-workspace-#{version}-macos-arm64.dmg", "agent-workspace-#{version}-macos-arm64.zip", 'alpha-mac.yml'],
             'macos-x64' => ["agent-workspace-#{version}-macos-x64.dmg", "agent-workspace-#{version}-macos-x64.zip", 'alpha-mac.yml'],
@@ -303,6 +340,8 @@ jobs:
             prerelease: true,
             downloads: {
               linux: `https://github.com/${repository}/releases/download/${tag}/agent-workspace-${version}-x86_64.AppImage`,
+              arch: `https://github.com/${repository}/releases/download/${tag}/ternline-bin-${version.replace('-alpha.', 'alpha')}-1-x86_64.pkg.tar.zst`,
+              archRecipe: `https://github.com/${repository}/releases/download/${tag}/ternline-bin-${version}-recipe.tar.gz`,
               macos: `https://github.com/${repository}/releases/download/${tag}/agent-workspace-${version}-macos-arm64.dmg`,
               windows: `https://github.com/${repository}/releases/download/${tag}/agent-workspace-${version}-windows-x64-setup.exe`
             }

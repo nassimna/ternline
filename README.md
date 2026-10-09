@@ -2,12 +2,29 @@
 
 > The internal `agent-workspace` slug remains stable for user data and automation integrations.
 
-Ternline is an independent, clean-room desktop workspace for terminal-driven development
-sessions. It does not copy another product's source, assets, identity, or trademarks. The desktop, server, CLI, and shared contracts are TypeScript. Native packages target Linux, macOS, and Windows; the Linux package carries a pinned Node runtime.
+Ternline is a desktop workspace for local and SSH terminals, browser previews, and CLI automation.
+Linux, macOS, and Windows. Free and open source; currently in alpha.
+
+[Download Ternline](https://ternline.com/#downloads) · [Installation instructions](docs/INSTALLATION.md) · [GitHub Releases](https://github.com/nassimna/ternline/releases)
+
+![Ternline workspace with split terminals and saved connections](apps/website/src/assets/workspace.png)
+
+| Platform     | Choose                                                                                             |
+| ------------ | -------------------------------------------------------------------------------------------------- |
+| Linux x86_64 | AppImage, Debian/Ubuntu DEB, Fedora/RHEL RPM; [Arch package instructions](packaging/aur/README.md) |
+| macOS        | Apple Silicon or Intel DMG; approve the unsigned app on first launch                               |
+| Windows x64  | Per-user EXE installer; Windows may show a publisher warning                                       |
+
+The Linux package bundles Node. OpenSSH is required at startup; AppImage users may need FUSE 2.
+See [installation and verification](docs/INSTALLATION.md) for dependencies, checksums, download
+signatures, updates, and profile-preserving removal. Linux and Windows ARM64 packages are unavailable.
+
+Ternline is an independent, clean-room implementation and does not copy another product's source,
+assets, identity, or trademarks. The desktop, server, CLI, and shared contracts are TypeScript.
 
 This is alpha software. Milestones 0–5 are established on the documented Linux reference host.
 Milestone 6 release-candidate work is implemented in substantial part but remains in validation;
-unsigned prereleases are distributed through [GitHub Releases](https://github.com/nassimna/ternline/releases) and the [website](https://nassimna.github.io/ternline/). There is no signed stable release or public support guarantee.
+prereleases are distributed through [GitHub Releases](https://github.com/nassimna/ternline/releases) and the [website](https://ternline.com). There is no stable release or public support guarantee; macOS and Windows installers lack platform code signing.
 
 ## What works
 
@@ -29,7 +46,8 @@ unsigned prereleases are distributed through [GitHub Releases](https://github.co
   release-candidate workflow retains direct accessibility and visual validation; Node performance
   qualification and manual gates remain open.
 
-Current prereleases are unsigned. Native hosted runners check packaged startup and the CLI/PTY
+Download signatures are available for releases with Minisign `.sig` files; they do not provide
+Apple or Microsoft publisher trust. Native hosted runners check packaged startup and the CLI/PTY
 journey; that does not qualify every physical device, OS version, installer trust prompt, or in-app
 update installation. The eight-hour Node soak and human assistive-technology checks remain open.
 Read [Known limitations](docs/KNOWN_LIMITATIONS.md) before evaluating support. The 2026-07-18 local

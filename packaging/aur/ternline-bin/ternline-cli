@@ -1,0 +1,5 @@
+#!/bin/sh
+: "${AGENT_WORKSPACE_NODE_SESSION_FILE:=${XDG_CONFIG_HOME:-$HOME/.config}/Agent Workspace/runtime/node-cli-session.json}"
+export AGENT_WORKSPACE_NODE_SESSION_FILE
+exec /usr/lib/ternline/resources/node-linux/bin/node \
+  /usr/lib/ternline/resources/node-linux/bin/agent-workspace-node.mjs "$@"

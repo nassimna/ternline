@@ -1,6 +1,6 @@
 # Installation
 
-Choose your platform on the [Ternline website](https://nassimna.github.io/ternline/),
+Choose your platform on the [Ternline website](https://ternline.com/),
 or open the [GitHub releases](https://github.com/nassimna/ternline/releases).
 The website recommends your OS and offers every installer so you can choose another machine or
 architecture. On Macs that do not expose their CPU architecture to the browser, choose Apple
@@ -18,8 +18,8 @@ guarantee. Only install assets from this project's release page after verifying 
 | macOS    | Apple Silicon arm64 or Intel x64 | `.dmg` and updater `.zip`                          |
 | Windows  | x64                              | Per-user NSIS `.exe` installer                     |
 
-Linux needs a desktop session and the runtime libraries resolved by the package manager.
-AppImage users may also need FUSE 2 compatibility. Linux ARM64 and Windows ARM64 installers are
+Linux needs an x86_64 desktop session, OpenSSH (including `ssh-keyscan`) at startup, and the runtime libraries resolved by the package manager.
+AppImage users must install OpenSSH separately and may also need FUSE 2 compatibility. Linux ARM64 and Windows ARM64 installers are
 not provided. macOS and Windows package checks run on native hosted runners; they do not qualify
 every physical device or OS version.
 
@@ -51,7 +51,7 @@ replace `FILE` with your installer’s actual filename and run:
 minisign -Vm FILE -x FILE.sig -p ternline.pub
 ```
 
-The same command works for AppImage, DEB, RPM, DMG, ZIP, and EXE downloads. For example:
+The same command works for AppImage, DEB, RPM, DMG, ZIP, EXE, Arch packages, and recipe archives. For example:
 
 ```sh
 minisign -Vm agent-workspace-VERSION-x86_64.AppImage -x agent-workspace-VERSION-x86_64.AppImage.sig -p ternline.pub
@@ -76,6 +76,7 @@ chmod +x agent-workspace-VERSION-x86_64.AppImage
 Debian/Ubuntu:
 
 ```sh
+sudo apt install openssh-client
 sudo apt install ./agent-workspace-VERSION-x86_64.deb
 agent-workspace
 ```
@@ -83,6 +84,7 @@ agent-workspace
 Fedora/RHEL-family:
 
 ```sh
+sudo dnf install openssh-clients
 sudo dnf install ./agent-workspace-VERSION-x86_64.rpm
 agent-workspace
 ```
@@ -90,6 +92,28 @@ agent-workspace
 Deb/rpm packages install a desktop entry through the package manager. AppImage desktop-menu
 integration depends on your AppImage tooling. The package includes the Ternline icon in standard
 Linux hicolor sizes.
+
+Arch Linux (x86_64):
+
+Follow [direct Arch installation](../packaging/aur/README.md). AUR publication is paused;
+no AUR account is needed. New releases built with the Arch workflow provide a signed
+`ternline-bin-ARCH_VERSION-1-x86_64.pkg.tar.zst` and tagged recipe. After verifying the
+package, install with `sudo pacman -U ./PACKAGE`. The existing `v0.2.1-alpha.9`
+release also provides the verified Arch package; its separate signed
+`SHA256SUMS-arch` preserves the original checksums. To build from this checkout instead:
+
+```sh
+cd packaging/aur/ternline-bin
+makepkg --verifysource
+makepkg --syncdeps --install
+ternline
+```
+
+Review the recipe first. OpenSSH is mandatory; Electron and Node are bundled.
+Ternline appears in the application menu, and `ternline-cli identify` works from
+external terminals while the app is running. Updates are manual with pacman or a new
+verified recipe; the AppImage updater does not install this package. Remove with
+`sudo pacman -R ternline-bin`; existing profiles remain for reinstall.
 
 On macOS, open the DMG and drag **Ternline** into **Applications**. On Windows, run the EXE and
 choose an installation directory; the installer creates desktop and Start menu shortcuts and

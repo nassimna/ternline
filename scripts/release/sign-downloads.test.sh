@@ -10,7 +10,7 @@ cp "$repository_directory/scripts/release/sign-downloads.sh" "$fixture/scripts/r
 public_key="$fixture/apps/website/public/ternline.pub"
 minisign -G -W -s "$fixture/ternline.key" -p "$public_key" > /dev/null
 cp "$public_key" "$fixture/assets/ternline.pub"
-assets=(test.AppImage test.deb test.rpm test.dmg test.zip test.exe alpha.yml release-manifest.json)
+assets=(test.AppImage test.deb test.rpm test.dmg test.zip test.exe test.pkg.tar.zst test-recipe.tar.gz alpha.yml release-manifest.json)
 for name in "${assets[@]}"; do
   printf 'Original release bytes: %s\n' "$name" > "$fixture/assets/$name"
 done

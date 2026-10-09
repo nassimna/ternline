@@ -2,8 +2,9 @@
 
 The **Release** workflow builds Linux x64, macOS Intel x64, macOS Apple Silicon arm64, and
 Windows x64 on matching native GitHub runners. It publishes only when all four packaged-runtime
-smoke checks pass. The **Deploy website** workflow follows a successful published release and
-builds the Signal website with matching, versioned download URLs.
+smoke checks and the direct Arch package build/lint pass. The **Deploy website** workflow follows
+a successful published release and
+builds the Ternline website with matching, versioned download URLs.
 
 ## Prepare and qualify
 
@@ -25,6 +26,30 @@ Builds use the frozen lockfile, cached pnpm downloads, pinned actions, and Node 
 Release concurrency prevents overlapping runs for the same ref. PR CI runs Node validation and
 focused Windows runtime contracts on Windows 2022;
 expensive distro-package and security inventories remain scheduled or manual.
+
+## Direct Arch package
+
+The release workflow reuses the existing pinned Arch CI image to repackage the exact
+Linux DEB with `scripts/release/build-arch-package.sh VERSION DEB OUTPUT_DIRECTORY`.
+The build runs as a regular user, pins the DEB and launcher hashes, regenerates `.SRCINFO`,
+and blocks namcap errors. It attaches `ternline-bin-ARCH_VERSION-1-x86_64.pkg.tar.zst`
+and `ternline-bin-VERSION-recipe.tar.gz`. The combined `SHA256SUMS` and existing
+Minisign signing step cover both; the release manifest includes their download URLs.
+The lint report remains a CI artifact. Upstream binary hardening/stripping and bundled
+runtime warnings are documented in [the Arch instructions](../packaging/aur/README.md).
+
+This container check does not qualify a native installed application. Before publication,
+install the exact package on an Arch x86_64 host, launch through its desktop entry with
+an isolated profile, and verify sandbox, CLI, workspace, PTY, browser, restart, update,
+and uninstall/profile preservation. Record the package hash and host evidence in the
+[release qualification record](RELEASE_QUALIFICATION.md). A failed or missing native
+Arch check blocks publication of the Arch package. Updates remain manual with pacman;
+AUR submission is paused and requires separate approval.
+
+The already published `v0.2.1-alpha.9` retains its original installers and checksum
+manifest. Its qualified Arch package and recipe are additional assets authenticated
+by their detached signatures and `SHA256SUMS-arch`; the exact hashes and native checks
+are recorded in [the Arch instructions](../packaging/aur/README.md#native-qualification-alpha9-arch-package).
 
 ## Artifacts and checksums
 
