@@ -403,6 +403,11 @@ export class CodexAdapter {
       failure = new CodexAdapterError('unavailable', 'Codex app-server failed')
       wake()
     })
+    child.stdin.on('error', () => {
+      failure ??= new CodexAdapterError('interrupted', 'Codex stdin is unavailable')
+      child.kill()
+      wake()
+    })
     child.on('exit', () => {
       if (!failure) failure = new CodexAdapterError('interrupted', 'Codex app-server exited')
       wake()

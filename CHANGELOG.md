@@ -14,6 +14,8 @@ will become binding at version 1.0.
 - Migrate older SSH workspace connections into durable state and reconnect their terminals after restarting the app.
 - Require successful authentication before adding an SSH workspace through the desktop dialog, CLI, or service API. The dialog now includes Test connection and retests changed connection details.
 - Show connection failures in the dialog without creating a misleading disconnected workspace. Testing uses existing host trust and noninteractive SSH key or agent authentication.
+- Report interrupted Codex requests when the subprocess closes its input, preventing an unhandled broken-pipe error.
+- Fix the local AppImage installer command to install the current release.
 - Clear formatting and lint release blockers while preserving workspace ownership and rollback behavior.
 - Update locked dependencies and backport the cache revalidation repair from upstream PR #63; the production dependency audit has no high or critical findings.
 
