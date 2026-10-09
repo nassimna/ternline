@@ -176,7 +176,7 @@ describe('App', () => {
     await waitFor(() =>
       expect(bridge.openTerminalTab).toHaveBeenCalledWith({
         workspaceId: projectionFixture.workspaces[0]!.id,
-        paneId: projectionFixture.workspaces[0]!.panes[0]!.id,
+        paneId: projectionFixture.workspaces[0]!.selectedPaneId,
         launch: { cwd: '/tmp/fixture-workspace', rows: 30, cols: 120 }
       })
     )
@@ -189,7 +189,7 @@ describe('App', () => {
     await waitFor(() =>
       expect(bridge.openBrowserTab).toHaveBeenCalledWith({
         workspaceId: projectionFixture.workspaces[0]!.id,
-        paneId: projectionFixture.workspaces[0]!.panes[0]!.id,
+        paneId: projectionFixture.workspaces[0]!.selectedPaneId,
         metadata: { url: messages.workspaceShell.defaultBrowserUrl }
       })
     )
@@ -640,7 +640,9 @@ describe('App', () => {
     const separator = await screen.findByRole('separator', { name: 'Resize workspace sidebar' })
     fireEvent.keyDown(separator, { key: 'ArrowRight' })
 
-    expect(document.querySelector('.workspace-shell')).toHaveStyle('--sidebar-width: 304px')
+    expect(document.querySelector('.workspace-shell')).toHaveStyle(
+      '--sidebar-width-preference: 304px'
+    )
     expect(localStorage.getItem('agent-workspace.sidebar.width')).toBe('304')
   })
 
@@ -814,12 +816,12 @@ describe('App', () => {
         application: 'agent-workspace',
         version: '0.1.0',
         protocolVersion: 1,
-        capabilities: ['configuration-v2', 'multi-window-v1']
+        capabilities: ['configuration-v2', 'multi-window-v1', 'tab.moveExact']
       })
     )
     bridge.listWindows = vi.fn().mockResolvedValue({
       revision: 12,
-      idempotencyEpoch: 2,
+      idempotencyEpoch: 'epoch-2',
       focusedWindowId: sourceWindowId,
       windows: [
         {
@@ -927,12 +929,12 @@ describe('App', () => {
         application: 'agent-workspace',
         version: '0.1.0',
         protocolVersion: 1,
-        capabilities: ['configuration-v2', 'multi-window-v1']
+        capabilities: ['configuration-v2', 'multi-window-v1', 'focusHistory.navigate']
       })
     )
     bridge.listWindows = vi.fn().mockResolvedValue({
       revision: 12,
-      idempotencyEpoch: 2,
+      idempotencyEpoch: 'epoch-2',
       focusedWindowId: targetWindowId,
       windows: [
         {
@@ -955,7 +957,7 @@ describe('App', () => {
     })
     bridge.navigateFocusHistory = vi.fn().mockResolvedValue({
       revision: 13,
-      idempotencyEpoch: 2,
+      idempotencyEpoch: 'epoch-2',
       target: {
         windowId: targetWindowId,
         workspaceId: workspace.id,
