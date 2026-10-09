@@ -365,7 +365,7 @@ jobs:
           node scripts/release/validate-release.mjs
           --version "$(node -p 'require("./package.json").version')"
           --mode candidate --notes-output release-notes.md
-      - name: Create prerelease
+      - name: Create draft prerelease for native Arch qualification
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
@@ -375,6 +375,6 @@ jobs:
           version=${REQUESTED_VERSION:-${REF_NAME#v}}
           tag="v${version}"
           if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists" >&2; exit 1; fi
-          gh release create "$tag" release-assets/* --verify-tag --prerelease \
+          gh release create "$tag" release-assets/* --verify-tag --prerelease --draft \
             --title "Ternline ${tag}" \
             --notes-file release-notes.md
