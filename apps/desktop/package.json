@@ -28,7 +28,7 @@
     "test:local-appimage": "node --test scripts/install-local-appimage.test.mjs",
     "test:package-scripts": "node --test scripts/package-scripts.test.mjs",
     "test:electron-shutdown": "node --test scripts/close-electron-application.test.mjs",
-    "test": "vitest run && pnpm test:release-artifacts && pnpm test:local-appimage && pnpm test:native-packaging && pnpm test:package-scripts && pnpm test:performance:helpers && pnpm test:electron-shutdown",
+    "test": "vitest run --exclude src/main/control-client.performance.test.ts && vitest run src/main/control-client.performance.test.ts && pnpm test:release-artifacts && pnpm test:local-appimage && pnpm test:native-packaging && pnpm test:package-scripts && pnpm test:performance:helpers && pnpm test:electron-shutdown",
     "test:a11y": "playwright test e2e/accessibility.spec.mjs --workers=1 --timeout=30000",
     "test:m5": "vitest run src/main/browser-automation-manager.test.ts src/main/browser-automation-provider.test.ts src/main/browser-view-manager.test.ts && playwright test e2e/browser-automation.spec.mjs --workers=1 --timeout=180000",
     "test:m8": "playwright test e2e/sidebar-m8.spec.mjs --workers=1 --timeout=60000",
