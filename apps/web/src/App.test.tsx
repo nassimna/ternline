@@ -1269,7 +1269,7 @@ describe('App', () => {
     const shell = screen.getByRole('tab', { name: 'Shell' })
     expect(selected).toHaveAttribute('tabindex', '0')
     expect(shell).toHaveAttribute('tabindex', '-1')
-    const destinations = screen.getByRole('button', { name: 'Move or split M2 tests' })
+    const destinations = screen.getByRole('button', { name: 'M2 tests tab actions' })
     fireEvent.keyDown(destinations, { key: 'Enter' })
     const moveItem = await screen.findByRole('menuitem', { name: 'Move M2 tests left' })
     expect(moveItem).not.toHaveAttribute('aria-disabled', 'true')
@@ -1289,6 +1289,360 @@ describe('App', () => {
         tabId: projectionFixture.workspaces[0]!.tabs[0]!.id
       })
     )
+  })
+
+  it('renames a terminal tab from its actions menu through the existing mutation', async () => {
+    const snapshot = structuredClone(projectionFixture)
+    const workspace = snapshot.workspaces[0]!
+    const tab = workspace.tabs.find(({ customTitle }) => customTitle === 'M2 tests')!
+    const bridge = createBridge()
+    tab.customTitle = 'Build logs'
+    snapshot.revision = 43
+    vi.mocked(bridge.updateTab).mockResolvedValueOnce({ revision: 43, snapshot })
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const actions = await screen.findByRole('button', { name: 'M2 tests tab actions' })
+    fireEvent.keyDown(actions, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename tab' }))
+    const input = await screen.findByRole('textbox', { name: 'Rename tab' })
+    expect(input).toHaveValue('M2 tests')
+    await waitFor(() => expect(input).toHaveFocus())
+    fireEvent.change(input, { target: { value: '  Build logs  ' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(() =>
+      expect(bridge.updateTab).toHaveBeenCalledExactlyOnceWith({
+        workspaceId: workspace.id,
+        tabId: tab.id,
+        customTitle: { value: 'Build logs' }
+      })
+    )
+    expect(await screen.findByRole('tab', { name: 'Build logs' })).toBeInTheDocument()
+    expect(bridge.restartTerminal).not.toHaveBeenCalled()
+    expect(bridge.closeTab).not.toHaveBeenCalled()
+  })
+
+  it.each([null, '   ', ' M2 tests '])(
+    'keeps the terminal tab unchanged when rename returns %s',
+    async (value) => {
+      const bridge = createBridge()
+      vi.spyOn(requestDialogs, 'requestText').mockResolvedValueOnce(value)
+      window.desktopBridge = bridge
+      render(<App />)
+
+      const actions = await screen.findByRole('button', { name: 'M2 tests tab actions' })
+      fireEvent.keyDown(actions, { key: 'Enter' })
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename tab' }))
+      await waitFor(() =>
+        expect(requestDialogs.requestText).toHaveBeenCalledWith('Rename tab', 'M2 tests')
+      )
+
+      expect(bridge.updateTab).not.toHaveBeenCalled()
+      expect(screen.getByRole('tab', { name: 'M2 tests' })).toBeInTheDocument()
+    }
+  )
+
+  it('renames an inactive terminal tab from its own context menu without selecting it', async () => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const tab = await screen.findByRole('tab', { name: 'Shell' })
+    expect(tab).toHaveAttribute('aria-selected', 'false')
+    fireEvent.contextMenu(tab)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename tab' }))
+    const input = await screen.findByRole('textbox', { name: 'Rename tab' })
+    await waitFor(() => expect(input).toHaveFocus())
+    expect(input).toHaveValue('Shell')
+    fireEvent.change(input, { target: { value: '  API server  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(bridge.updateTab).toHaveBeenCalledExactlyOnceWith({
+        workspaceId: projectionFixture.workspaces[0]!.id,
+        tabId: projectionFixture.workspaces[0]!.tabs[0]!.id,
+        customTitle: { value: 'API server' }
+      })
+    )
+    expect(bridge.selectTab).not.toHaveBeenCalled()
+    expect(bridge.restartTerminal).not.toHaveBeenCalled()
+  })
+
+  it('cancels a selected terminal tab context rename with Escape', async () => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const tab = await screen.findByRole('tab', { name: 'M2 tests' })
+    fireEvent.contextMenu(tab)
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename tab' }))
+    const input = await screen.findByRole('textbox', { name: 'Rename tab' })
+    await waitFor(() => expect(input).toHaveFocus())
+    fireEvent.change(input, { target: { value: 'Discard this title' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByRole('textbox', { name: 'Rename tab' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'M2 tests' })).toHaveAttribute('aria-selected', 'true')
+    expect(bridge.updateTab).not.toHaveBeenCalled()
+  })
+
+  it('shows the same rename, duplicate, split, move, and close actions in both tab menus', async () => {
+    window.desktopBridge = createBridge()
+    render(<App />)
+
+    const tab = await screen.findByRole('tab', { name: 'M2 tests' })
+    fireEvent.contextMenu(tab)
+    await screen.findByRole('menuitem', { name: 'Rename tab' })
+    const contextActions = screen.getAllByRole('menuitem').map((item) => item.textContent)
+    expect(contextActions).toEqual(
+      expect.arrayContaining([
+        'Rename tab',
+        'Duplicate tab',
+        'Split pane right',
+        'Split pane down',
+        'Move M2 tests left',
+        'Move M2 tests right',
+        'Move to pane',
+        'Move to new split',
+        'Close M2 tests'
+      ])
+    )
+    expect(screen.getByRole('menuitem', { name: 'Duplicate tab' })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    )
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'M2 tests tab actions' }), {
+      key: 'Enter'
+    })
+    await screen.findByRole('menuitem', { name: 'Rename tab' })
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(contextActions)
+  })
+
+  it.each(['pane', 'split'] as const)(
+    'keeps the clicked tab’s %s destinations available in its submenu',
+    async (destination) => {
+      const bridge = createBridge()
+      window.desktopBridge = bridge
+      render(<App />)
+
+      fireEvent.contextMenu(await screen.findByRole('tab', { name: 'Shell' }))
+      const submenu = await screen.findByRole('menuitem', {
+        name: destination === 'pane' ? 'Move to pane' : 'Move to new split'
+      })
+      submenu.focus()
+      fireEvent.keyDown(submenu, { key: 'ArrowRight' })
+      fireEvent.click(
+        await screen.findByRole('menuitem', {
+          name: destination === 'pane' ? 'Move to Docs' : 'Split Docs right'
+        })
+      )
+
+      const workspace = projectionFixture.workspaces[0]!
+      if (destination === 'pane') {
+        await waitFor(() =>
+          expect(bridge.moveTabToPane).toHaveBeenCalledExactlyOnceWith({
+            workspaceId: workspace.id,
+            tabId: workspace.tabs[0]!.id,
+            destinationPaneId: workspace.panes[1]!.id,
+            destinationIndex: 1
+          })
+        )
+      } else {
+        await waitFor(() =>
+          expect(bridge.splitPane).toHaveBeenCalledExactlyOnceWith({
+            workspaceId: workspace.id,
+            targetPaneId: workspace.panes[1]!.id,
+            axis: 'horizontal',
+            ratio: 0.5,
+            placement: 'after',
+            content: { kind: 'existingTab', tabId: workspace.tabs[0]!.id }
+          })
+        )
+      }
+      expect(bridge.selectTab).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    ['Split pane right', 'horizontal'],
+    ['Split pane down', 'vertical']
+  ] as const)('routes %s from an inactive tab to that tab’s pane', async (label, axis) => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    fireEvent.contextMenu(await screen.findByRole('tab', { name: 'Shell' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: label }))
+    await waitFor(() =>
+      expect(bridge.splitPane).toHaveBeenCalledExactlyOnceWith({
+        workspaceId: projectionFixture.workspaces[0]!.id,
+        targetPaneId: projectionFixture.workspaces[0]!.tabs[0]!.paneId,
+        axis,
+        ratio: 0.5,
+        placement: 'after',
+        content: {
+          kind: 'newTerminal',
+          launch: { cwd: projectionFixture.workspaces[0]!.workingDirectory, rows: 30, cols: 120 }
+        }
+      })
+    )
+    expect(bridge.selectTab).not.toHaveBeenCalled()
+  })
+
+  it('closes the inactive tab whose context menu was opened', async () => {
+    const bridge = createBridge()
+    window.desktopBridge = bridge
+    render(<App />)
+
+    fireEvent.contextMenu(await screen.findByRole('tab', { name: 'Shell' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Close Shell' }))
+    await waitFor(() =>
+      expect(bridge.closeTab).toHaveBeenCalledExactlyOnceWith({
+        workspaceId: projectionFixture.workspaces[0]!.id,
+        tabId: projectionFixture.workspaces[0]!.tabs[0]!.id
+      })
+    )
+    expect(bridge.selectTab).not.toHaveBeenCalled()
+  })
+
+  it.each(['success', 'failure'] as const)(
+    'duplicates the clicked inactive tab using fresh placement and reports %s',
+    async (outcome) => {
+      const workspace = projectionFixture.workspaces[0]!
+      const tab = workspace.tabs[0]!
+      const pane = workspace.panes.find(({ id }) => id === tab.paneId)!
+      const windowId = '70000000-0000-4000-8000-000000000001'
+      const bridge = createBridge(
+        vi.fn().mockResolvedValue({
+          application: 'agent-workspace',
+          version: '0.1.0',
+          protocolVersion: 1,
+          capabilities: ['configuration-v2', 'multi-window-v1', 'tab.duplicateExact']
+        })
+      )
+      bridge.listWindows = vi.fn().mockResolvedValue({
+        revision: 42,
+        idempotencyEpoch: 'epoch-1',
+        focusedWindowId: windowId,
+        windows: [
+          {
+            windowId,
+            label: 'Main',
+            workspaceIds: [workspace.id],
+            focusedWorkspaceId: workspace.id,
+            hostingState: 'hosted',
+            defaultTabDestination: {
+              workspaceId: workspace.id,
+              paneId: pane.id,
+              destinationIndex: 2
+            },
+            revision: 7
+          }
+        ]
+      })
+      bridge.duplicateTab = vi.fn().mockResolvedValue({
+        revision: 51,
+        idempotencyEpoch: 'epoch-3',
+        tabId: '40000000-0000-4000-8000-000000000004',
+        ownershipKind: 'terminal',
+        placement: {
+          windowId,
+          workspaceId: workspace.id,
+          paneId: pane.id,
+          index: 2,
+          windowRevision: 12
+        },
+        transferEpoch: 1,
+        replayed: false
+      })
+      if (outcome === 'failure')
+        vi.mocked(bridge.duplicateTab).mockRejectedValueOnce(new Error('duplicate was rejected'))
+      window.desktopBridge = bridge
+      render(<App />)
+
+      const sourceTab = await screen.findByRole('tab', { name: 'Shell' })
+      await waitFor(() => expect(bridge.listWindows).toHaveBeenCalled())
+      vi.mocked(bridge.listWindows).mockResolvedValue({
+        revision: 50,
+        idempotencyEpoch: 'epoch-3',
+        focusedWindowId: windowId,
+        windows: [
+          {
+            windowId,
+            label: 'Main',
+            workspaceIds: [workspace.id],
+            focusedWorkspaceId: workspace.id,
+            hostingState: 'hosted',
+            defaultTabDestination: {
+              workspaceId: workspace.id,
+              paneId: pane.id,
+              destinationIndex: 2
+            },
+            revision: 11
+          }
+        ]
+      })
+      const readsBeforeDuplicate = vi.mocked(bridge.listWorkspaces).mock.calls.length
+      fireEvent.contextMenu(sourceTab)
+      const duplicate = await screen.findByRole('menuitem', { name: 'Duplicate tab' })
+      expect(duplicate).not.toHaveAttribute('aria-disabled', 'true')
+      fireEvent.click(duplicate)
+      await waitFor(() =>
+        expect(bridge.duplicateTab).toHaveBeenCalledExactlyOnceWith({
+          mutation: {
+            expectedRevision: 50,
+            idempotencyEpoch: 'epoch-3',
+            idempotencyKey: expect.any(String) as unknown
+          },
+          source: {
+            windowId,
+            workspaceId: workspace.id,
+            paneId: pane.id,
+            tabId: tab.id,
+            expectedWindowRevision: 11
+          },
+          target: {
+            windowId,
+            workspaceId: workspace.id,
+            paneId: pane.id,
+            destinationIndex: 2,
+            expectedWindowRevision: 11
+          }
+        })
+      )
+      if (outcome === 'success') {
+        await waitFor(() =>
+          expect(bridge.listWorkspaces).toHaveBeenCalledTimes(readsBeforeDuplicate + 2)
+        )
+      } else {
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          messages.workspaceProjection.errors.changeFailed
+        )
+      }
+      expect(bridge.selectTab).not.toHaveBeenCalled()
+      expect(bridge.restartTerminal).not.toHaveBeenCalled()
+    }
+  )
+
+  it('reports a rejected tab rename and preserves its current title', async () => {
+    const bridge = createBridge()
+    vi.mocked(bridge.updateTab).mockRejectedValueOnce(new Error('rename was rejected'))
+    vi.spyOn(requestDialogs, 'requestText').mockResolvedValueOnce('Build logs')
+    window.desktopBridge = bridge
+    render(<App />)
+
+    const actions = await screen.findByRole('button', { name: 'M2 tests tab actions' })
+    fireEvent.keyDown(actions, { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename tab' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      messages.workspaceProjection.errors.changeFailed
+    )
+    expect(screen.getByRole('tab', { name: 'M2 tests' })).toBeInTheDocument()
   })
 
   it('tracks and executes the active command-palette option', async () => {

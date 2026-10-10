@@ -510,9 +510,8 @@ export const messages = {
       actions: (title: string) => `${title} tab actions`,
       moveLeft: (title: string) => `Move ${title} left`,
       moveRight: (title: string) => `Move ${title} right`,
-      moveOrSplit: (title: string) => `Move or split ${title}`,
-      keyboardDestinations: 'Keyboard tab destinations',
-      destinations: 'Tab destinations…',
+      moveToPaneMenu: 'Move to pane',
+      moveToSplitMenu: 'Move to new split',
       moveToPane: (paneName: string) => `Move to ${paneName}`,
       splitPane: (paneName: string, direction: PaneDropDirection) =>
         `Split ${paneName} ${direction}`,

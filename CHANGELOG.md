@@ -7,6 +7,18 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.12] - 2026-10-10
+
+### Added
+
+- Rename terminal tabs from their own right-click menu or the tab actions menu. Custom titles persist after reopening the app, and renaming keeps the terminal running.
+- Show Duplicate, Split right/down, Move, and Close alongside Rename in both tab menus. Actions target the clicked tab, including inactive tabs.
+- Group pane destinations into submenus so the main tab actions remain visible with several split panes.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+
 ## [0.2.1-alpha.11] - 2026-10-09
 
 ### Fixed

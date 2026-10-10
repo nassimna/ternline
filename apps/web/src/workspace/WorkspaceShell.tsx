@@ -3625,8 +3625,10 @@ function PaneView({
                   <PaneTab
                     key={tab.id}
                     onMutation={onMutation}
+                    onTabAction={onTabAction}
                     pane={pane}
                     selected={tab.id === selectedTab?.id}
+                    sshProfile={sshProfile}
                     tab={tab}
                     workspace={workspace}
                   />
@@ -3639,6 +3641,7 @@ function PaneView({
               onMutation={onMutation}
               onTabAction={onTabAction}
               pane={pane}
+              sshProfile={sshProfile}
               tab={selectedTab}
               workspace={workspace}
             />
@@ -3709,18 +3712,23 @@ function PaneView({
 
 function PaneTab({
   onMutation,
+  onTabAction,
   pane,
   selected,
+  sshProfile,
   tab,
   workspace
 }: MutationOwner & {
+  onTabAction: TabActionHandler
   pane: PaneSnapshot
   selected: boolean
+  sshProfile: SavedSshWorkspace | undefined
   tab: TabSnapshot
   workspace: WorkspaceSnapshot
 }): React.JSX.Element {
   const title = displayTabTitle(tab)
   const [renaming, setRenaming] = useState(false)
+  const renameRequested = useRef(false)
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tabDragId(tab.id),
     data: { type: 'tab', tabId: tab.id, paneId: pane.id }
@@ -3738,142 +3746,175 @@ function PaneTab({
       )
   }
   return (
-    <Card asChild variant="paneTab">
-      <div
-        ref={setNodeRef}
-        className={selected ? 'pane-tab active' : 'pane-tab'}
-        data-selected={selected}
-        role="presentation"
-        {...pointerDragListeners(listeners)}
-        style={{
-          transform: transform
-            ? `translate3d(${String(transform.x)}px, ${String(transform.y)}px, 0)`
-            : undefined,
-          transition,
-          opacity: isDragging ? 0.55 : 1
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <Card asChild variant="paneTab">
+          <div
+            ref={setNodeRef}
+            className={selected ? 'pane-tab active' : 'pane-tab'}
+            data-selected={selected}
+            role="presentation"
+            {...pointerDragListeners(listeners)}
+            style={{
+              transform: transform
+                ? `translate3d(${String(transform.x)}px, ${String(transform.y)}px, 0)`
+                : undefined,
+              transition,
+              opacity: isDragging ? 0.55 : 1
+            }}
+          >
+            {renaming ? (
+              <Input
+                controlSize="small"
+                aria-label={messages.workspaceShell.tab.rename}
+                autoFocus
+                className="pane-tab-rename"
+                defaultValue={title}
+                onBlur={(event) => commitRename(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  event.stopPropagation()
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    commitRename(event.currentTarget.value)
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setRenaming(false)
+                  }
+                }}
+                type="text"
+              />
+            ) : (
+              <>
+                <TabsTrigger
+                  value={tab.id}
+                  variant="pane"
+                  aria-controls={panePanelDomId(pane.id)}
+                  className="pane-tab-select"
+                  data-selected={selected ? 'true' : 'false'}
+                  data-tab-id={tab.id}
+                  id={tabDomId(tab.id)}
+                  onClick={() => {
+                    if (!selected)
+                      void onMutation(
+                        window.desktopBridge
+                          .selectTab({ workspaceId: workspace.id, tabId: tab.id })
+                          .catch(async (error: unknown) => {
+                            if (
+                              !(error instanceof Error) ||
+                              !error.message.includes(
+                                '[agent-workspace-protocol-error:tab_already_selected]'
+                              )
+                            )
+                              throw error
+                            const { snapshot } = await window.desktopBridge.listWorkspaces()
+                            const current = snapshot.workspaces.find(
+                              ({ id }) => id === workspace.id
+                            )
+                            const currentPane = current?.panes.find(({ id }) => id === pane.id)
+                            if (
+                              current?.selectedPaneId !== pane.id ||
+                              currentPane?.selectedTabId !== tab.id
+                            )
+                              throw error
+                            return { revision: snapshot.revision, snapshot }
+                          })
+                      )
+                  }}
+                  onDoubleClick={() => {
+                    setRenaming(true)
+                  }}
+                  onKeyDown={(event) => {
+                    const action =
+                      event.key === 'ArrowRight'
+                        ? 'next'
+                        : event.key === 'ArrowLeft'
+                          ? 'previous'
+                          : event.key === 'Home'
+                            ? 'home'
+                            : event.key === 'End'
+                              ? 'end'
+                              : undefined
+                    if (!action) return
+                    const tabs = [
+                      ...(event.currentTarget
+                        .closest('[role="tablist"]')
+                        ?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
+                    ]
+                    const nextIndex = rovingFocusIndex(
+                      tabs.indexOf(event.currentTarget),
+                      tabs.length,
+                      action
+                    )
+                    const next = tabs[nextIndex]
+                    if (!next) return
+                    event.preventDefault()
+                    next.focus()
+                    next.click()
+                  }}
+
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  type="button"
+                >
+                  {tab.content.kind === 'terminal' ? (
+                    <TerminalSquare size={12} />
+                  ) : (
+                    <Globe2 aria-hidden="true" data-tab-kind-icon="browser" size={12} />
+                  )}
+                  <span className="pane-tab-title">{title}</span>
+                  <AttentionBadge
+                    announce={false}
+                    attention={tab.attention}
+                    compact
+                    label={title}
+                  />
+                </TabsTrigger>
+                {/* Mouse affordance only: the accessible close control lives in the
+              tab actions menu, because a tablist may only own tabs. */}
+                <Button
+                  size="iconSmall"
+                  variant="ghost"
+                  aria-hidden="true"
+                  className="tab-close"
+                  onClick={() =>
+                    void onMutation(
+                      window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
+                    )
+                  }
+                  tabIndex={-1}
+                  title={messages.workspaceShell.tab.close(title)}
+                  type="button"
+                >
+                  <X size={11} />
+                </Button>
+              </>
+            )}
+          </div>
+        </Card>
+      </ContextMenuTrigger>
+      <ContextMenuContent
+        aria-label={messages.workspaceShell.tab.actions(title)}
+        onCloseAutoFocus={(event) => {
+          if (!renameRequested.current) return
+          event.preventDefault()
+          renameRequested.current = false
+          setRenaming(true)
         }}
       >
-        {renaming ? (
-          <Input
-            controlSize="small"
-            aria-label={messages.workspaceShell.tab.rename}
-            autoFocus
-            className="pane-tab-rename"
-            defaultValue={title}
-            onBlur={(event) => commitRename(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              event.stopPropagation()
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                commitRename(event.currentTarget.value)
-              } else if (event.key === 'Escape') {
-                event.preventDefault()
-                setRenaming(false)
-              }
-            }}
-            type="text"
-          />
-        ) : (
-          <>
-            <TabsTrigger
-              value={tab.id}
-              variant="pane"
-              aria-controls={panePanelDomId(pane.id)}
-              className="pane-tab-select"
-              data-selected={selected ? 'true' : 'false'}
-              data-tab-id={tab.id}
-              id={tabDomId(tab.id)}
-              onClick={() => {
-                if (!selected)
-                  void onMutation(
-                    window.desktopBridge
-                      .selectTab({ workspaceId: workspace.id, tabId: tab.id })
-                      .catch(async (error: unknown) => {
-                        if (
-                          !(error instanceof Error) ||
-                          !error.message.includes(
-                            '[agent-workspace-protocol-error:tab_already_selected]'
-                          )
-                        )
-                          throw error
-                        const { snapshot } = await window.desktopBridge.listWorkspaces()
-                        const current = snapshot.workspaces.find(({ id }) => id === workspace.id)
-                        const currentPane = current?.panes.find(({ id }) => id === pane.id)
-                        if (
-                          current?.selectedPaneId !== pane.id ||
-                          currentPane?.selectedTabId !== tab.id
-                        )
-                          throw error
-                        return { revision: snapshot.revision, snapshot }
-                      })
-                  )
-              }}
-              onDoubleClick={() => {
-                setRenaming(true)
-              }}
-              onKeyDown={(event) => {
-                const action =
-                  event.key === 'ArrowRight'
-                    ? 'next'
-                    : event.key === 'ArrowLeft'
-                      ? 'previous'
-                      : event.key === 'Home'
-                        ? 'home'
-                        : event.key === 'End'
-                          ? 'end'
-                          : undefined
-                if (!action) return
-                const tabs = [
-                  ...(event.currentTarget
-                    .closest('[role="tablist"]')
-                    ?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])
-                ]
-                const nextIndex = rovingFocusIndex(
-                  tabs.indexOf(event.currentTarget),
-                  tabs.length,
-                  action
-                )
-                const next = tabs[nextIndex]
-                if (!next) return
-                event.preventDefault()
-                next.focus()
-                next.click()
-              }}
-
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              type="button"
-            >
-              {tab.content.kind === 'terminal' ? (
-                <TerminalSquare size={12} />
-              ) : (
-                <Globe2 aria-hidden="true" data-tab-kind-icon="browser" size={12} />
-              )}
-              <span className="pane-tab-title">{title}</span>
-              <AttentionBadge announce={false} attention={tab.attention} compact label={title} />
-            </TabsTrigger>
-            {/* Mouse affordance only: the accessible close control lives in the
-              tab actions menu, because a tablist may only own tabs. */}
-            <Button
-              size="iconSmall"
-              variant="ghost"
-              aria-hidden="true"
-              className="tab-close"
-              onClick={() =>
-                void onMutation(
-                  window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
-                )
-              }
-              tabIndex={-1}
-              title={messages.workspaceShell.tab.close(title)}
-              type="button"
-            >
-              <X size={11} />
-            </Button>
-          </>
-        )}
-      </div>
-    </Card>
+        <PaneTabMenuItems
+          context
+          onMutation={onMutation}
+          onRename={() => {
+            renameRequested.current = true
+          }}
+          onTabAction={onTabAction}
+          pane={pane}
+          sshProfile={sshProfile}
+          tab={tab}
+          workspace={workspace}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -3881,16 +3922,129 @@ function PaneTabUtilities({
   onMutation,
   onTabAction,
   pane,
+  sshProfile,
   tab,
   workspace
 }: MutationOwner & {
   onTabAction: TabActionHandler
   pane: PaneSnapshot
+  sshProfile: SavedSshWorkspace | undefined
+  tab: TabSnapshot
+  workspace: WorkspaceSnapshot
+}): React.JSX.Element {
+  const title = displayTabTitle(tab)
+  const renameRequested = useRef(false)
+  const rename = async (): Promise<void> => {
+    const customTitle = (await requestText(messages.workspaceShell.tab.rename, title))?.trim()
+    if (customTitle && customTitle !== title)
+      await onMutation(
+        window.desktopBridge.updateTab({
+          workspaceId: workspace.id,
+          tabId: tab.id,
+          customTitle: { value: customTitle }
+        })
+      )
+  }
+  return (
+    <div
+      aria-label={messages.workspaceShell.tab.actions(title)}
+      className="pane-tab-utilities"
+      role="toolbar"
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label={messages.workspaceShell.tab.actions(title)}
+            className="tab-drop-actions-control"
+            title={messages.workspaceShell.tab.actions(title)}
+            size="icon"
+            variant="ghost"
+          >
+            <MoreHorizontal aria-hidden="true" size={13} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          aria-label={messages.workspaceShell.tab.actions(title)}
+          onCloseAutoFocus={() => {
+            if (!renameRequested.current) return
+            renameRequested.current = false
+            void rename()
+          }}
+        >
+          <PaneTabMenuItems
+            context={false}
+            onMutation={onMutation}
+            onRename={() => {
+              renameRequested.current = true
+            }}
+            onTabAction={onTabAction}
+            pane={pane}
+            sshProfile={sshProfile}
+            tab={tab}
+            workspace={workspace}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+function PaneTabMenuItems({
+  context,
+  onMutation,
+  onRename,
+  onTabAction,
+  pane,
+  sshProfile,
+  tab,
+  workspace
+}: MutationOwner & {
+  context: boolean
+  onRename: () => void
+  onTabAction: TabActionHandler
+  pane: PaneSnapshot
+  sshProfile: SavedSshWorkspace | undefined
   tab: TabSnapshot
   workspace: WorkspaceSnapshot
 }): React.JSX.Element {
   const title = displayTabTitle(tab)
   const index = pane.tabIds.indexOf(tab.id)
+  const capabilities = useProjectionStore((state) => state.identity?.capabilities)
+  const canDuplicate =
+    capabilities?.includes('multi-window-v1') === true &&
+    capabilities.includes('tab.duplicateExact') &&
+    window.desktopBridge.listWindows !== undefined &&
+    window.desktopBridge.duplicateTab !== undefined
+  const ActionItem = context ? ContextMenuItem : DropdownMenuItem
+  const ActionSeparator = context ? ContextMenuSeparator : DropdownMenuSeparator
+  const ActionSub = context ? ContextMenuSub : DropdownMenuSub
+  const ActionSubTrigger = context ? ContextMenuSubTrigger : DropdownMenuSubTrigger
+  const ActionSubContent = context ? ContextMenuSubContent : DropdownMenuSubContent
+  const duplicate = async (): Promise<MutationResult> => {
+    const { snapshot } = await window.desktopBridge.listWorkspaces()
+    const topology = await window.desktopBridge.listWindows!()
+    const currentWorkspace = snapshot.workspaces.find(({ id }) => id === workspace.id)
+    const currentTab = currentWorkspace?.tabs.find(({ id }) => id === tab.id)
+    const currentPane = currentWorkspace?.panes.find(({ id }) => id === currentTab?.paneId)
+    const currentWindow = topology.windows.find(({ workspaceIds }) =>
+      workspaceIds.includes(workspace.id)
+    )
+    if (!currentWorkspace || !currentPane || !currentWindow)
+      throw new Error('The tab is no longer available')
+    await window.desktopBridge.duplicateTab!({
+      mutation: multiWindowMutation(topology),
+      source: {
+        windowId: currentWindow.windowId,
+        workspaceId: workspace.id,
+        paneId: currentPane.id,
+        tabId: tab.id,
+        expectedWindowRevision: currentWindow.revision
+      },
+      target: exactPlacement(currentWindow, currentWorkspace, currentPane)
+    })
+    const { snapshot: nextSnapshot } = await window.desktopBridge.listWorkspaces()
+    return { revision: nextSnapshot.revision, snapshot: nextSnapshot }
+  }
   const move = (delta: number): void => {
     const desiredIndex = Math.max(0, Math.min(pane.tabIds.length - 1, index + delta))
     if (desiredIndex !== index)
@@ -3922,69 +4076,76 @@ function PaneTabUtilities({
     }
   }
   return (
-    <div
-      aria-label={messages.workspaceShell.tab.actions(title)}
-      className="pane-tab-utilities"
-      role="toolbar"
-    >
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={messages.workspaceShell.tab.moveOrSplit(title)}
-            className="tab-drop-actions-control"
-            title={messages.workspaceShell.tab.keyboardDestinations}
-            size="icon"
-            variant="ghost"
-          >
-            <MoreHorizontal aria-hidden="true" size={13} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent aria-label={messages.workspaceShell.tab.destinations}>
-          <DropdownMenuItem disabled={index === 0} onSelect={() => act('previous')}>
-            {messages.workspaceShell.tab.moveLeft(title)}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={index === pane.tabIds.length - 1}
-            onSelect={() => act('next')}
-          >
-            {messages.workspaceShell.tab.moveRight(title)}
-          </DropdownMenuItem>
+    <>
+      <ActionItem onSelect={onRename}>{messages.workspaceShell.tab.rename}</ActionItem>
+      <ActionItem disabled={!canDuplicate} onSelect={() => void onMutation(duplicate())}>
+        {messages.commands.tab.duplicate.title}
+      </ActionItem>
+      <ActionSeparator />
+      <ActionItem
+        onSelect={() =>
+          void splitWithTerminal(workspace, pane.id, 'horizontal', onMutation, sshProfile)
+        }
+      >
+        {messages.workspaceShell.pane.splitRight}
+      </ActionItem>
+      <ActionItem
+        onSelect={() =>
+          void splitWithTerminal(workspace, pane.id, 'vertical', onMutation, sshProfile)
+        }
+      >
+        {messages.workspaceShell.pane.splitDown}
+      </ActionItem>
+      <ActionSeparator />
+      <ActionItem disabled={index === 0} onSelect={() => act('previous')}>
+        {messages.workspaceShell.tab.moveLeft(title)}
+      </ActionItem>
+      <ActionItem disabled={index === pane.tabIds.length - 1} onSelect={() => act('next')}>
+        {messages.workspaceShell.tab.moveRight(title)}
+      </ActionItem>
+      <ActionSub>
+        <ActionSubTrigger>{messages.workspaceShell.tab.moveToPaneMenu}</ActionSubTrigger>
+        <ActionSubContent>
           {workspace.panes.map((targetPane) => (
-            <DropdownMenuItem
-              key={`move:${targetPane.id}`}
-              onSelect={() => act(`move:${targetPane.id}`)}
-            >
+            <ActionItem key={targetPane.id} onSelect={() => act(`move:${targetPane.id}`)}>
               {messages.workspaceShell.tab.moveToPane(paneLabel(targetPane, workspace))}
-            </DropdownMenuItem>
+            </ActionItem>
           ))}
+        </ActionSubContent>
+      </ActionSub>
+      <ActionSub>
+        <ActionSubTrigger disabled={workspace.panes.length === 1 && pane.tabIds.length === 1}>
+          {messages.workspaceShell.tab.moveToSplitMenu}
+        </ActionSubTrigger>
+        <ActionSubContent>
           {workspace.panes.flatMap((targetPane) =>
             targetPane.id === pane.id && pane.tabIds.length === 1
               ? []
               : (['left', 'right', 'top', 'bottom'] as const).map((direction) => (
-                  <DropdownMenuItem
-                    key={`split:${targetPane.id}:${direction}`}
+                  <ActionItem
+                    key={`${targetPane.id}:${direction}`}
                     onSelect={() => act(`split:${targetPane.id}:${direction}`)}
                   >
                     {messages.workspaceShell.tab.splitPane(
                       paneLabel(targetPane, workspace),
                       direction
                     )}
-                  </DropdownMenuItem>
+                  </ActionItem>
                 ))
           )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onSelect={() =>
-              void onMutation(
-                window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
-              )
-            }
-          >
-            {messages.workspaceShell.tab.close(title)}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+        </ActionSubContent>
+      </ActionSub>
+      <ActionSeparator />
+      <ActionItem
+        onSelect={() =>
+          void onMutation(
+            window.desktopBridge.closeTab({ workspaceId: workspace.id, tabId: tab.id })
+          )
+        }
+      >
+        {messages.workspaceShell.tab.close(title)}
+      </ActionItem>
+    </>
   )
 }
 
