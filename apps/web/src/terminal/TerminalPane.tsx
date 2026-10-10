@@ -100,6 +100,7 @@ export interface TerminalPaneProps {
   onMutation: (operation: Promise<MutationResult>) => Promise<boolean>
   onProcessTitleChange?: (title: string) => void
   onToolsOpenChange: (open: boolean) => void
+  ssh?: boolean
   tabId: string
   terminalId: string
   title: string
@@ -111,6 +112,7 @@ export function TerminalPane({
   onMutation,
   onProcessTitleChange,
   onToolsOpenChange,
+  ssh = false,
   tabId,
   terminalId,
   title: initialTitle,
@@ -145,6 +147,8 @@ export function TerminalPane({
   const [linkTarget, setLinkTarget] = useState<string | null>(null)
   const [identity, setIdentity] = useState<TerminalIdentity | null>(null)
   const [paneError, setPaneError] = useState<PaneError | null>(null)
+  const [restarting, setRestarting] = useState(false)
+  const restartingRef = useRef(false)
   const [readingHistory, setReadingHistory] = useState(false)
   const [newOutput, setNewOutput] = useState(false)
 
@@ -447,6 +451,7 @@ export function TerminalPane({
         serviceRows = snapshot.terminal.rows
         serviceCols = snapshot.terminal.cols
         terminalExited ||= snapshot.terminal.exited
+        terminal.options.disableStdin = terminalExited
         if (snapshot.terminal.exited) {
           setExit({ code: snapshot.terminal.exitCode ?? 1, signal: null })
         } else if (!terminalExited) {
@@ -467,7 +472,11 @@ export function TerminalPane({
         // reset, incomplete projection into a safe checkpoint at the latest sequence.
         void serializeAttachmentTransition(terminalId, captureCheckpoint).catch(() => undefined)
         if (terminalExited) {
-          setStatus(messages.terminalPane.status.processExited)
+          setStatus(
+            ssh
+              ? messages.terminalPane.status.sshDisconnected
+              : messages.terminalPane.status.processExited
+          )
         } else if (sizeSynced) {
           setStatus(
             snapshot.reconstructionComplete
@@ -509,14 +518,20 @@ export function TerminalPane({
         scheduler.request()
       } else if (event.event === 'terminal.exited') {
         terminalExited = true
+        terminal.options.disableStdin = true
+        setPaneError(null)
         setExit({ code: event.data.exitCode, signal: event.data.signal })
-        setStatus(messages.terminalPane.status.processExited)
+        setStatus(
+          ssh
+            ? messages.terminalPane.status.sshDisconnected
+            : messages.terminalPane.status.processExited
+        )
       }
     })
 
     const dataDisposable = terminal.onData((data) => {
       const terminalId = terminalIdRef.current
-      if (!terminalId) {
+      if (!terminalId || !isCurrent() || terminalExited) {
         return
       }
       // Keep confirmation and sending in the same queue so later keystrokes cannot
@@ -525,13 +540,27 @@ export function TerminalPane({
         multilinePasteProtectionRef.current && data.length > 1 && /[\r\n]/.test(data)
       inputQueue = inputQueue
         .then(async () => {
+          if (!isCurrent() || terminalExited) return
           if (needsConfirmation) {
             const lines = data.split(/\r\n|\r|\n/).length
             if (!(await confirmAction(messages.terminalPane.pasteLinesPrompt(lines)))) return
           }
+          if (!isCurrent() || terminalExited) return
           await window.desktopBridge.sendTerminalInput(terminalId, data)
         })
-        .catch((error: unknown) => reportPaneError(messages.terminalPane.errors.inputFailed, error))
+        .catch((error: unknown) => {
+          if (!isCurrent()) return
+          if (
+            error instanceof Error &&
+            error.message.includes('[agent-workspace-protocol-error:terminal_exited]')
+          ) {
+            terminalExited = true
+            terminal.options.disableStdin = true
+            void restore(terminalId, false)
+            return
+          }
+          if (!terminalExited) reportPaneError(messages.terminalPane.errors.inputFailed, error)
+        })
     })
     const titleDisposable = terminal.onTitleChange((nextTitle) => {
       const sanitized = sanitizeTitle(nextTitle)
@@ -600,7 +629,7 @@ export function TerminalPane({
       // unmounted. Switching workspaces detaches the visible terminal pane, but the terminal
       // session and its foreground task continue running in the service.
     }
-  }, [terminalId])
+  }, [terminalId, ssh])
 
   const changeFontSize = (next: number): void => {
     const clamped = Math.min(24, Math.max(9, next))
@@ -642,35 +671,58 @@ export function TerminalPane({
     }
   }
 
+  const restartStatus = ssh
+    ? messages.terminalPane.status.reconnecting
+    : messages.terminalPane.status.restartingShell
+  const exitMessage = ssh
+    ? exit?.code === 0
+      ? messages.terminalPane.exit.sshEnded
+      : messages.terminalPane.exit.sshDisconnected
+    : exit?.signal
+      ? messages.terminalPane.exit.withSignal(exit.signal)
+      : messages.terminalPane.exit.withCode(exit?.code)
+  const recoveryMessage = restarting ? restartStatus : (paneError?.message ?? exitMessage)
+
   const restart = async (): Promise<void> => {
     const terminal = terminalRef.current
-    if (!terminal) {
-      return
-    }
+    if (!terminal || restartingRef.current) return
     const restartingTerminalId = terminalIdRef.current
-    setStatus(messages.terminalPane.status.restartingShell)
-    let succeeded = false
+    restartingRef.current = true
+    setRestarting(true)
+    setPaneError(null)
+    setStatus(restartStatus)
     try {
-      succeeded = await onMutation(window.desktopBridge.restartTerminal({ workspaceId, tabId }))
-      if (
-        succeeded &&
-        terminalRef.current === terminal &&
-        terminalIdRef.current === restartingTerminalId
-      ) {
-        terminal.reset()
-        setExit(null)
-        setPaneError(null)
+      const result = await window.desktopBridge.restartTerminal({ workspaceId, tabId })
+      if (!(await onMutation(Promise.resolve(result)))) {
+        throw new Error(messages.terminalPane.errors.restartFailed)
       }
-    } catch {
-      // The mutation owner normally converts rejection to `false`; keep this handler non-rejecting
-      // if a different owner violates that contract.
-    } finally {
+    } catch (error) {
       if (terminalRef.current === terminal && terminalIdRef.current === restartingTerminalId) {
+        const detail =
+          error instanceof Error
+            ? error.message
+                .replace(/^Error invoking remote method '[^']+': (?:Error: )*/u, '')
+                .replace(/^\[agent-workspace-protocol-error:[^\]]+\]\s*/u, '')
+            : messages.terminalPane.errors.serviceUnavailable
+        setPaneError({
+          message: messages.terminalPane.errors.withDetail(
+            ssh
+              ? messages.terminalPane.errors.reconnectFailed
+              : messages.terminalPane.errors.restartFailed,
+            detail
+          ),
+          recoverable: true
+        })
         setStatus(
-          succeeded
-            ? messages.terminalPane.status.connected
-            : (paneError?.message ?? messages.terminalPane.status.processExited)
+          ssh
+            ? messages.terminalPane.status.sshDisconnected
+            : messages.terminalPane.status.processExited
         )
+      }
+    } finally {
+      restartingRef.current = false
+      if (terminalRef.current === terminal && terminalIdRef.current === restartingTerminalId) {
+        setRestarting(false)
       }
     }
   }
@@ -849,19 +901,18 @@ export function TerminalPane({
             {newOutput ? messages.terminalPane.newOutput : messages.terminalPane.jumpToLatest}
           </Button>
         )}
-        {(paneError || exit) && (
+        {(paneError || exit || restarting) && (
           <Alert asChild variant={paneError ? 'destructive' : 'default'}>
             <div className="terminal-exit" role={paneError ? 'alert' : 'status'}>
-              <span>
-                {paneError
-                  ? paneError.message
-                  : exit?.signal
-                    ? messages.terminalPane.exit.withSignal(exit.signal)
-                    : messages.terminalPane.exit.withCode(exit?.code)}
-              </span>
-              {(paneError?.recoverable || exit) && (
-                <Button variant="primary" onClick={() => void restart()} type="button">
-                  {messages.terminalPane.exit.restart}
+              <span>{recoveryMessage}</span>
+              {(paneError?.recoverable || exit || restarting) && (
+                <Button
+                  variant="primary"
+                  disabled={restarting}
+                  onClick={() => void restart()}
+                  type="button"
+                >
+                  {ssh ? messages.terminalPane.exit.reconnect : messages.terminalPane.exit.restart}
                 </Button>
               )}
             </div>

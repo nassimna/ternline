@@ -378,3 +378,139 @@ test('tests SSH connections, restores remote terminals and uses saved details fo
     await rm(profileDirectory, { force: true, recursive: true, maxRetries: 3, retryDelay: 100 })
   }
 })
+
+test('reconnects an exited SSH terminal through the visible recovery button', async () => {
+  test.setTimeout(120_000)
+  const profileDirectory = await mkdtemp(join(homedir(), '.cache/ternline-ssh-recovery-'))
+  let application
+  try {
+    const binDirectory = join(profileDirectory, 'bin')
+    await mkdir(binDirectory)
+    await writeFile(join(profileDirectory, '.zshrc'), '')
+    await writeFile(join(profileDirectory, '.zshenv'), '')
+    await writeFile(
+      join(binDirectory, 'ssh'),
+      `#!/bin/sh
+for arg in "$@"; do last="$arg"; done
+if [ "$last" = true ]; then
+  sleep 1
+  if [ -f "$TERNLINE_SSH_FIXTURE/offline" ]; then
+    printf 'Host unreachable.\\n' >&2
+    exit 255
+  fi
+  exit 0
+fi
+printf 'SSH_READY\\n'
+while IFS= read -r line; do
+  if [ "$line" = drop ]; then
+    printf 'Read from remote host: Operation timed out\\n' >&2
+    exit 255
+  fi
+  printf 'SSH_REPLY:%s\\n' "$line"
+done
+`
+    )
+    await chmod(join(binDirectory, 'ssh'), 0o700)
+    const entry = join(profileDirectory, 'main.cjs')
+    await writeFile(
+      entry,
+      `const {BrowserWindow,dialog}=require('electron');
+BrowserWindow.prototype.show=function(){};
+dialog.showMessageBox=async()=>({response:0,checkboxChecked:false});
+require(${JSON.stringify(join(desktopDirectory, 'out/main/index.js'))});`
+    )
+    const harness = await createSshHarness(profileDirectory)
+    const environment = { ...process.env }
+    delete environment.ELECTRON_RUN_AS_NODE
+    application = await electron.launch({
+      executablePath: harness.executablePath,
+      args: [entry, `--user-data-dir=${profileDirectory}`, '--mute-audio'],
+      env: {
+        ...environment,
+        ...harness.electronEnvironment,
+        PATH: `${binDirectory}:${process.env.PATH}`,
+        ZDOTDIR: profileDirectory,
+        TERNLINE_SSH_FIXTURE: profileDirectory,
+        TMPDIR: harness.runtimeDirectory,
+        XDG_RUNTIME_DIR: harness.runtimeDirectory
+      }
+    })
+    const page = await application.firstWindow()
+    page.setDefaultTimeout(15_000)
+    await page.getByRole('button', { name: 'Create SSH workspace' }).click()
+    await page.getByRole('textbox', { name: 'Workspace name' }).fill('SSH recovery fixture')
+    await page.getByRole('textbox', { name: 'SSH host or alias' }).fill('fixture-host')
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click()
+    await expect(page.getByText('Connection successful.', { exact: false })).toBeVisible()
+    await page.getByRole('button', { name: 'Create and pin' }).click()
+    const pane = page.locator('.terminal-pane').last()
+    await page.getByRole('button', { name: 'Open terminal tools', exact: true }).click()
+    await pane.getByRole('checkbox', { name: 'Screen reader mode' }).check()
+    await expect(pane.locator('.xterm-accessibility-tree')).toContainText('SSH_READY')
+    const oldTerminalId = await pane.getAttribute('data-terminal-id')
+    await pane.locator('.xterm-helper-textarea').focus()
+    await page.keyboard.type('drop')
+    await page.keyboard.press('Enter')
+    await expect(pane.getByRole('button', { name: 'Reconnect', exact: true })).toBeVisible()
+    await page.keyboard.type('after-drop')
+    await expect(pane.locator('.terminal-exit')).toContainText('SSH connection lost.')
+    await expect(pane.locator('.terminal-exit')).not.toContainText('terminal:send')
+    await expect(pane.locator('.xterm-accessibility-tree')).toContainText('SSH_READY')
+
+    for (const theme of ['dark', 'light']) {
+      for (const density of ['comfortable', 'compact']) {
+        for (const width of [1200, 900]) {
+          await application.evaluate(({ BrowserWindow }, width) => {
+            BrowserWindow.getAllWindows()[0].setContentSize(width, 800)
+          }, width)
+          await page.evaluate(
+            ({ theme, density }) => {
+              globalThis.document.documentElement.dataset.theme = theme
+              globalThis.document.documentElement.dataset.density = density
+            },
+            { theme, density }
+          )
+          const reconnect = pane.getByRole('button', { name: 'Reconnect', exact: true })
+          // A real pointer hit must reach the button rather than xterm's canvas.
+          await reconnect.click({ trial: true })
+          const stageBounds = await pane.locator('.terminal-stage').boundingBox()
+          const bannerBounds = await pane.locator('.terminal-exit').boundingBox()
+          expect(bannerBounds.x).toBeGreaterThanOrEqual(stageBounds.x)
+          expect(bannerBounds.x + bannerBounds.width).toBeLessThanOrEqual(
+            stageBounds.x + stageBounds.width
+          )
+          await page.screenshot({
+            path: join(evidenceDirectory, `ssh-disconnected-${theme}-${density}-${width}.png`)
+          })
+        }
+      }
+    }
+
+    await writeFile(join(profileDirectory, 'offline'), '')
+    const reconnect = pane.getByRole('button', { name: 'Reconnect', exact: true })
+    await reconnect.click()
+    await expect(reconnect).toBeDisabled()
+    await expect(pane.locator('.terminal-exit')).toContainText('Reconnecting…')
+    await page.screenshot({ path: join(evidenceDirectory, 'ssh-reconnecting.png') })
+    await expect(pane.getByRole('alert')).toContainText('Host unreachable.')
+    await expect(pane.getByRole('alert')).not.toContainText('agent-workspace-protocol-error')
+    await expect(reconnect).toBeEnabled()
+    await expect(pane).toHaveAttribute('data-terminal-id', oldTerminalId)
+    await expect(pane.locator('.xterm-accessibility-tree')).toContainText('SSH_READY')
+    await page.screenshot({ path: join(evidenceDirectory, 'ssh-reconnect-failed.png') })
+    await rm(join(profileDirectory, 'offline'))
+    await reconnect.click()
+    await expect(pane).not.toHaveAttribute('data-terminal-id', oldTerminalId)
+    await expect(pane.locator('.terminal-statusbar')).toContainText('Connected')
+    await expect(pane.locator('.terminal-exit')).toHaveCount(0)
+    await pane.getByRole('checkbox', { name: 'Screen reader mode' }).check()
+    await pane.locator('.xterm-helper-textarea').focus()
+    await page.keyboard.type('RECOVERED')
+    await page.keyboard.press('Enter')
+    await expect(pane.locator('.xterm-accessibility-tree')).toContainText('SSH_REPLY:RECOVERED')
+    await page.screenshot({ path: join(evidenceDirectory, 'ssh-recovered.png') })
+  } finally {
+    await closeElectronApplication(application, { gracefulTimeoutMs: 10_000 })
+    await rm(profileDirectory, { recursive: true, force: true })
+  }
+})

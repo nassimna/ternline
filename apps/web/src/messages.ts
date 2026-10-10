@@ -398,13 +398,17 @@ export const messages = {
       connectedWithTruncatedScrollback:
         'Connected · earlier scrollback was truncated; terminal view reset safely',
       processExited: 'Process exited',
-      restartingShell: 'Restarting shell…'
+      restartingShell: 'Restarting shell…',
+      sshDisconnected: 'SSH disconnected',
+      reconnecting: 'Reconnecting…'
     },
     errors: {
       serviceUnavailable: 'The terminal service is unavailable.',
       resizeFailed: 'Terminal resize failed',
       attachFailed: 'Terminal attach failed',
       inputFailed: 'Terminal input failed',
+      reconnectFailed: 'Could not reconnect',
+      restartFailed: 'Could not restart terminal',
       copyFailed: 'Terminal selection could not be copied.',
       openLinkFailed: 'The terminal link could not be opened.',
       withDetail: (context: string, detail: string) => `${context}. ${detail}`
@@ -445,7 +449,10 @@ export const messages = {
     exit: {
       withSignal: (signal: string) => `Process exited with signal ${signal}`,
       withCode: (code: number | undefined) => `Process exited with code ${String(code)}`,
-      restart: 'Restart terminal'
+      restart: 'Restart terminal',
+      reconnect: 'Reconnect',
+      sshDisconnected: 'SSH connection lost. Reconnect to open a new remote shell.',
+      sshEnded: 'SSH session ended. Reconnect to open a new remote shell.'
     },
     processId: (processId: number) => `PID ${String(processId)}`,
     openLink: (target: string) => `Open ${target}`

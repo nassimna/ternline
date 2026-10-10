@@ -4272,6 +4272,7 @@ function TabContent({
   return terminalId ? (
     <TerminalPane
       key={terminalId}
+      ssh={Boolean(workspace.ssh)}
       onMutation={onMutation}
       onProcessTitleChange={(title) => onProcessTitleChange(tab.id, title)}
       onToolsOpenChange={onTerminalToolsOpenChange}
