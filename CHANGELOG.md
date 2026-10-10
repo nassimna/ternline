@@ -7,6 +7,18 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.13] - 2026-10-10
+
+### Fixed
+
+- Keep terminal recovery controls above xterm's canvas so Restart and Reconnect respond to clicks, with fully visible banners at narrow widths.
+- Stop input after a terminal exits, including queued paste confirmations, and show an SSH disconnect message instead of a raw terminal input error.
+- Show reconnect progress, prevent duplicate attempts, and preserve the disconnected output when SSH authentication or reachability checks fail. A successful retry opens a new remote shell.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+
 ## [0.2.1-alpha.12] - 2026-10-10
 
 ### Added

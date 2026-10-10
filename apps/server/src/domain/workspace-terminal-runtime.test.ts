@@ -155,6 +155,58 @@ describe('WorkspaceTerminalRuntime', () => {
     }
   })
 
+  it('keeps the existing SSH terminal when reconnect fails and replaces it after a successful retry', async () => {
+    const fixture = snapshot()
+    const ssh = { host: 'fixture-host', user: '', port: 22 }
+    fixture.state.workspaces[0]!.ssh = ssh
+    const processes: FakePty[] = []
+    const spawn = vi.fn(() => {
+      const process = new FakePty()
+      processes.push(process)
+      return Promise.resolve(process)
+    })
+    const service = new TerminalService({ spawn })
+    const close = vi.spyOn(service, 'close')
+    const checkConnection = vi.fn().mockRejectedValue(new Error('Host unreachable'))
+    const runtime = new WorkspaceTerminalRuntime(service, Date.now, checkConnection)
+    const commit = vi.fn().mockReturnValue({ revision: 1, replayed: false })
+    const store = {
+      exclusive: (operation: () => Promise<unknown>) => operation(),
+      preflightTerminalRestart: () => null,
+      readSnapshot: () => fixture.state,
+      commitTerminalRestart: commit
+    } as unknown as ApplicationStateStore
+    try {
+      await runtime.restore(fixture.state)
+      const tabId = fixture.terminalIds[0]!
+      const oldId = runtime.sessionForTab(tabId)
+      spawn.mockClear()
+      const request = {
+        workspaceId: fixture.workspaceId,
+        tabId,
+        expectedRevision: 0,
+        idempotencyEpoch: randomUUID(),
+        idempotencyKey: randomUUID()
+      }
+      await expect(runtime.restartTerminal(store, request)).rejects.toThrow('Host unreachable')
+      expect(checkConnection).toHaveBeenCalledWith(ssh)
+      expect(runtime.sessionForTab(tabId)).toBe(oldId)
+      expect(processes.every((process) => !process.killed)).toBe(true)
+      expect(spawn).not.toHaveBeenCalled()
+      expect(commit).not.toHaveBeenCalled()
+      checkConnection.mockResolvedValue(undefined)
+      const result = await runtime.restartTerminal(store, request)
+      expect(result.terminalId).not.toBe(oldId)
+      expect(runtime.sessionForTab(tabId)).toBe(result.terminalId)
+      expect(close).toHaveBeenCalledWith(oldId)
+      expect(processes.filter((process) => process.killed)).toHaveLength(1)
+      expect(spawn).toHaveBeenCalledOnce()
+      expect(commit).toHaveBeenCalledOnce()
+    } finally {
+      service.dispose()
+    }
+  })
+
   it('persists SSH profiles and restores every terminal on the SSH machine', async () => {
     const fixture = snapshot()
     const browser = fixture.state.workspaces[0]!.tabs[fixture.browserId]!.content

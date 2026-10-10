@@ -999,6 +999,7 @@ export class WorkspaceTerminalRuntime {
         .workspaces.find((item) => item.id === request.workspaceId)!
       const tab = workspace.tabs[request.tabId]!
       if (tab.content.kind !== 'terminal') throw new Error('Validated tab is not a terminal')
+      if (workspace.ssh) await this.checkSshConnection(workspace.ssh)
       const { terminal } = await this.createWorkspaceTerminal(
         tab.content.launch,
         {

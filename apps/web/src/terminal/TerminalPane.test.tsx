@@ -37,6 +37,7 @@ const terminalSpies = vi.hoisted(() => ({
         cols: number
         buffer: { active: { baseY: number; type: string; viewportY: number } }
         options: {
+          disableStdin?: boolean
           cursorBlink?: boolean
           fontFamily?: string
           fontSize?: number
@@ -693,14 +694,20 @@ describe('TerminalPane', () => {
 
     function Harness(): React.JSX.Element {
       const [mutationError, setMutationError] = useState<string | null>(null)
+      const [runtimeId, setRuntimeId] = useState(terminalId)
       return (
         <>
           {mutationError ? <div role="alert">{mutationError}</div> : null}
           <TerminalPane
+            key={runtimeId}
             onMutation={async (operation) => {
               try {
                 applyMutation(await operation)
                 setMutationError(null)
+                window.desktopBridge.attachTerminal = vi
+                  .fn()
+                  .mockResolvedValue(terminalAttachResult(false))
+                setRuntimeId('replacement-terminal')
                 return true
               } catch (error) {
                 setMutationError(error instanceof Error ? error.message : 'Restart failed')
@@ -709,7 +716,7 @@ describe('TerminalPane', () => {
             }}
             onToolsOpenChange={() => undefined}
             tabId={tabId}
-            terminalId={terminalId}
+            terminalId={runtimeId}
             title="Shell"
             toolsOpen={false}
             workspaceId={workspaceId}
@@ -751,20 +758,29 @@ describe('TerminalPane', () => {
       restartTerminal
     })
 
-    render(
-      <TerminalPane
-        onMutation={async (operation) => {
-          applyMutation(await operation)
-          return true
-        }}
-        onToolsOpenChange={() => undefined}
-        tabId={tabId}
-        terminalId={terminalId}
-        title="Shell"
-        toolsOpen={false}
-        workspaceId={workspaceId}
-      />
-    )
+    function Harness(): React.JSX.Element {
+      const [runtimeId, setRuntimeId] = useState(terminalId)
+      return (
+        <TerminalPane
+          key={runtimeId}
+          onMutation={async (operation) => {
+            applyMutation(await operation)
+            window.desktopBridge.attachTerminal = vi
+              .fn()
+              .mockResolvedValue(terminalAttachResult(false))
+            setRuntimeId('replacement-terminal')
+            return true
+          }}
+          onToolsOpenChange={() => undefined}
+          tabId={tabId}
+          terminalId={runtimeId}
+          title="Shell"
+          toolsOpen={false}
+          workspaceId={workspaceId}
+        />
+      )
+    }
+    render(<Harness />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Terminal attach failed. NotFound: terminal was pruned'
@@ -775,6 +791,116 @@ describe('TerminalPane', () => {
     expect(applyMutation).toHaveBeenCalledWith(result)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByText('Connected', { selector: '.terminal-statusbar span' })).toBeVisible()
+  })
+
+  it('does not send input after exit, including a paste awaiting confirmation', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    let receiveEvent: Parameters<DesktopBridge['onTerminalEvent']>[0] | undefined
+    let confirmPaste: ((value: boolean) => void) | undefined
+    vi.spyOn(requestDialogs, 'confirmAction').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          confirmPaste = resolve
+        })
+    )
+    const sendTerminalInput = vi.fn().mockResolvedValue(undefined)
+    window.desktopBridge = terminalBridge({
+      restartTerminal: vi.fn(),
+      sendTerminalInput,
+      onTerminalEvent: (listener) => {
+        receiveEvent = listener
+        return () => undefined
+      }
+    })
+    renderTerminalPane()
+    await screen.findByText('Connected', { selector: '.terminal-statusbar span' })
+    terminalSpies.onData?.('one\ntwo')
+    await waitFor(() => expect(confirmPaste).toBeDefined())
+    act(() =>
+      receiveEvent?.({
+        event: 'terminal.exited',
+        data: { terminalId, exitCode: 255, signal: null }
+      })
+    )
+    terminalSpies.onData?.('after exit')
+    await act(async () => {
+      confirmPaste?.(true)
+      await Promise.resolve()
+    })
+    expect(sendTerminalInput).not.toHaveBeenCalled()
+    expect(terminalSpies.instance?.options.disableStdin).toBe(true)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('recovers the exited state when input rejection arrives before the exit event', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    const attachTerminal = vi
+      .fn()
+      .mockResolvedValueOnce(terminalAttachResult(false))
+      .mockResolvedValue(terminalAttachResult(true))
+    const sendTerminalInput = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          "Error invoking remote method 'terminal:send': Error: [agent-workspace-protocol-error:terminal_exited] Terminal has exited"
+        )
+      )
+    window.desktopBridge = terminalBridge({
+      attachTerminal,
+      sendTerminalInput,
+      restartTerminal: vi.fn()
+    })
+    renderTerminalPane()
+    await screen.findByText('Connected', { selector: '.terminal-statusbar span' })
+    terminalSpies.onData?.('before exit event')
+    await screen.findByRole('button', { name: 'Restart terminal' })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText(messages.terminalPane.exit.withCode(1))).toBeVisible()
+    terminalSpies.onData?.('after rejection')
+    expect(sendTerminalInput).toHaveBeenCalledOnce()
+    expect(attachTerminal).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows SSH reconnect progress, blocks duplicate clicks, and keeps failures retryable', async () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+    let rejectRestart: ((error: Error) => void) | undefined
+    const restartTerminal = vi.fn(
+      () =>
+        new Promise<MutationResult>((_resolve, reject) => {
+          rejectRestart = reject
+        })
+    )
+    window.desktopBridge = terminalBridge({ restartTerminal, exited: true })
+    render(
+      <TerminalPane
+        ssh
+        onMutation={vi.fn()}
+        onToolsOpenChange={() => undefined}
+        tabId={tabId}
+        terminalId={terminalId}
+        title="SSH"
+        toolsOpen={false}
+        workspaceId={workspaceId}
+      />
+    )
+    const reconnect = await screen.findByRole('button', { name: 'Reconnect' })
+    const resetsBeforeReconnect = terminalSpies.reset.mock.calls.length
+    fireEvent.click(reconnect)
+    fireEvent.click(reconnect)
+    expect(reconnect).toBeDisabled()
+    expect(screen.getByText('Reconnecting…', { selector: '.terminal-exit span' })).toBeVisible()
+    expect(restartTerminal).toHaveBeenCalledOnce()
+    await act(async () => {
+      rejectRestart?.(
+        new Error(
+          "Error invoking remote method 'terminal:restart': Error: [agent-workspace-protocol-error:ssh_connection_failed] Host unreachable"
+        )
+      )
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not reconnect. Host unreachable')
+    expect(reconnect).toBeEnabled()
+    expect(terminalSpies.reset).toHaveBeenCalledTimes(resetsBeforeReconnect)
   })
 
   it('catches and reports terminal input rejection without an unhandled promise', async () => {

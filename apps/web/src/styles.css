@@ -888,11 +888,15 @@ body {
 
 .terminal-exit {
   position: absolute;
+  z-index: var(--aw-z-floating);
+  left: 18px;
+  width: auto;
   right: 18px;
   bottom: 18px;
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
   padding: 9px 10px 9px 12px;
 }
 
