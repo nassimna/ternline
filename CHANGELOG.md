@@ -7,6 +7,17 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.14] - 2026-10-25
+
+### Fixed
+
+- Keep terminal recovery messages below the output instead of covering the last lines, including long messages and narrow panes. Preserve the visible final output row when fitting the terminal.
+- Update locked Zod, Vite, and Undici versions to address the high-severity dependency advisories blocking release validation.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+
 ## [0.2.1-alpha.13] - 2026-10-10
 
 ### Fixed
