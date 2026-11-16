@@ -7,6 +7,21 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.15] - 2026-11-16
+
+### Fixed
+
+- Restore scheduled security scanning by using the exact Syft and Grype release tags.
+- Wait for terminal attachment to finish in recovery regression tests.
+
+### Changed
+
+- Update Testing Library, Tailwind's Vite integration, Zustand, Node types, and pinned CI/release actions. Keep the existing Radix version after detecting a focus regression in its update.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
+
 ## [0.2.1-alpha.14] - 2026-10-25
 
 ### Fixed
