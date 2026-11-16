@@ -11,6 +11,7 @@ will become binding at version 1.0.
 
 ### Fixed
 
+- Update the bundled Linux Node runtime to 22.23.4 to address the reported Brotli, DNS, and TLS security vulnerabilities.
 - Restore scheduled security scanning by using the exact Syft and Grype release tags.
 - Wait for terminal attachment to finish in recovery regression tests.
 
