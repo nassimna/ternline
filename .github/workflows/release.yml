@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  NODE_VERSION: 22.23.3
+  NODE_VERSION: 22.23.4
   PNPM_VERSION: 10.34.5
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
             os: ubuntu-latest
             builder: --linux AppImage deb rpm --x64
           - label: macos-arm64
-            os: macos-15
+            os: macos-26
             builder: --mac dmg zip --arm64
           - label: macos-x64
             os: macos-15-intel

@@ -80,7 +80,7 @@ explicitly deferred, not passed.
 
 ## Local development
 
-Requires Node.js 22.23.3, pnpm 10.34.5, a native-addon build toolchain, and Electron's Linux development libraries.
+Requires Node.js 22.23.4, pnpm 10.34.5, a native-addon build toolchain, and Electron's Linux development libraries.
 
 ```sh
 corepack enable

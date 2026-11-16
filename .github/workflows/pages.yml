@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: 22.23.3
+  NODE_VERSION: 22.23.4
   PNPM_VERSION: 10.34.5
 
 jobs:
@@ -77,7 +77,7 @@ jobs:
         env:
           SITE: https://nassimna.github.io
           WEBSITE_BASE_PATH: /ternline/
-      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: apps/website/dist
       - id: deployment
