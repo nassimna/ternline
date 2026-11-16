@@ -72,28 +72,28 @@ jobs:
           pnpm package:linux
           mkdir -p security-evidence
       - name: Create SPDX JSON SBOM
-        uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           path: release
-          syft-version: 1.48.0
+          syft-version: v1.48.0
           format: spdx-json
           output-file: security-evidence/agent-workspace.spdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Create CycloneDX JSON SBOM
-        uses: anchore/sbom-action@f8bdd1d8ac5e901a77a92f111440fdb1b593736b # v0.20.6
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           path: release
-          syft-version: 1.48.0
+          syft-version: v1.48.0
           format: cyclonedx-json
           output-file: security-evidence/agent-workspace.cyclonedx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Fail on high or critical packaged-artifact vulnerabilities
-        uses: anchore/scan-action@0d444ed77d83ee2ba7f5ced0d90d640a1281d762 # v7.3.0
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           path: release
-          grype-version: 0.116.0
+          grype-version: v0.116.0
           fail-build: true
           severity-cutoff: high
           output-format: sarif

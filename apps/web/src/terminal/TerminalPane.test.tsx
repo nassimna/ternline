@@ -744,7 +744,9 @@ describe('TerminalPane', () => {
     expect(applyMutation).toHaveBeenCalledWith(result)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Restart terminal' })).not.toBeInTheDocument()
-    expect(screen.getByText('Connected', { selector: '.terminal-statusbar span' })).toBeVisible()
+    expect(
+      await screen.findByText('Connected', { selector: '.terminal-statusbar span' })
+    ).toBeVisible()
     expect(restartTerminal).toHaveBeenCalledTimes(2)
   })
 
@@ -790,7 +792,9 @@ describe('TerminalPane', () => {
     await waitFor(() => expect(applyMutation).toHaveBeenCalledOnce())
     expect(applyMutation).toHaveBeenCalledWith(result)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByText('Connected', { selector: '.terminal-statusbar span' })).toBeVisible()
+    expect(
+      await screen.findByText('Connected', { selector: '.terminal-statusbar span' })
+    ).toBeVisible()
   })
 
   it('does not send input after exit, including a paste awaiting confirmation', async () => {
