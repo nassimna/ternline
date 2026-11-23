@@ -35,6 +35,28 @@ jobs:
           --property=Delegate=yes --working-directory="$PWD"
           /usr/bin/env "PATH=$PATH" "HOME=$HOME" "RUNNER_TEMP=$RUNNER_TEMP" CI=true
           pnpm validate
+      - name: Stage desktop accessibility runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+          pnpm stage:node:linux
+      - name: Validate desktop accessibility
+        env:
+          AGENT_WORKSPACE_EVIDENCE_DIR: ${{ github.workspace }}/accessibility-evidence
+        run: >-
+          sudo systemd-run --wait --pipe --collect
+          --property="User=$(id -un)" --property="Group=$(id -gn)"
+          --property=Delegate=yes --working-directory="$PWD"
+          /usr/bin/env "PATH=$PATH" "HOME=$HOME" "RUNNER_TEMP=$RUNNER_TEMP" CI=true
+          "AGENT_WORKSPACE_EVIDENCE_DIR=$AGENT_WORKSPACE_EVIDENCE_DIR"
+          xvfb-run -a pnpm --filter @agent-workspace/desktop test:a11y
+      - name: Upload desktop accessibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-accessibility-evidence
+          path: accessibility-evidence
+          if-no-files-found: warn
 
   windows-runtime:
     name: Windows runtime contracts
