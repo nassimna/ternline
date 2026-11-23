@@ -113,6 +113,14 @@ describe('App', () => {
     expect(await screen.findByText('protocol 1 · 0.1.0')).toBeInTheDocument()
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     expect(screen.getAllByText('Fixture workspace').length).toBeGreaterThan(0)
+    const workspaceButton = screen.getByRole('button', { name: 'Fixture workspace' })
+    expect(workspaceButton).toHaveAccessibleDescription('Fixture workspace; no attention')
+    expect(screen.getByRole('button', { name: /^Open folder/ })).toHaveAccessibleDescription(
+      'Open folder as workspace'
+    )
+    expect(screen.getByRole('button', { name: 'Shell' })).toHaveAccessibleDescription(
+      'New terminal tab'
+    )
     expect(screen.getByLabelText('Working directory /tmp/fixture-workspace')).toHaveTextContent(
       'fixture-workspace'
     )
@@ -301,13 +309,11 @@ describe('App', () => {
       )
       vi.mocked(bridge.openTerminalTab).mockClear()
       const workspaceActions = screen.getByLabelText('Workspace actions')
-      expect(
-        within(workspaceActions).getByRole('button', { name: 'New terminal tab' })
-      ).toBeVisible()
+      expect(within(workspaceActions).getByRole('button', { name: 'Shell' })).toBeVisible()
       expect(within(workspaceActions).getByRole('button', { name: 'Split pane' })).toBeVisible()
-      expect(screen.getAllByRole('button', { name: 'New terminal tab' })).toHaveLength(1)
+      expect(screen.getAllByRole('button', { name: 'Shell' })).toHaveLength(1)
       expect(screen.getAllByRole('button', { name: 'Split pane' })).toHaveLength(1)
-      fireEvent.click(within(workspaceActions).getByRole('button', { name: 'New terminal tab' }))
+      fireEvent.click(within(workspaceActions).getByRole('button', { name: 'Shell' }))
       await waitFor(() =>
         expect(bridge.openTerminalTab).toHaveBeenCalledWith({
           workspaceId: workspace.id,
@@ -603,7 +609,7 @@ describe('App', () => {
     window.desktopBridge = bridge
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Open folder as workspace' }))
+    fireEvent.click(await screen.findByRole('button', { name: /^Open folder/ }))
     fireEvent.click(
       await screen.findByRole('button', {
         name: messages.workspaceShell.createWorkspace.chooseFolder
@@ -620,7 +626,7 @@ describe('App', () => {
       screen.queryByRole('dialog', { name: 'Open a folder as a workspace' })
     ).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open folder as workspace' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Open folder/ }))
     const manualPath = await screen.findByRole('textbox', { name: 'Workspace folder path' })
     fireEvent.change(manualPath, { target: { value: '/home/alex/manual-project' } })
     fireEvent.click(screen.getByRole('button', { name: 'Open workspace' }))
@@ -1843,7 +1849,9 @@ describe('App', () => {
     window.desktopBridge = bridge
     render(<App />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Create workspace group' }))
+    const createGroup = await screen.findByRole('button', { name: 'New group' })
+    expect(createGroup).toHaveAccessibleDescription('Create workspace group')
+    fireEvent.click(createGroup)
     expect(screen.getByRole('dialog', { name: 'Create workspace group' })).toBeVisible()
     fireEvent.change(screen.getByRole('textbox', { name: 'Group name' }), {
       target: { value: 'Client projects' }
