@@ -10,7 +10,7 @@ will become binding at version 1.0.
 ### Fixed
 
 - Update the bundled Linux Node runtime and build pins to 22.23.5 to address the November 2026 Node.js security advisories.
-- Declare Electron's system library dependencies in Debian and RPM packages.
+- Restore Linux package runtime dependencies and build native addons on Ubuntu 24.04 for clean-install compatibility.
 
 ## [0.2.1-alpha.15] - 2026-11-16
 

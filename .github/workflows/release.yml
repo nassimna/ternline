@@ -36,7 +36,7 @@ jobs:
       matrix:
         include:
           - label: linux-x64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             builder: --linux AppImage deb rpm --x64
           - label: macos-arm64
             os: macos-26
