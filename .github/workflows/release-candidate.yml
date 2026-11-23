@@ -30,6 +30,8 @@ jobs:
     name: Validate and build release candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 75
+    env:
+      npm_config_side_effects_cache: 'false'
     permissions:
       contents: read
       id-token: write

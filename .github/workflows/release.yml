@@ -31,6 +31,8 @@ jobs:
     name: Package ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
+    env:
+      npm_config_side_effects_cache: ${{ matrix.label == 'linux-x64' && 'false' || 'true' }}
     strategy:
       fail-fast: false
       matrix:
