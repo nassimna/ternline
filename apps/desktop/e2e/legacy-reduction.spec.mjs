@@ -85,7 +85,7 @@ test('packaged UI reports exact legacy counts and clears reduction mode after re
       'Current counts and limits: workspaces 129/128; maximum panes in one workspace 1/64; maximum tabs in one workspace 1/128; total panes 129/1024; total tabs 129/2048.'
     )
     await expect(notice).toContainText('Export important layouts first')
-    await expect(page.getByRole('button', { name: 'Open folder as workspace' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: /^Open folder/ })).toBeDisabled()
     await page.getByRole('button', { name: 'Saved layouts' }).click()
     await expect(page.getByRole('button', { name: 'Import' })).toBeDisabled()
 
@@ -114,7 +114,7 @@ test('packaged UI reports exact legacy counts and clears reduction mode after re
       .click()
 
     await expect(notice).toHaveCount(0, { timeout: 30_000 })
-    await expect(page.getByRole('button', { name: 'Open folder as workspace' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /^Open folder/ })).toBeEnabled()
     await expect(page.getByRole('button', { name: 'Import' })).toBeEnabled()
     const recovered = await page.evaluate(async () => ({
       snapshot: (await globalThis.desktopBridge.listWorkspaces()).snapshot,
