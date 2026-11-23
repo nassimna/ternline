@@ -1,6 +1,6 @@
 import process from 'node:process'
 
-const gracefulTimeoutMs = 3_000
+const gracefulTimeoutMs = 15_000
 const forcedExitTimeoutMs = 2_000
 
 export async function closeElectronApplication(application, options = {}, dependencies = {}) {

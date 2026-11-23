@@ -1614,7 +1614,7 @@ async function createBrowserSplit(renderer) {
 }
 
 async function createSecondPlacementWindow(primary, application, workspaceDirectory) {
-  await primary.getByRole('button', { name: 'Open folder as workspace' }).click()
+  await primary.getByRole('button', { name: /^Open folder/ }).click()
   const workspaceDialog = primary.getByRole('dialog')
   await workspaceDialog.getByLabel('Workspace folder path').fill(workspaceDirectory)
   await workspaceDialog.getByRole('button', { name: 'Open workspace' }).click()
