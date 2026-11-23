@@ -114,32 +114,25 @@ describe('desktop update IPC', () => {
   })
 })
 
-function createController(): {
-  controller: DesktopUpdateController & {
-    check: ReturnType<typeof vi.fn>
-    download: ReturnType<typeof vi.fn>
-    install: ReturnType<typeof vi.fn>
-  }
-  emit(state: DesktopUpdateState): void
-  unsubscribe: ReturnType<typeof vi.fn>
-} {
+function createController() {
   let listener: ((state: DesktopUpdateState) => void) | undefined
   const unsubscribe = vi.fn(() => {
     listener = undefined
   })
+  const getState = vi.fn(() => ({
+    status: 'idle' as const,
+    channel: 'stable' as const,
+    packageType: 'appimage' as const
+  }))
   const controller = {
-    getState: vi.fn(() => ({
-      status: 'idle' as const,
-      channel: 'stable' as const,
-      packageType: 'appimage' as const
-    })),
-    check: vi.fn(async () => controller.getState()),
-    download: vi.fn(async () => controller.getState()),
+    getState,
+    check: vi.fn(async () => getState()),
+    download: vi.fn(async () => getState()),
     install: vi.fn(async () => undefined),
     subscribe: vi.fn((next: (state: DesktopUpdateState) => void) => {
       listener = next
       return unsubscribe
     })
-  }
-  return { controller, emit: (state) => listener?.(state), unsubscribe }
+  } satisfies DesktopUpdateController
+  return { controller, emit: (state: DesktopUpdateState) => listener?.(state), unsubscribe }
 }
