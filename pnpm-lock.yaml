@@ -188,6 +188,8 @@ overrides:
   source-map-js: 1.2.2
   http-cache-semantics: 4.3.0
 
+pnpmfileChecksum: sha256-WmI/oI4PxrNeeYdheZfZQBwYmmzYQiO5EslgFXPvxN4=
+
 patchedDependencies:
   http-cache-semantics@4.3.0:
     hash: dc4653b95c6e7827511f59ed9e510ba6465c1a0fac1ac9d30afe73a1c5c5f6b7
@@ -5339,6 +5341,7 @@ packages:
 
   usocket@0.3.0:
     resolution: {integrity: sha512-V/H02RNiaOCJZuPoKont/y12VJaImC6C5xW7OzPFjYu9qnig0yv9hyp9E7Wqjm6d8yZuZouH3NAfDATVMgh2SQ==}
+    os: ['!win32']
 
   utf8-byte-length@1.0.5:
     resolution: {integrity: sha512-Xn0w3MtiQ6zoz2vFyUVruaCL53O/DwUvkEeOvj+uulMm0BkUGYWmBYVyElqZaSLhY6ZD0ulfU3aBra2aVT4xfA==}
