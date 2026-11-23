@@ -19,7 +19,7 @@ overrides:
   'usocket>node-gyp': 12.4.0
   'undici@^6': 6.29.1
   'unifont>undici': 8.12.2
-  'astro>vite': 8.3.3
+  'astro>vite': 8.3.8
   'vitest>vite': 7.3.6
   'zod@^4': 4.6.7
   'tar@^7': 7.5.21
