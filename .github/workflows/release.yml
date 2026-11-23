@@ -36,7 +36,7 @@ jobs:
       matrix:
         include:
           - label: linux-x64
-            os: ubuntu-latest
+            os: ubuntu-24.04
             builder: --linux AppImage deb rpm --x64
           - label: macos-arm64
             os: macos-26
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          cache: ${{ matrix.label != 'linux-x64' && 'pnpm' || '' }}
       - name: Validate release version and tag
         shell: bash
         env:
