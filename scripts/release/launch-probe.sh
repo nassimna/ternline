@@ -69,7 +69,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-setsid "$executable" --no-sandbox --in-process-gpu "$@" >"$log" 2>&1 &
+AGENT_WORKSPACE_DEBUG_STARTUP=1 setsid "$executable" --no-sandbox --in-process-gpu "$@" >"$log" 2>&1 &
 pid=$!
 
 for _ in {1..60}; do
