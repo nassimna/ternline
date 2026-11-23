@@ -459,8 +459,17 @@ test('screen-reader controls remain keyboard reachable in a narrow terminal pane
     await expect(
       page.locator('button[aria-label="Close terminal tools"][aria-pressed]')
     ).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('textbox', { name: 'Find in terminal' })).toBeFocused()
     await page.getByRole('button', { name: 'Next match' }).focus()
-    for (let index = 0; index < 4; index += 1) await page.keyboard.press('Tab')
+    for (const control of [
+      page.getByRole('button', { name: 'Decrease terminal font size' }),
+      page.getByRole('button', { name: 'Increase terminal font size' }),
+      page.getByRole('checkbox', { name: 'Copy selection' }),
+      screenReaderMode
+    ]) {
+      await page.keyboard.press('Tab')
+      await expect(control).toBeFocused()
+    }
     await expect(screenReaderMode).toBeFocused()
     await expect(screenReaderMode).toBeVisible()
     await page.screenshot({ path: join(evidenceDirectory, '01-screen-reader-control.png') })
