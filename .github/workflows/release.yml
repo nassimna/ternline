@@ -31,8 +31,6 @@ jobs:
     name: Package ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
-    env:
-      npm_config_side_effects_cache: ${{ matrix.label == 'linux-x64' && 'false' || 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +55,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          cache: ${{ matrix.label != 'linux-x64' && 'pnpm' || '' }}
       - name: Validate release version and tag
         shell: bash
         env:

@@ -34,8 +34,8 @@ does not change the remote user's tmux settings.
 ## Build distribution artifacts
 
 CI builds Linux distribution artifacts on Ubuntu 24.04 so bundled native addons also load
-on the oldest Ubuntu environment in the clean-install matrix. Packaging jobs reuse cached
-package downloads and rebuild native addons on that runner.
+on the oldest Ubuntu environment in the clean-install matrix. Linux packaging jobs use a fresh
+pnpm store so install and deploy share native builds from that runner.
 
 From a clean checkout with Node 22.23.5 and pnpm 10.34.5:
 
