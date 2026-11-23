@@ -25,7 +25,7 @@ builds the Ternline website with matching, versioned download URLs.
    its hash and native results, then publish the unchanged draft with
    `gh release edit vVERSION --draft=false`. Do not rebuild or replace qualified assets.
 
-Builds use the frozen lockfile, cached pnpm downloads, pinned actions, and Node 22.23.4.
+Builds use the frozen lockfile, cached pnpm downloads, pinned actions, and Node 22.23.5.
 Release concurrency prevents overlapping runs for the same ref. PR CI runs Node validation and
 focused Windows runtime contracts on Windows 2022;
 expensive distro-package and security inventories remain scheduled or manual.

@@ -17,7 +17,7 @@ test('CI retains Node quality gates while release owns native packaging', async 
     read('.github/workflows/ci.yml'),
     read('.github/workflows/release.yml')
   ])
-  assert.match(ci, /node-version: 22\.23\.4/u)
+  assert.match(ci, /node-version: 22\.23\.5/u)
   assert.match(ci, /pnpm validate/u)
   assert.doesNotMatch(ci, /pnpm package:linux/u)
   assert.doesNotMatch(ci, /cargo|rustup|build:service/u)

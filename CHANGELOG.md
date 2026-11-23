@@ -7,6 +7,10 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- Update the bundled Linux Node runtime and build pins to 22.23.5 to address the November 2026 Node.js security advisories.
+
 ## [0.2.1-alpha.15] - 2026-11-16
 
 ### Fixed
