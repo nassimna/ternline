@@ -24,7 +24,7 @@ jobs:
           version: 10.34.5
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.23.4
+          node-version: 22.23.5
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:node
@@ -69,7 +69,7 @@ jobs:
           version: 10.34.5
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.23.4
+          node-version: 22.23.5
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agent-workspace/protocol-client exec vitest run src/schemas.test.ts -t "cross-platform absolute paths"
