@@ -652,7 +652,7 @@ async function installRendererDeadline(page) {
 }
 
 async function createWorkspace(page, name, workingDirectory) {
-  await page.getByRole('button', { name: 'Open folder as workspace' }).click()
+  await page.getByRole('button', { name: /^Open folder/ }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Workspace folder path').fill(workingDirectory)
   await dialog.getByRole('button', { name: 'Open workspace' }).click()

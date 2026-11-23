@@ -693,7 +693,7 @@ body {
 
 .workspace-host-kind {
   flex: 0 0 auto;
-  color: var(--aw-color-accent);
+  color: var(--aw-color-accent-hover);
 }
 
 .workspace-host-target {
