@@ -16,6 +16,7 @@ ignoredOptionalDependencies:
   - cpu-features
 
 overrides:
+  '@electron/rebuild>node-abi': 4.43.0
   'usocket>node-gyp': 12.4.0
   'undici@^6': 6.29.1
   'unifont>undici': 8.12.2
