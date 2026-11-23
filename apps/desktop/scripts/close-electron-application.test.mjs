@@ -12,6 +12,7 @@ test('graceful close succeeds without force-killing', async () => {
   await closeElectronApplication(fixture.application, {}, fixture.dependencies)
 
   assert.equal(fixture.closeCalls, 1)
+  assert.equal(fixture.timerDelays[0], 15_000)
   assert.deepEqual(fixture.groupKills, [])
   assert.deepEqual(fixture.childKills, [])
   assert.equal(fixture.childProcess.listenerCount('exit'), 0)
@@ -24,7 +25,7 @@ test('graceful close timeout force-kills the process group and fails', async () 
 
   await assert.rejects(
     closeElectronApplication(fixture.application, {}, fixture.dependencies),
-    /graceful shutdown timed out after 3000ms/u
+    /graceful shutdown timed out after 15000ms/u
   )
 
   assert.deepEqual(fixture.groupKills, [[-4172, 'SIGKILL']])
@@ -112,6 +113,7 @@ function applicationFixture(close, options = {}) {
   const groupKills = []
   let closeCalls = 0
   let timerIndex = 0
+  const timerDelays = []
 
   childProcess.kill = (signal) => {
     childKills.push(signal)
@@ -138,7 +140,8 @@ function applicationFixture(close, options = {}) {
         if (options.groupKillError) throw options.groupKillError
       },
       platform: options.platform ?? 'linux',
-      setTimeout: (callback) => {
+      setTimeout: (callback, delay) => {
+        timerDelays.push(delay)
         const action = options.timerActions?.[timerIndex]
         timerIndex += 1
         globalThis.queueMicrotask(() => {
@@ -152,6 +155,7 @@ function applicationFixture(close, options = {}) {
         return timerIndex
       }
     },
-    groupKills
+    groupKills,
+    timerDelays
   }
 }

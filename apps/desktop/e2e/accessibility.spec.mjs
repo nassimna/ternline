@@ -124,6 +124,7 @@ test('representative renderer states meet the accessibility baseline', async () 
   const profileDirectory = await mkdtemp(join(tmpdir(), 'agent-workspace-m6-a11y-'))
   await writeFile(join(profileDirectory, '.zshrc'), '# Isolated accessibility audit shell.\n')
   let electronApplication
+  let testError
 
   try {
     const harness = await createPackagedElectronHarness(profileDirectory)
@@ -156,7 +157,7 @@ test('representative renderer states meet the accessibility baseline', async () 
     await expect(page.locator('.terminal-pane')).toHaveAttribute('data-process-id', /^\d+$/)
     await expect(page.locator('.workspace-runtime-metadata')).toHaveAttribute(
       'aria-label',
-      /Git branch .+; process .+; no listening ports$/u,
+      /^Git branch .+; Git status .+; process .+; (?:no listening ports|listening ports \d+(?:, \d+)*)$/u,
       { timeout: 10_000 }
     )
     await page.getByRole('button', { name: 'Open settings' }).click()
@@ -264,7 +265,9 @@ test('representative renderer states meet the accessibility baseline', async () 
     await page.keyboard.press('Enter')
     const settings = page.getByRole('dialog', { name: 'Settings' })
     await expect(settings).toBeVisible()
-    const theme = settings.getByLabel('Theme')
+    const theme = settings
+      .getByRole('group', { name: 'Theme' })
+      .getByRole('button', { pressed: true })
     await theme.focus()
     await page.keyboard.press('Tab')
     await expect(settings.getByLabel('Density')).toBeFocused()
@@ -399,8 +402,10 @@ test('representative renderer states meet the accessibility baseline', async () 
     })
     expect(richCardMotion.animationName).toBe('none')
     expect(Number.parseFloat(richCardMotion.transitionDuration) || 0).toBe(0)
+  } catch (error) {
+    testError = error
   } finally {
-    await cleanupApplicationAndProfile(electronApplication, profileDirectory)
+    await cleanupApplicationAndProfile(electronApplication, profileDirectory, testError)
   }
 })
 
@@ -409,6 +414,7 @@ test('screen-reader controls remain keyboard reachable in a narrow terminal pane
   const profileDirectory = await mkdtemp(join(tmpdir(), 'agent-workspace-m6-a11y-narrow-'))
   await writeFile(join(profileDirectory, '.zshrc'), '# Isolated narrow accessibility shell.\n')
   let electronApplication
+  let testError
 
   try {
     const harness = await createPackagedElectronHarness(profileDirectory)
@@ -463,8 +469,10 @@ test('screen-reader controls remain keyboard reachable in a narrow terminal pane
     await expect(screenReaderMode).not.toBeChecked()
     await expect(terminalPane).toHaveAttribute('data-process-id', /^\d+$/)
     await expect(terminalPane.getByText('Connected', { exact: true })).toBeVisible()
+  } catch (error) {
+    testError = error
   } finally {
-    await cleanupApplicationAndProfile(electronApplication, profileDirectory)
+    await cleanupApplicationAndProfile(electronApplication, profileDirectory, testError)
   }
 })
 
@@ -473,6 +481,7 @@ test('zoom reflow and forced colors preserve keyboard operation and visible focu
   const profileDirectory = await mkdtemp(join(tmpdir(), 'agent-workspace-m6-a11y-zoom-'))
   await writeFile(join(profileDirectory, '.zshrc'), '# Isolated zoom accessibility shell.\n')
   let electronApplication
+  let testError
 
   try {
     const harness = await createPackagedElectronHarness(profileDirectory)
@@ -545,7 +554,9 @@ test('zoom reflow and forced colors preserve keyboard operation and visible focu
       await page.keyboard.press('Enter')
       const settings = page.getByRole('dialog', { name: 'Settings' })
       await expect(settings).toBeVisible()
-      const theme = settings.getByLabel('Theme')
+      const theme = settings
+        .getByRole('group', { name: 'Theme' })
+        .getByRole('button', { pressed: true })
       await theme.scrollIntoViewIfNeeded()
       await theme.focus()
       await expect(theme).toBeFocused()
@@ -556,9 +567,9 @@ test('zoom reflow and forced colors preserve keyboard operation and visible focu
       await expect
         .poll(async () => (await shortcutInput.boundingBox())?.width ?? 0)
         .toBeGreaterThan(100)
-      await settings.getByRole('button', { name: 'Agent sessions' }).click()
-      for (const inputName of ['Exact Codex thread UUID', 'Session title', 'Team title']) {
-        const input = settings.getByRole('textbox', { name: inputName })
+      await settings.getByRole('button', { name: 'Terminal', exact: true }).click()
+      for (const inputName of ['Shell path', 'Font family', 'Font size', 'Scrollback lines']) {
+        const input = settings.getByLabel(inputName, { exact: true })
         await expect(input).toBeVisible()
         await expect.poll(async () => (await input.boundingBox())?.width ?? 0).toBeGreaterThan(100)
       }
@@ -612,43 +623,45 @@ test('zoom reflow and forced colors preserve keyboard operation and visible focu
     await page.keyboard.press('Enter')
     const settings = page.getByRole('dialog', { name: 'Settings' })
     await expect(settings).toBeVisible()
-    const theme = settings.getByLabel('Theme')
+    const theme = settings
+      .getByRole('group', { name: 'Theme' })
+      .getByRole('button', { pressed: true })
     await theme.focus()
     await expect(theme).toBeFocused()
     await audit(page, 'settings with Chromium forced colors active')
     await page.screenshot({ path: join(evidenceDirectory, '06-forced-colors.png') })
+  } catch (error) {
+    testError = error
   } finally {
-    await cleanupApplicationAndProfile(electronApplication, profileDirectory)
+    await cleanupApplicationAndProfile(electronApplication, profileDirectory, testError)
   }
 })
 
-async function cleanupApplicationAndProfile(application, profileDirectory) {
-  const cleanupErrors = []
+async function cleanupApplicationAndProfile(application, profileDirectory, testError) {
+  const errors = testError ? [testError] : []
   try {
     await closeElectronApplication(application)
   } catch (error) {
-    cleanupErrors.push(error)
+    errors.push(error)
   }
   try {
     await rm(profileDirectory, { force: true, recursive: true, maxRetries: 3, retryDelay: 100 })
   } catch (error) {
-    cleanupErrors.push(error)
+    errors.push(error)
   }
 
-  if (cleanupErrors.length === 1) throw cleanupErrors[0]
-  if (cleanupErrors.length > 1) {
-    throw new AggregateError(cleanupErrors, 'Electron application and profile cleanup both failed.')
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) {
+    throw new AggregateError(errors, 'Accessibility test or application cleanup failed.')
   }
 }
 
 async function saveTheme(page, settings, theme) {
-  const themeSelect = settings.getByLabel('Theme')
-  await expect(themeSelect).toBeVisible()
-  await themeSelect.selectOption(theme)
-  const appearanceSection = themeSelect.locator(
-    'xpath=ancestor::*[contains(@class, "configuration-section")]'
-  )
-  await appearanceSection.getByRole('button', { name: 'Save section' }).click()
+  const themeButton = settings
+    .getByRole('group', { name: 'Theme' })
+    .getByRole('button', { name: theme === 'dark' ? 'Dark' : 'Light', exact: true })
+  await themeButton.click()
+  await expect(themeButton).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
   await expect(settings.getByText('Setting saved.', { exact: true })).toBeVisible()
 }
@@ -656,12 +669,11 @@ async function saveTheme(page, settings, theme) {
 async function saveDensity(page, density) {
   await page.getByRole('button', { name: 'Open settings' }).click()
   const settings = page.getByRole('dialog', { name: 'Settings' })
-  const densitySelect = settings.getByLabel('Density')
-  await densitySelect.selectOption(density)
-  const appearanceSection = densitySelect.locator(
-    'xpath=ancestor::*[contains(@class, "configuration-section")]'
-  )
-  await appearanceSection.getByRole('button', { name: 'Save section' }).click()
+  await settings.getByRole('combobox', { name: 'Density' }).click()
+  await page
+    .getByRole('option', { name: density === 'compact' ? 'Compact' : 'Comfortable', exact: true })
+    .click()
+  await expect(page.locator('html')).toHaveAttribute('data-density', density)
   await expect(settings.getByText('Setting saved.', { exact: true })).toBeVisible()
   await page.keyboard.press('Escape')
 }
