@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: package-smoke-${{ github.ref }}
   cancel-in-progress: true
@@ -108,7 +112,7 @@ jobs:
           DISPLAY_SERVER: ${{ matrix.display }}
           LAUNCH_ARGS: ${{ matrix.launch_args }}
         run: |
-          apt-get install -y --no-install-recommends libasound2t64 libgbm1 libgtk-3-0 libnss3 libxss1
+          apt-get install -y --no-install-recommends libasound2t64 libgbm1 libgtk-3-0 libnss3 libxss1 openssh-client bubblewrap systemd
           artifact="$(realpath release-download/agent-workspace-*-x86_64.AppImage)"
           scripts/release/inspect-artifact.sh appimage "$artifact"
           scratch=$(mktemp -d)
@@ -190,7 +194,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Bootstrap clean image
-        run: pacman -Syu --noconfirm --needed ca-certificates coreutils file findutils git procps-ng xorg-server-xvfb xorg-xauth alsa-lib gtk3 nss libxss mesa
+        run: pacman -Syu --noconfirm --needed ca-certificates coreutils file findutils git procps-ng xorg-server-xvfb xorg-xauth alsa-lib gtk3 nss libxss mesa openssh bubblewrap systemd
       - name: Check out release probes
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download exact build artifact

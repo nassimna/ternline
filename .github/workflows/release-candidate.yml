@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: release-candidate-${{ inputs.version }}
   cancel-in-progress: false
@@ -270,13 +274,13 @@ jobs:
         run: dnf install -y ca-certificates coreutils findutils git procps-ng rpm xorg-x11-server-Xvfb
       - name: Bootstrap Arch Linux image
         if: matrix.family == 'arch'
-        run: pacman -Syu --noconfirm --needed ca-certificates coreutils file findutils git procps-ng xorg-server-xvfb xorg-xauth alsa-lib gtk3 nss libxss mesa
+        run: pacman -Syu --noconfirm --needed ca-certificates coreutils file findutils git procps-ng xorg-server-xvfb xorg-xauth alsa-lib gtk3 nss libxss mesa openssh bubblewrap systemd
       - name: Install headless Wayland compositor
         if: matrix.family == 'ubuntu' && matrix.display == 'wayland'
         run: apt-get install -y --no-install-recommends weston
       - name: Install Ubuntu AppImage runtime
         if: matrix.family == 'ubuntu' && matrix.type == 'appimage'
-        run: apt-get install -y --no-install-recommends libasound2t64 libgbm1 libgtk-3-0 libnss3 libxss1
+        run: apt-get install -y --no-install-recommends libasound2t64 libgbm1 libgtk-3-0 libnss3 libxss1 openssh-client bubblewrap systemd
       - name: Check out release probes
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download exact candidate bundle
