@@ -53,7 +53,7 @@
     "@noble/hashes": "2.2.0",
     "better-sqlite3": "13.0.3",
     "dbus-next": "0.10.2",
-    "electron-updater": "6.8.11",
+    "electron-updater": "6.8.9",
     "hono": "4.13.21",
     "koffi": "3.3.8",
     "node-pty": "1.1.0",
