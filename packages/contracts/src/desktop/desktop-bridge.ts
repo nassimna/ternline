@@ -871,13 +871,13 @@ export interface DesktopBridge {
   exportRecoveryDatabase?(): Promise<RecoveryExportResult | null>
   previewDiagnostics?(): Promise<DiagnosticBundlePreview>
   exportDiagnostics?(approvedPreview: DiagnosticBundlePreview): Promise<void | null>
-  getConfiguration?(): Promise<ConfigurationGetResult>
+  getConfiguration?(this: void): Promise<ConfigurationGetResult>
   updateConfiguration?(params: ConfigurationUpdateParams): Promise<ConfigurationGetResult>
   quitApplication?(): Promise<void>
   getUpdateState?(): Promise<DesktopUpdateState>
-  checkForUpdate?(): Promise<DesktopUpdateState>
-  downloadUpdate?(): Promise<DesktopUpdateState>
-  installUpdate?(): Promise<void>
+  checkForUpdate?(this: void): Promise<DesktopUpdateState>
+  downloadUpdate?(this: void): Promise<DesktopUpdateState>
+  installUpdate?(this: void): Promise<void>
   isCliInstalledInPath?(): Promise<boolean>
   installCliInPath?(): Promise<void>
   uninstallCliInPath?(): Promise<void>
