@@ -33,7 +33,11 @@ vi.mock('electron-updater/out/electronHttpExecutor.js', () => ({
 
 import { app } from 'electron'
 import { MacAlphaUpdater } from './mac-alpha-updater'
-import type { DownloadUpdateOptions, DownloadExecutorTask } from 'electron-updater/out/AppUpdater'
+import type {
+  DownloadExecutorResult,
+  DownloadExecutorTask,
+  DownloadUpdateOptions
+} from 'electron-updater/out/AppUpdater'
 
 class TestUpdater extends MacAlphaUpdater {
   constructor(bundle: string) {
@@ -44,7 +48,9 @@ class TestUpdater extends MacAlphaUpdater {
   request(options: DownloadUpdateOptions) {
     return this.doDownloadUpdate(options)
   }
-  protected override async executeDownload(task: DownloadExecutorTask): Promise<string[]> {
+  protected override async executeDownload(
+    task: DownloadExecutorTask
+  ): Promise<DownloadExecutorResult> {
     await task.task(
       '/cache/update.zip',
       {} as Parameters<DownloadExecutorTask['task']>[1],
@@ -59,7 +65,7 @@ class TestUpdater extends MacAlphaUpdater {
       sha512: '',
       releaseDate: ''
     })
-    return ['/cache/update.zip']
+    return { updateFile: '/cache/update.zip' }
   }
 }
 

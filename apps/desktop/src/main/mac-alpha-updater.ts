@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { app } from 'electron'
 import electronUpdater from 'electron-updater'
 import type { AppAdapter } from 'electron-updater/out/AppAdapter'
-import type { DownloadUpdateOptions } from 'electron-updater/out/AppUpdater'
+import type { DownloadExecutorResult, DownloadUpdateOptions } from 'electron-updater/out/AppUpdater'
 
 import { ElectronHttpExecutor } from 'electron-updater/out/electronHttpExecutor.js'
 
@@ -22,7 +22,9 @@ export class MacAlphaUpdater extends electronUpdater.AppUpdater {
     super(undefined, adapter)
   }
 
-  protected override async doDownloadUpdate(options: DownloadUpdateOptions): Promise<string[]> {
+  protected override async doDownloadUpdate(
+    options: DownloadUpdateOptions
+  ): Promise<DownloadExecutorResult> {
     const { info, provider } = options.updateInfoAndProvider
     if (!/^\d+\.\d+\.\d+-alpha\.\d+$/u.test(info.version)) {
       throw new Error('Unsigned Mac installations can only install alpha updates')
