@@ -7,10 +7,24 @@ will become binding at version 1.0.
 
 ## [Unreleased]
 
+## [0.2.1-alpha.16] - 2026-11-23
+
 ### Fixed
+
+- Give the update status and Check for updates button more space in desktop Settings.
+- Improve desktop accessibility and keyboard focus coverage.
 
 - Update the bundled Linux Node runtime and build pins to 22.23.5 to address the November 2026 Node.js security advisories.
 - Restore Linux package runtime dependencies and build native addons on Ubuntu 24.04 for clean-install compatibility.
+
+### Changed
+
+- Upgrade Electron to 45 and refresh the build tools, desktop dependencies, and release actions.
+- Adapt the macOS alpha updater and native package builds to the updated dependencies.
+
+### Status
+
+- macOS and Windows packages remain without platform code signing or notarization; verify downloads with the provided Minisign signatures.
 
 ## [0.2.1-alpha.15] - 2026-11-16
 

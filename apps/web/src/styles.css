@@ -2875,6 +2875,11 @@ html:not([data-window-fullscreen='true']) .titlebar[data-platform='macos'] {
   gap: 6px;
 }
 
+.configuration-check + .configuration-update-status,
+.configuration-update-status + .configuration-update-actions {
+  margin-block-start: calc(var(--aw-space-unit) * 3);
+}
+
 .shortcut-list {
   display: grid;
   gap: 2px;
