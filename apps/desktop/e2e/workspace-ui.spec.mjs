@@ -181,7 +181,7 @@ test('real service drives the Milestone 2 workspace UI', async () => {
     }
     await expect(selectedRuntimeMetadata).toContainText('Ports: —', { timeout: 20_000 })
 
-    await page.getByRole('button', { name: 'Open folder as workspace' }).click()
+    await page.getByRole('button', { name: /^Open folder/ }).click()
     const createDialog = page.getByRole('dialog')
     await createDialog.getByLabel('Workspace folder path').fill(profileDirectory)
     await createDialog.getByRole('button', { name: 'Open workspace' }).click()

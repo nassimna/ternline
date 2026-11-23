@@ -1355,7 +1355,7 @@ export function WorkspaceShell({ workspace }: ShellProps): React.JSX.Element {
                   size="small"
                   variant="ghost"
                   className="workspace-new-shell"
-                  aria-label="New terminal tab"
+                  aria-description="New terminal tab"
                   onClick={() =>
                     void runMutation(
                       window.desktopBridge.openTerminalTab({
@@ -1901,7 +1901,7 @@ function WorkspaceSidebar({
           <Button
             size="small"
             variant="ghost"
-            aria-label="Create workspace group"
+            aria-description="Create workspace group"
             className="sidebar-heading-action"
             data-workspace-action={workspaceCardActionRegistry.resolve('groupCreate').actionId}
             disabled={!organization}
@@ -1916,7 +1916,7 @@ function WorkspaceSidebar({
       <div className="sidebar-create-actions">
         <Button
           variant="ghost"
-          aria-label={messages.workspaceShell.sidebar.createWorkspace}
+          aria-description={messages.workspaceShell.sidebar.createWorkspace}
           className="sidebar-open-folder"
           disabled={!!organization?.legacyOverLimit}
           onClick={onCreate}
@@ -2918,7 +2918,7 @@ function SortableWorkspace({
               <Button
                 variant="workspace"
                 aria-current={focused ? 'page' : undefined}
-                aria-label={messages.workspaceShell.sidebar.cardAccessibleName(
+                aria-description={messages.workspaceShell.sidebar.cardAccessibleName(
                   workspace.name,
                   attention?.state ?? 'none',
                   attention?.unreadCount ?? 0

@@ -46,6 +46,6 @@
     "prettier": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
-    "prettier-plugin-astro": "1.1.0"
+    "prettier-plugin-astro": "1.1.2"
   }
 }
