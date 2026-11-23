@@ -43,6 +43,18 @@ test('native Linux packages declare the secure custom-action containment prerequ
   }
 })
 
+test('native Linux packages retain Electron libraries alongside custom prerequisites', async () => {
+  const configuration = await readBuilderConfiguration()
+  const deb = section(configuration, 'deb', 'mac')
+  const rpm = section(configuration, 'rpm', 'deb')
+  for (const dependency of ['libgtk-3-0', 'libnss3', 'libgbm1', 'libsecret-1-0']) {
+    assert.ok(deb.includes(`    - ${dependency}\n`), `missing deb runtime: ${dependency}`)
+  }
+  for (const dependency of ['gtk3', 'nss', 'alsa-lib', 'mesa-libgbm', 'libsecret']) {
+    assert.ok(rpm.includes(`    - ${dependency}\n`), `missing rpm runtime: ${dependency}`)
+  }
+})
+
 test('macOS uses the updater-compatible signed distribution targets', async () => {
   const configuration = await readBuilderConfiguration()
   const mac = section(configuration, 'mac', 'win')
