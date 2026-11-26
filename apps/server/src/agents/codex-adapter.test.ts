@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  rmSync,
   statSync,
   writeFileSync
 } from 'node:fs'
@@ -13,6 +14,54 @@ import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 
 import { CodexAdapter } from './codex-adapter'
+
+it.skipIf(process.platform !== 'linux')(
+  'reads a transcript across JSONL chunks and split UTF-8 bytes',
+  async () => {
+    const thread = randomUUID()
+    const message = { role: 'assistant', text: 'before 🌙� after' }
+    const [prefix, suffix] = JSON.stringify({
+      id: 2,
+      result: {
+        thread: {
+          id: thread,
+          turns: [{ items: [{ id: 'message', type: 'agentMessage', text: message.text }] }]
+        }
+      }
+    }).split('🌙�')
+    const directory = mkdtempSync(join(tmpdir(), 'codex-transcript-'))
+    const executable = join(directory, 'codex-fixture')
+    let adapter: CodexAdapter | undefined
+    try {
+      writeFileSync(
+        executable,
+        `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf 'codex-cli 0.142.4\\n'
+  exit 0
+fi
+read -r initialize
+printf '\\n{"method":"notification"}\\n{"id":1,"result":{}}\\r\\n'
+read -r initialized
+read -r thread_read
+printf '%s\\360\\237' '${prefix}'
+sleep 0.1
+printf '\\214\\231\\377%s\\r\\n\\n' '${suffix}'
+read -r end
+`,
+        { mode: 0o500 }
+      )
+      adapter = await CodexAdapter.fromExecutable(executable)
+      await expect(adapter.readTranscript(thread)).resolves.toEqual({
+        messages: [message],
+        skippedItems: 0
+      })
+    } finally {
+      adapter?.close()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }
+)
 
 it.skipIf(process.platform === 'win32')(
   'rejects a closed app-server stdin as interrupted and stops the child without an uncaught error',
