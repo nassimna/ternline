@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 
 import { navigateFocusHistory } from './focus-history-mutations'
 import { WindowMutationError } from './window-mutations'
-import { closeWorkspace, openTerminalTab, selectTab } from './workspace-mutations'
+import { closeWorkspace, openBrowserTab, openTerminalTab, selectTab } from './workspace-mutations'
 
 function createTwoWorkspaceState() {
   const windowId = randomUUID()
@@ -89,6 +89,37 @@ it('moves backward and forward through durable focus without adding entries', ()
   expect(forward.target).toEqual(targets[1])
   expect(forward.state.revision).toBe(5)
   expect(forward.state.focusHistory.entries).toEqual(targets)
+})
+
+it('returns to the previous terminal and forward to the new browser tab', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const alpha = targets[1]!
+  const { workspaceId, paneId } = alpha
+  const betaId = randomUUID()
+  const browserId = randomUUID()
+  const withBeta = openTerminalTab(
+    state,
+    { workspaceId, paneId, launch: { cwd: '/tmp', rows: 24, cols: 80 } },
+    betaId,
+    2
+  )
+  const withBrowser = openBrowserTab(
+    withBeta,
+    { workspaceId, paneId, metadata: { url: 'https://example.com/' } },
+    browserId,
+    randomUUID(),
+    3
+  )
+
+  const back = navigateFocusHistory(withBrowser, 'back')
+  expect(back.target, `Back should target Beta (Alpha is ${alpha.tabId})`).toEqual({
+    ...alpha,
+    tabId: betaId
+  })
+  expect(navigateFocusHistory(back.state, 'forward').target).toEqual({
+    ...alpha,
+    tabId: browserId
+  })
 })
 
 it('drops intervening forward history when selecting the former last tab', () => {
