@@ -54,7 +54,8 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
 export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
   const nodes: SafeMarkdownNode[] = []
   const lines = previewLines(source)
-  for (let index = 0; index < lines.length && nodes.length < 4096; index++) {
+  let remainingNodes = 4096
+  for (let index = 0; index < lines.length && remainingNodes > 0; index++) {
     const line = lines[index]!
     if (line.startsWith('```')) {
       const language = line.slice(3).trim()
@@ -67,19 +68,28 @@ export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
         language: language ? takeCharacters(language, 32) : null,
         text: takeCharacters(rows.join('\n'), 65_536)
       })
+      remainingNodes--
       continue
     }
+    if (!line.trim()) continue
+
     const hashes = /^#{1,6} /u.exec(line)?.[0].length
+    const isList = line.startsWith('- ')
+    const children = inlineNodes(line.slice(hashes ?? (isList ? 2 : 0)))
+    const blockNodes = children.length + (isList ? 2 : 1)
+    if (blockNodes > remainingNodes) break
+    remainingNodes -= blockNodes
+
     if (hashes) {
-      nodes.push({ kind: 'heading', level: hashes - 1, children: inlineNodes(line.slice(hashes)) })
-    } else if (line.startsWith('- ')) {
+      nodes.push({ kind: 'heading', level: hashes - 1, children })
+    } else if (isList) {
       nodes.push({
         kind: 'list',
         ordered: false,
-        items: [{ kind: 'listItem', children: inlineNodes(line.slice(2)) }]
+        items: [{ kind: 'listItem', children }]
       })
-    } else if (line.trim()) {
-      nodes.push({ kind: 'paragraph', children: inlineNodes(line) })
+    } else {
+      nodes.push({ kind: 'paragraph', children })
     }
   }
   return nodes
