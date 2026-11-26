@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 
 import {
   assertLayoutBindingsPreserved,
@@ -89,6 +89,68 @@ it('retains the hosted caller window when the layout preserves workspace identit
     hostingState: 'hosted'
   })
   expect(durableApplicationStateSchema.safeParse(applied).success).toBe(true)
+})
+
+it('allocates one fresh browser session when applying a layout browser tab', () => {
+  const { state, layoutId } = fixture()
+  const template = state.savedLayouts[0]!.template.workspaces[0]!
+  const tabId = template.panes[template.selectedPaneId]!.selectedTabId
+  const url = 'https://example.com/'
+  template.tabs[tabId]!.content = { kind: 'browser', url }
+  const browserSessionId = randomUUID()
+  const newId = vi.fn(() => browserSessionId)
+
+  const applied = planLayoutApplication(state, layoutId, newId)
+
+  expect(newId).toHaveBeenCalledTimes(1)
+  expect(applied.workspaces[0]!.tabs[tabId]!.content).toStrictEqual({
+    kind: 'browser',
+    metadata: {
+      browserSessionId,
+      url,
+      navigationTitle: '',
+      canBack: false,
+      canForward: false,
+      loading: false,
+      devToolsOpen: false,
+      profilePartition: 'persist:agent-workspace-default',
+      stateRevision: 0,
+      correlationId: null
+    }
+  })
+})
+
+it('clones the live browser metadata without allocating an ID when the portable URL matches', () => {
+  const { state, layoutId, windowId } = fixture()
+  const workspace = state.workspaces[0]!
+  const tabId = workspace.panes[workspace.selectedPaneId]!.selectedTabId
+  const expected = {
+    browserSessionId: randomUUID(),
+    url: 'https://example.com/?page=2#section',
+    navigationTitle: 'Example',
+    canBack: true,
+    canForward: true,
+    loading: true,
+    devToolsOpen: true,
+    profilePartition: 'persist:custom',
+    stateRevision: 7,
+    correlationId: randomUUID()
+  }
+  const liveMetadata = { ...expected }
+  workspace.tabs[tabId]!.content = { kind: 'browser', metadata: liveMetadata }
+  const template = state.savedLayouts[0]!.template.workspaces[0]!
+  template.id = workspace.id
+  template.name = 'Renamed workspace'
+  template.tabs[tabId]!.content = { kind: 'browser', url: 'https://example.com/' }
+  const newId = vi.fn(randomUUID)
+
+  const applied = planLayoutApplication(state, layoutId, newId, windowId)
+  const content = applied.workspaces[0]!.tabs[tabId]!.content
+
+  expect(newId).not.toHaveBeenCalled()
+  if (content.kind !== 'browser') throw new Error('Expected a browser tab')
+  expect(content.metadata).toStrictEqual(expected)
+  expect(content.metadata).not.toBe(liveMetadata)
 })
 
 it('prunes removed tab focus before the cursor and preserves forward history', () => {
