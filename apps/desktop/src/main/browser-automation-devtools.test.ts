@@ -257,6 +257,55 @@ describe('BrowserAutomationDevtools', () => {
     devtools.dispose()
   })
 
+  it('retains the longest snapshot prefix within 48 KiB of serialized UTF-8', async () => {
+    const { devtools, debuggerApi } = fixture()
+    await devtools.initialize()
+    const prefix = Array.from({ length: 23 }, (_, index) => ({
+      nodeId: String(index),
+      role: '',
+      name: 'a'.repeat(2048)
+    }))
+    const last = { nodeId: 'last', role: '', name: '🧪"\\\n' }
+    last.name += 'a'.repeat(48 * 1024 - Buffer.byteLength(JSON.stringify([...prefix, last])))
+    const cdpPrefix = prefix.map(({ nodeId, name }) => ({ nodeId, name: { value: name } }))
+    const cdpLast = { nodeId: last.nodeId, name: { value: last.name } }
+
+    debuggerApi.sendCommand.mockResolvedValueOnce({ nodes: [...cdpPrefix, cdpLast] })
+    const snapshot = (await devtools.run({ kind: 'snapshot' })) as {
+      nodes: unknown[]
+      truncated: boolean
+    }
+    expect(snapshot).toMatchObject({ nodes: [...prefix, last], truncated: false })
+    expect(Buffer.byteLength(JSON.stringify(snapshot.nodes))).toBe(48 * 1024)
+
+    debuggerApi.sendCommand.mockResolvedValueOnce({
+      nodes: [...cdpPrefix, { nodeId: 'over', name: { value: last.name + 'a' } }, cdpLast]
+    })
+    expect(await devtools.run({ kind: 'snapshot' })).toMatchObject({
+      nodes: prefix,
+      truncated: true
+    })
+    devtools.dispose()
+  })
+
+  it.each([false, true])(
+    'truncates at 200 eligible nodes only if another is present (%s)',
+    async (extra) => {
+      const { devtools, debuggerApi } = fixture()
+      await devtools.initialize()
+      const nodes = Array.from({ length: 200 }, (_, index) => ({ nodeId: String(index) }))
+      debuggerApi.sendCommand.mockResolvedValueOnce({
+        nodes: [
+          ...nodes,
+          { nodeId: 'ignored', ignored: true },
+          ...(extra ? [{ nodeId: 'extra' }] : [])
+        ]
+      })
+      expect(await devtools.run({ kind: 'snapshot' })).toMatchObject({ nodes, truncated: extra })
+      devtools.dispose()
+    }
+  )
+
   it('does not steal debugger ownership and reports capability loss after detachment', async () => {
     const busy = fixture(true)
     await expect(busy.devtools.initialize()).rejects.toThrow('already owned')
