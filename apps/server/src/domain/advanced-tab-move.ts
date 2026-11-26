@@ -5,11 +5,10 @@ import {
 import { tabMoveExactParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
-import { pruneHistory, WindowMutationError } from './window-mutations'
+import { pruneHistory, recordFocus, WindowMutationError } from './window-mutations'
 import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
 
 type Request = z.infer<typeof tabMoveExactParamsSchema>
-type FocusTarget = DurableApplicationState['focusHistory']['entries'][number]
 
 /** Moves one live terminal or browser identity into an exact durable destination. */
 export function moveExactTab(
@@ -117,26 +116,12 @@ export function moveExactTab(
   next.selectedWorkspaceId = to.id
   next.workspaceSelection = [to.id]
   pruneHistory(next)
-  const history = next.focusHistory
-  const focus: FocusTarget = {
+  recordFocus(next, {
     windowId: targetPlacement.id,
     workspaceId: to.id,
     paneId: targetPane.id,
     tabId: request.source.tabId
-  }
-  history.entries = history.entries.slice(0, history.cursor + 1)
-  const last = history.entries.at(-1)
-  if (
-    !last ||
-    last.windowId !== focus.windowId ||
-    last.workspaceId !== focus.workspaceId ||
-    last.paneId !== focus.paneId ||
-    last.tabId !== focus.tabId
-  ) {
-    history.entries.push(focus)
-  }
-  if (history.entries.length > 128) history.entries.shift()
-  history.cursor = history.entries.length - 1
+  })
   next.revision += 1
   return durableApplicationStateSchema.parse(next)
 }

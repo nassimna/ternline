@@ -70,7 +70,7 @@ export function pruneHistory(state: State): void {
   history.cursor = Math.min(Math.max(0, beforeCursor - 1), Math.max(0, history.entries.length - 1))
 }
 
-function recordFocus(state: State, target: FocusTarget): void {
+export function recordFocus(state: State, target: FocusTarget): void {
   const history = state.focusHistory
   history.entries = history.entries.slice(0, history.cursor + 1)
   const last = history.entries.at(-1)
