@@ -14,6 +14,7 @@ import { projectApplicationSnapshot } from './application-projection'
 import { projectOrganization } from './organization-mutations'
 import { reopenClosedTab } from './recently-closed-mutations'
 import { closeTab } from './workspace-mutations'
+import { navigateBrowser, BrowserMutationError } from './browser-mutations'
 
 function fixture() {
   const windowId = randomUUID()
@@ -263,3 +264,58 @@ it('atomically closes a nonfinal window with Rust-parity records and survivor fo
     })
   ).toThrow(WindowMutationError)
 })
+
+it.each([false, true])(
+  'preserves browser projection and navigation with explicit metadata: %s',
+  (explicit) => {
+    const { state } = fixture()
+    const workspace = state.workspaces[0]!
+    const tab = workspace.tabs[workspace.panes[workspace.selectedPaneId]!.selectedTabId]!
+    const browserSessionId = randomUUID()
+    const correlationId = randomUUID()
+    const expected = {
+      browserSessionId,
+      url: 'https://example.com/',
+      navigationTitle: explicit ? 'Example' : '',
+      canBack: explicit,
+      canForward: explicit,
+      loading: explicit,
+      devToolsOpen: explicit,
+      profilePartition: explicit ? 'persist:custom' : 'persist:agent-workspace-default',
+      stateRevision: explicit ? 7 : 0,
+      correlationId: explicit ? correlationId : null
+    }
+    tab.content = {
+      kind: 'browser',
+      metadata: explicit ? { ...expected } : { browserSessionId, url: expected.url }
+    }
+    const before = structuredClone(state)
+    expect(projectApplicationSnapshot(state).workspaces[0]!.tabs[0]!.content).toEqual({
+      kind: 'browser',
+      state: expected
+    })
+    const request = {
+      browserSessionId,
+      url: 'https://example.org/',
+      expectedStateRevision: expected.stateRevision,
+      correlationId
+    }
+    const next = navigateBrowser(state, request, 5)
+    expect(projectApplicationSnapshot(next).workspaces[0]!.tabs[0]!.content).toEqual({
+      kind: 'browser',
+      state: {
+        ...expected,
+        url: request.url,
+        loading: true,
+        stateRevision: expected.stateRevision + 1,
+        correlationId
+      }
+    })
+    expect(next.revision).toBe(state.revision + 1)
+    expect(next.workspaces[0]!.updatedAt).toBe(5)
+    expect(() => navigateBrowser(next, request, 6)).toThrow(
+      new BrowserMutationError('browser_state_stale', 'Browser state revision is stale')
+    )
+    expect(state).toEqual(before)
+  }
+)

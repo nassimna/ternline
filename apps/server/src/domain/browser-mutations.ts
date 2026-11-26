@@ -14,6 +14,8 @@ import {
 } from '@agent-workspace/contracts'
 import type { z } from 'zod'
 
+import { projectBrowserState } from './application-projection'
+
 type BrowserMetadata = Extract<
   DurableApplicationState['workspaces'][number]['tabs'][string]['content'],
   { kind: 'browser' }
@@ -80,18 +82,7 @@ function mutateBrowser(
     )
   }
   change(metadata)
-  browserSessionStateSchema.parse({
-    browserSessionId,
-    url: metadata.url,
-    navigationTitle: metadata.navigationTitle ?? '',
-    canBack: metadata.canBack ?? false,
-    canForward: metadata.canForward ?? false,
-    loading: metadata.loading ?? false,
-    devToolsOpen: metadata.devToolsOpen ?? false,
-    profilePartition: metadata.profilePartition ?? 'persist:agent-workspace-default',
-    stateRevision: metadata.stateRevision ?? 0,
-    correlationId: metadata.correlationId ?? null
-  })
+  browserSessionStateSchema.parse(projectBrowserState(metadata))
   workspace.updatedAt = updatedAt
   next.revision += 1
   return durableApplicationStateSchema.parse(next)
