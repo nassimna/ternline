@@ -459,22 +459,21 @@ export class FilesService {
       const chunk = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
         bytes.subarray(params.offset, end)
       )
-      if (
-        !allowControls &&
-        [...chunk].some((character) => {
-          const point = character.codePointAt(0)!
-          return (
-            (point < 32 && point !== 9 && point !== 10 && point !== 13) ||
-            (point >= 127 && point <= 159)
+      if (!allowControls) {
+        for (let index = 0; index < chunk.length; index++) {
+          const code = chunk.charCodeAt(index)
+          if (
+            (code < 32 && code !== 9 && code !== 10 && code !== 13) ||
+            (code >= 127 && code <= 159)
           )
-        })
-      )
-        return {
-          kind: 'unavailable' as const,
-          document: params.document,
-          reason: 'binary' as const,
-          displayName: document.label
+            return {
+              kind: 'unavailable' as const,
+              document: params.document,
+              reason: 'binary' as const,
+              displayName: document.label
+            }
         }
+      }
       return {
         kind: 'text' as const,
         chunk: {
