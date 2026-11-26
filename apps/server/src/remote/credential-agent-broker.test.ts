@@ -44,12 +44,16 @@ async function exchange(socket: ReturnType<typeof connect>, frame: Buffer): Prom
 }
 
 describe('attempt-scoped signing broker', () => {
-  it('opens a broker socket under a realistic long private profile path', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'cmux-broker-'))
-    const brokerRoot = join(root, 'a'.repeat(38))
+  it.each([
+    ['default prefix', 'cmux-broker-'],
+    ['longer prefix', 'cmux-broker-longer-fixture-root-']
+  ])('opens a socket under a long private profile path (%s)', async (_label, prefix) => {
+    const root = await mkdtemp(join(tmpdir(), prefix))
     const keyPath = join(root, 'id_ed25519')
     let lease: CredentialBrokerLease | undefined
     try {
+      const paddingBytes = 78 - Buffer.byteLength(`${root}/`)
+      const brokerRoot = join(root, 'a'.repeat(paddingBytes))
       await mkdir(brokerRoot, { mode: 0o700 })
       expect(Buffer.byteLength(join(brokerRoot, 'a'.repeat(36), 'agent.sock'))).toBeGreaterThan(107)
       await run('/usr/bin/ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', keyPath])
