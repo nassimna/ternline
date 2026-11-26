@@ -189,6 +189,59 @@ describe('Files service capabilities', () => {
     }
   })
 
+  it('classifies controls only in the requested text page unless allowed', () => {
+    const root = mkdtempSync(join(tmpdir(), 'node-files-controls-'))
+    const allowed = '\t\n\r 🌍~\u00a0'
+    const controls = ['\u0000', '\u001f', '\u007f', '\u009f']
+    const text = allowed + controls.join('')
+    writeFileSync(join(root, 'controls.txt'), text)
+    const workspace = { id: randomUUID(), name: 'Fixture', workingDirectory: root }
+    const store = {
+      readSnapshot: () => ({ workspaces: [workspace] })
+    } as unknown as ApplicationStateStore
+    const files = new FilesService(store)
+    try {
+      const descriptor = files.listRoots({ limit: 64 }).roots[0]!
+      const entry = files.listDirectory({
+        directoryDescriptorId: descriptor.directoryDescriptorId,
+        generation: descriptor.generation,
+        limit: 100,
+        cancellationId: randomUUID()
+      }).entries[0]!
+      const document = files.issueDocument({
+        authorizedDescriptorId: entry.entryDescriptorId,
+        descriptorGeneration: entry.generation,
+        expectedKind: 'plainText'
+      }).document
+
+      const allowedBytes = Buffer.byteLength(allowed)
+      expect(files.read({ document, offset: 0, maxBytes: allowedBytes })).toMatchObject({
+        kind: 'text',
+        chunk: { offset: 0, text: allowed, eof: false }
+      })
+
+      let offset = allowedBytes
+      for (const control of controls) {
+        const maxBytes = Buffer.byteLength(control)
+        expect(files.read({ document, offset, maxBytes })).toEqual({
+          kind: 'unavailable',
+          document,
+          reason: 'binary',
+          displayName: 'controls.txt'
+        })
+        offset += maxBytes
+      }
+
+      expect(files.read({ document, offset: 0, maxBytes: offset }, true)).toMatchObject({
+        kind: 'text',
+        chunk: { offset: 0, text, eof: true }
+      })
+    } finally {
+      files.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('keeps descriptor identities stable across paginated directory scans', () => {
     const parent = mkdtempSync(join(tmpdir(), 'node-files-pages-'))
     const root = join(parent, 'root')
