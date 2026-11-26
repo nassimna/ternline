@@ -276,6 +276,65 @@ describe('Files service capabilities', () => {
     }
   })
 
+  it('reuses paginated child descriptors after listing a sibling directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'node-files-sibling-pages-'))
+    for (const directory of ['notes', 'notes-archive']) {
+      mkdirSync(join(root, directory))
+      writeFileSync(join(root, directory, 'z.txt'), 'last')
+      writeFileSync(join(root, directory, 'a.txt'), 'first')
+    }
+    const workspace = { id: randomUUID(), name: 'Fixture', workingDirectory: root }
+    const store = {
+      readSnapshot: () => ({ workspaces: [workspace] })
+    } as unknown as ApplicationStateStore
+    const files = new FilesService(store)
+    try {
+      const descriptor = files.listRoots({ limit: 64 }).roots[0]!
+      const readPage = (directoryDescriptorId: string, limit: number, cursor?: string) =>
+        files.listDirectory({
+          directoryDescriptorId,
+          generation: descriptor.generation,
+          limit,
+          cursor,
+          cancellationId: randomUUID()
+        })
+      const [notes, archive] = readPage(descriptor.directoryDescriptorId, 2).entries
+      const notesId = notes!.entryDescriptorId
+      const first = readPage(notesId, 1)
+      expect(first.nextCursor).toBe(first.entries[0]!.entryDescriptorId)
+      const cursor = first.nextCursor!
+      const second = readPage(notesId, 1, cursor)
+      expect([...first.entries, ...second.entries]).toMatchObject([
+        { label: 'a.txt', kind: 'file', generation: descriptor.generation },
+        { label: 'z.txt', kind: 'file', generation: descriptor.generation }
+      ])
+      expect(second.nextCursor).toBeNull()
+
+      const archivePage = readPage(archive!.entryDescriptorId, 1)
+      expect(archivePage.entries[0]!.label).toBe('a.txt')
+      expect(archivePage.nextCursor).not.toBe(cursor)
+      expect(readPage(notesId, 1)).toEqual(first)
+      expect(readPage(notesId, 1, cursor)).toEqual(second)
+
+      const replacement = join(root, 'notes', 'replacement.txt')
+      writeFileSync(replacement, 'replacement')
+      renameSync(replacement, join(root, 'notes', 'a.txt'))
+      expect(() => readPage(notesId, 1, cursor)).toThrowError(
+        expect.objectContaining({ code: 'stale_revision' })
+      )
+      const updated = readPage(notesId, 1)
+      expect(updated.entries).toMatchObject([
+        { label: 'a.txt', kind: 'file', generation: descriptor.generation }
+      ])
+      expect(updated.nextCursor).toBe(updated.entries[0]!.entryDescriptorId)
+      expect(updated.nextCursor).not.toBe(cursor)
+      expect(readPage(notesId, 1, updated.nextCursor!)).toEqual(second)
+    } finally {
+      files.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('renders bounded safe markdown and compares authorized document snapshots', () => {
     const parent = mkdtempSync(join(tmpdir(), 'node-files-preview-'))
     const root = join(parent, 'root')

@@ -299,7 +299,12 @@ export class FilesService {
       }
       const existingEntries = new Map<string, Entry>()
       for (const entry of this.entries.values()) {
-        if (entry.rootId === root.id && entry.generation === root.generation) {
+        if (
+          entry.rootId === root.id &&
+          entry.generation === root.generation &&
+          entry.parts.length === descriptor.parts.length + 1 &&
+          descriptor.parts.every((part, index) => entry.parts[index] === part)
+        ) {
           existingEntries.set(`${entry.kind}\0${entry.identity}\0${entry.parts.join('\0')}`, entry)
         }
       }
