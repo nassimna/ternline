@@ -386,7 +386,8 @@ export class CodexAdapter {
     const queue: string[] = []
     let bytes = 0
     let lines = 0
-    let pending = Buffer.alloc(0)
+    const pending: Buffer[] = []
+    let pendingBytes = 0
     let failure: CodexAdapterError | undefined
     let waiter: (() => void) | undefined
     const wake = () => {
@@ -415,27 +416,35 @@ export class CodexAdapter {
     child.stdout.on('data', (chunk: Buffer) => {
       if (failure) return
       bytes += chunk.length
-      if (
-        bytes > limit + MAX_LINE_BYTES ||
-        pending.length + chunk.length > limit + MAX_LINE_BYTES
-      ) {
+      if (bytes > limit + MAX_LINE_BYTES || pendingBytes + chunk.length > limit + MAX_LINE_BYTES) {
         failure = new CodexAdapterError('resource_limit', 'Codex protocol output is too large')
         child.kill()
         wake()
         return
       }
-      pending = Buffer.concat([pending, chunk])
-      for (;;) {
-        const index = pending.indexOf(10)
-        if (index < 0) break
-        const line = pending.subarray(0, index)
-        pending = pending.subarray(index + 1)
-        if (line.length > limit || ++lines > MAX_LINES) {
+      let start = 0
+      while (start < chunk.length) {
+        const end = chunk.indexOf(10, start)
+        if (end < 0) {
+          pending.push(chunk.subarray(start))
+          pendingBytes += chunk.length - start
+          break
+        }
+        const lineBytes = pendingBytes + end - start
+        if (lineBytes > limit || ++lines > MAX_LINES) {
           failure = new CodexAdapterError('resource_limit', 'Codex protocol line limit reached')
           child.kill()
           break
         }
+        let line = chunk.subarray(start, end)
+        if (pendingBytes > 0) {
+          pending.push(line)
+          line = Buffer.concat(pending, lineBytes)
+          pending.length = 0
+          pendingBytes = 0
+        }
         queue.push(line.toString('utf8'))
+        start = end + 1
       }
       wake()
     })
