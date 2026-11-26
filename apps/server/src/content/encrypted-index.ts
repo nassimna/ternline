@@ -420,10 +420,15 @@ export class EncryptedIndex {
     )
       return fail('resource_limit')
     const documentValue = encryptIndexValue(this.key, Buffer.from(document.documentId))
-    const snippet = [...text]
-      .filter((char) => !/\p{Cc}/u.test(char) || char === '\n' || char === '\t')
-      .slice(0, 512)
-      .join('')
+    let snippet = ''
+    let snippetCodePoints = 0
+    for (const char of text) {
+      if (!/\p{Cc}/u.test(char) || char === '\n' || char === '\t') {
+        snippet += char
+        snippetCodePoints += 1
+        if (snippetCodePoints === 512) break
+      }
+    }
     const snippetValue = encryptIndexValue(this.key, Buffer.from(snippet))
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM documents WHERE identity_hash=?').run(hash)

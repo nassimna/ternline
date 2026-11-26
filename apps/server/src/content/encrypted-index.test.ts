@@ -105,6 +105,32 @@ it('writes Rust schema-v1 encrypted data and reopens consent while clearing proc
   }
 })
 
+it('keeps 512 snippet code points after filtering controls and indexes text beyond the snippet', () => {
+  const path = profile()
+  const source = randomUUID()
+  const prefix = 'a'.repeat(509)
+  try {
+    const index = EncryptedIndex.open(path, key)
+    try {
+      index.authorizeSource(source, 0)
+      index.indexText(
+        source,
+        { documentId: randomUUID(), identityVersion: 1 },
+        'agentTranscript',
+        `${prefix}\u0000\t\r\n\u007f\u0085😀 tailword`,
+        { maxBytes: 1024, deadlineMs: Date.now() + 2000 }
+      )
+      expect(index.search('tailword', 10).map(({ snippet }) => snippet)).toEqual([
+        `${prefix}\t\n😀`
+      ])
+    } finally {
+      index.close()
+    }
+  } finally {
+    rmSync(path, { recursive: true, force: true })
+  }
+})
+
 it('fails closed on unsafe artifacts, wrong keys, and schema drift; preserves corrupt artifacts explicitly', async () => {
   const path = profile()
   try {
