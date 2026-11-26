@@ -27,6 +27,13 @@ const V2_KINDS: WorkspaceCardSlotV2Snapshot['kind'][] = [
   'ssh',
   'media'
 ]
+const AGENT_ATTENTION = {
+  idle: { priority: 0, state: 'none', reason: 'none' },
+  running: { priority: 1, state: 'informational', reason: 'agentRunning' },
+  waiting: { priority: 3, state: 'waiting', reason: 'agentWaiting' },
+  completed: { priority: 2, state: 'completed', reason: 'agentCompleted' },
+  failed: { priority: 4, state: 'urgent', reason: 'agentFailed' }
+} as const
 
 type V1Replace = Parameters<typeof workspaceCardSlotsReplaceParamsSchema.parse>[0]
 type V2Replace = Parameters<typeof workspaceCardSlotV2ReplaceParamsSchema.parse>[0]
@@ -125,18 +132,8 @@ function fold(
     )
       winner = notification
   }
-  const agent = slots?.agentStatus?.status
-  const agentPriority =
-    agent === 'failed'
-      ? 4
-      : agent === 'waiting'
-        ? 3
-        : agent === 'completed'
-          ? 2
-          : agent === 'running'
-            ? 1
-            : 0
-  if (winner && (winner.level === 'error' ? 4 : 1) >= agentPriority) {
+  const agent = AGENT_ATTENTION[slots?.agentStatus?.status ?? 'idle']
+  if (winner && (winner.level === 'error' ? 4 : 1) >= agent.priority) {
     const workspace = state.workspaces.find((item) => item.id === workspaceId)!
     const paneId =
       winner.paneId ??
@@ -157,31 +154,11 @@ function fold(
       ...(winner.tabId === null ? {} : { tabId: winner.tabId })
     }) as WorkspaceAttentionSnapshot
   }
-  const agentState =
-    agent === 'failed'
-      ? 'urgent'
-      : agent === 'waiting'
-        ? 'waiting'
-        : agent === 'completed'
-          ? 'completed'
-          : agent === 'running'
-            ? 'informational'
-            : 'none'
-  const agentReason =
-    agent === 'failed'
-      ? 'agentFailed'
-      : agent === 'waiting'
-        ? 'agentWaiting'
-        : agent === 'completed'
-          ? 'agentCompleted'
-          : agent === 'running'
-            ? 'agentRunning'
-            : 'none'
   return workspaceAttentionSnapshotSchema.parse({
     workspaceId,
     revision: 0,
-    state: agentState,
-    reason: agentReason,
+    state: agent.state,
+    reason: agent.reason,
     unreadCount
   }) as WorkspaceAttentionSnapshot
 }
