@@ -57,6 +57,53 @@ function createFixture(): { service: TerminalService; pty: FakePty } {
 }
 
 describe('TerminalService', () => {
+  it.each([0, 32768, 65536])(
+    'checkpoints %i tiny chunks without changing the retained suffix or byte accounting',
+    async (sequence) => {
+      const { service, pty } = createFixture()
+      const { terminal } = await service.create({ rows: 24, cols: 80 })
+      try {
+        for (let index = 0; index < 65536; index += 1) pty.output('12345678')
+        const before = service.attach(terminal.id)
+        const checkpoint = {
+          sequence,
+          rows: 24,
+          cols: 80,
+          activeBuffer: 'normal' as const,
+          data: 'screen'
+        }
+
+        service.checkpoint(terminal.id, checkpoint)
+        service.checkpoint(terminal.id, checkpoint)
+
+        const attached = service.attach(terminal.id)
+        expect(attached.output).toEqual(before.output.slice(sequence))
+        expect(attached.checkpoint).toEqual(checkpoint)
+        expect(attached.lastSequence).toBe(65536)
+        expect(attached.reconstructionComplete).toBe(true)
+        if (sequence > 0) {
+          expect(() =>
+            service.checkpoint(terminal.id, { ...checkpoint, sequence: sequence - 1 })
+          ).toThrow('Checkpoint is older than the accepted one')
+          expect(service.attach(terminal.id)).toEqual(attached)
+        }
+
+        pty.output('x'.repeat(MAX_OUTPUT_CHUNK_BYTES * 4))
+        const final = service.attach(terminal.id)
+        expect(final.output).toEqual(
+          [1, 2, 3, 4].map((offset) => ({
+            sequence: 65536 + offset,
+            data: Buffer.from('x'.repeat(MAX_OUTPUT_CHUNK_BYTES)).toString('base64'),
+            byteLength: MAX_OUTPUT_CHUNK_BYTES
+          }))
+        )
+        expect(final.reconstructionComplete).toBe(sequence === 65536)
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
   it('keeps ordered output, accepts checkpoints, and marks missing replay data', async () => {
     const { service, pty } = createFixture()
     const { terminal } = await service.create({ rows: 24, cols: 80, cwd: resolve('.') })
