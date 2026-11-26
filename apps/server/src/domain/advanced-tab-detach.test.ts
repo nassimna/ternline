@@ -149,6 +149,9 @@ it('atomically detaches a final browser tab and replaces its source with a termi
       paneId: siblingPane,
       content: { kind: 'terminal', launch: { cwd: '/tmp', rows: 24, cols: 80 } }
     }
+    const otherTab = randomUUID()
+    source.panes[siblingPane].tabs.push(otherTab)
+    source.tabs[otherTab] = { ...source.tabs[siblingTab], id: otherTab }
     const sibling = { kind: 'leaf', paneId: siblingPane }
     source.layout = {
       kind: 'split',
@@ -158,13 +161,43 @@ it('atomically detaches a final browser tab and replaces its source with a termi
       first: side === 'first' ? { kind: 'leaf', paneId: ids.sourcePane } : sibling,
       second: side === 'second' ? { kind: 'leaf', paneId: ids.sourcePane } : sibling
     }
-    const result = detachExactTab(durableApplicationStateSchema.parse(splitState), request, ids, 5)
+    const movingFocus = splitState.focusHistory.entries[0]!
+    const siblingFocus = { ...movingFocus, paneId: siblingPane, tabId: siblingTab }
+    const otherFocus = { ...siblingFocus, tabId: otherTab }
+    const detachedFocus = {
+      windowId: ids.windowId,
+      workspaceId: ids.workspaceId,
+      paneId: ids.paneId,
+      tabId: ids.tabId
+    }
+    splitState.focusHistory = {
+      entries: [movingFocus, siblingFocus, movingFocus, otherFocus, movingFocus],
+      cursor: 2
+    }
+    const input = durableApplicationStateSchema.parse(splitState)
+    const original = structuredClone(input)
+    const result = detachExactTab(input, request, ids, 5)
     expect(result.workspaces[0]?.layout).toEqual(sibling)
     expect(result.workspaces[0]?.panes[ids.sourcePane]).toBeUndefined()
     expect(result.workspaces[0]?.selectedPaneId).toBe(siblingPane)
     expect(result.workspaces[0]?.tabs[ids.replacementTabId]).toBeUndefined()
     expect(result.workspaces[1]?.tabs[ids.tabId]?.content).toEqual(source.tabs[ids.tabId]?.content)
-    expect(splitState.workspaces[0]?.panes[ids.sourcePane]?.tabs).toEqual([ids.tabId])
+    expect(result.focusHistory).toEqual({ entries: [siblingFocus, detachedFocus], cursor: 1 })
+    expect(input).toEqual(original)
+
+    splitState.focusHistory = { entries: [movingFocus, siblingFocus, otherFocus], cursor: 0 }
+    const clamped = detachExactTab(durableApplicationStateSchema.parse(splitState), request, ids, 5)
+    expect(clamped.focusHistory).toEqual({ entries: [siblingFocus, detachedFocus], cursor: 1 })
+
+    const fullHistory = Array.from({ length: 128 }, (_, index) =>
+      index % 2 === 0 ? siblingFocus : otherFocus
+    )
+    splitState.focusHistory = { entries: fullHistory, cursor: 127 }
+    const capped = detachExactTab(durableApplicationStateSchema.parse(splitState), request, ids, 5)
+    expect(capped.focusHistory).toEqual({
+      entries: [...fullHistory.slice(1), detachedFocus],
+      cursor: 127
+    })
   }
 
   const terminalState = structuredClone(state)
