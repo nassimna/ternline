@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 
 import { navigateFocusHistory } from './focus-history-mutations'
 import { WindowMutationError } from './window-mutations'
-import { closeWorkspace } from './workspace-mutations'
+import { closeWorkspace, openTerminalTab, selectTab } from './workspace-mutations'
 
 function createTwoWorkspaceState() {
   const windowId = randomUUID()
@@ -89,6 +89,29 @@ it('moves backward and forward through durable focus without adding entries', ()
   expect(forward.target).toEqual(targets[1])
   expect(forward.state.revision).toBe(5)
   expect(forward.state.focusHistory.entries).toEqual(targets)
+})
+
+it('drops intervening forward history when selecting the former last tab', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const alpha = targets[1]!
+  const bravoId = randomUUID()
+  const charlieId = randomUUID()
+  const input = {
+    workspaceId: alpha.workspaceId,
+    paneId: alpha.paneId,
+    launch: { cwd: '/tmp', rows: 24, cols: 80 }
+  }
+  const withBravo = openTerminalTab(state, input, bravoId, 2)
+  const withCharlie = openTerminalTab(withBravo, input, charlieId, 3)
+
+  const backToBravo = navigateFocusHistory(withCharlie, 'back')
+  expect(backToBravo.target.tabId).toBe(bravoId)
+  const backToAlpha = navigateFocusHistory(backToBravo.state, 'back')
+  expect(backToAlpha.target).toEqual(alpha)
+
+  const selected = selectTab(backToAlpha.state, alpha.workspaceId, charlieId, 4)
+
+  expect(navigateFocusHistory(selected, 'back').target.tabId).toBe(alpha.tabId)
 })
 
 it('prunes a closed unfocused workspace from both sides of the focus history cursor', () => {
