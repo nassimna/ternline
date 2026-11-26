@@ -119,7 +119,7 @@ it('stores and commits a new native key through a private child descriptor', asy
           bundle: true,
           platform: 'node',
           format: 'esm',
-          external: ['better-sqlite3', 'dbus-next', 'ssh2', 'zod'],
+          external: ['better-sqlite3', 'dbus-next', 'koffi', 'ssh2', 'zod'],
           outfile: helperPath
         })
         const descriptorPath = join(directory, 'key')

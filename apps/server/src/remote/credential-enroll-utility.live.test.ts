@@ -70,7 +70,7 @@ async function childBundle(): Promise<void> {
     bundle: true,
     platform: 'node',
     format: 'esm',
-    external: ['better-sqlite3', 'dbus-next', 'ssh2', 'zod'],
+    external: ['better-sqlite3', 'dbus-next', 'koffi', 'ssh2', 'zod'],
     outfile: childPath
   })
 }
@@ -208,6 +208,17 @@ function invoke(request: object, walletPath?: string) {
     closeSync(fd)
   }
 }
+
+it.skipIf(process.platform !== 'linux')(
+  'starts the bundled live credential helper and reports an invalid request',
+  async () => {
+    await childBundle()
+    const { result } = invoke({})
+    expect(result.stderr.toString()).toBe('')
+    expect(result.status).toBe(1)
+    expect(JSON.parse(result.stdout.toString())).toEqual({ code: 'invalid_request' })
+  }
+)
 
 it.skipIf(process.platform !== 'linux')(
   'enrolls a new live target only through exact reservation and pinned resume',
