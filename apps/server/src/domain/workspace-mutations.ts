@@ -131,6 +131,38 @@ function requireNewTabCapacity(state: DurableApplicationState, workspace: Worksp
   }
 }
 
+function initialWorkspace(
+  ids: NewWorkspaceIds,
+  createdAt: number,
+  metadata: Pick<
+    Workspace,
+    'name' | 'description' | 'color' | 'workingDirectory' | 'environment' | 'ssh'
+  >,
+  launch: { cwd: string; rows: number; cols: number }
+): Workspace {
+  return {
+    id: ids.workspaceId,
+    ...metadata,
+    layout: { kind: 'leaf', paneId: ids.paneId },
+    selectedPaneId: ids.paneId,
+    panes: {
+      [ids.paneId]: { id: ids.paneId, tabs: [ids.tabId], selectedTabId: ids.tabId, title: null }
+    },
+    tabs: {
+      [ids.tabId]: {
+        id: ids.tabId,
+        paneId: ids.paneId,
+        title: 'Terminal',
+        customTitle: null,
+        content: { kind: 'terminal', launch },
+        createdAt
+      }
+    },
+    createdAt,
+    updatedAt: createdAt
+  }
+}
+
 function replacementWorkspace(
   closing: Workspace,
   ids: NewWorkspaceIds,
@@ -140,38 +172,22 @@ function replacementWorkspace(
     .sort((a, b) => a.id.localeCompare(b.id))
     .find((tab) => tab.content.kind === 'terminal')
   const launch = terminal?.content.kind === 'terminal' ? terminal.content.launch : undefined
-  return {
-    id: ids.workspaceId,
-    name: 'Workspace 1',
-    description: null,
-    color: null,
-    workingDirectory: closing.workingDirectory,
-    ...(closing.environment === undefined ? {} : { environment: closing.environment }),
-    layout: { kind: 'leaf', paneId: ids.paneId },
-    selectedPaneId: ids.paneId,
-    panes: {
-      [ids.paneId]: { id: ids.paneId, tabs: [ids.tabId], selectedTabId: ids.tabId, title: null }
-    },
-    tabs: {
-      [ids.tabId]: {
-        id: ids.tabId,
-        paneId: ids.paneId,
-        title: 'Terminal',
-        customTitle: null,
-        content: {
-          kind: 'terminal',
-          launch: {
-            cwd: closing.workingDirectory,
-            rows: launch?.rows ?? 24,
-            cols: launch?.cols ?? 80
-          }
-        },
-        createdAt
-      }
-    },
+  return initialWorkspace(
+    ids,
     createdAt,
-    updatedAt: createdAt
-  }
+    {
+      name: 'Workspace 1',
+      description: null,
+      color: null,
+      workingDirectory: closing.workingDirectory,
+      ...(closing.environment === undefined ? {} : { environment: closing.environment })
+    },
+    {
+      cwd: closing.workingDirectory,
+      rows: launch?.rows ?? 24,
+      cols: launch?.cols ?? 80
+    }
+  )
 }
 
 function workspaceFromParams(
@@ -179,39 +195,20 @@ function workspaceFromParams(
   ids: NewWorkspaceIds,
   createdAt: number
 ): Workspace {
-  return {
-    id: ids.workspaceId,
-    name: request.name,
-    description: request.description ?? null,
-    color: request.color ?? null,
-    workingDirectory: request.workingDirectory,
-    ...(request.environment === undefined ? {} : { environment: request.environment }),
-    ...(request.ssh === undefined ? {} : { ssh: request.ssh }),
-    layout: { kind: 'leaf', paneId: ids.paneId },
-    selectedPaneId: ids.paneId,
-    panes: {
-      [ids.paneId]: { id: ids.paneId, tabs: [ids.tabId], selectedTabId: ids.tabId, title: null }
-    },
-    tabs: {
-      [ids.tabId]: {
-        id: ids.tabId,
-        paneId: ids.paneId,
-        title: 'Terminal',
-        customTitle: null,
-        content: {
-          kind: 'terminal',
-          launch: {
-            cwd: request.initialTerminal.cwd,
-            rows: request.initialTerminal.rows,
-            cols: request.initialTerminal.cols
-          }
-        },
-        createdAt
-      }
-    },
+  const { cwd, rows, cols } = request.initialTerminal
+  return initialWorkspace(
+    ids,
     createdAt,
-    updatedAt: createdAt
-  }
+    {
+      name: request.name,
+      description: request.description ?? null,
+      color: request.color ?? null,
+      workingDirectory: request.workingDirectory,
+      ...(request.environment === undefined ? {} : { environment: request.environment }),
+      ...(request.ssh === undefined ? {} : { ssh: request.ssh })
+    },
+    { cwd, rows, cols }
+  )
 }
 
 export function isValidTabFocus(state: DurableApplicationState, target: FocusTarget): boolean {

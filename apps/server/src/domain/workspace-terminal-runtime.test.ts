@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createWorkspace } from './workspace-mutations'
+import { closeWorkspace, createWorkspace } from './workspace-mutations'
 import { projectApplicationSnapshot } from './application-projection'
 import { saveLayout } from './layout-mutations'
 
@@ -113,6 +113,123 @@ function snapshot() {
     browserId
   }
 }
+
+describe('initial workspace mutations', () => {
+  it('creates a workspace with explicit metadata and durable terminal launch settings', () => {
+    const { state } = snapshot()
+    const ids = { workspaceId: randomUUID(), paneId: randomUUID(), tabId: randomUUID() }
+    const { workspaceId, paneId, tabId } = ids
+    const metadata = {
+      name: 'Development',
+      description: 'Project tools',
+      color: '#aabbcc',
+      workingDirectory: '/workspace',
+      environment: { PROJECT: 'ternline' },
+      ssh: { host: 'dev-alias', user: 'deploy', port: 2222 }
+    }
+    const launch = { cwd: '/workspace/tools', rows: 35, cols: 112 }
+    const next = createWorkspace(
+      state,
+      { ...metadata, initialTerminal: { ...launch, command: ['sh'] } },
+      ids,
+      2
+    )
+
+    expect(JSON.stringify(next.workspaces[1])).toBe(
+      JSON.stringify({
+        id: workspaceId,
+        ...metadata,
+        layout: { kind: 'leaf', paneId },
+        selectedPaneId: paneId,
+        panes: { [paneId]: { id: paneId, tabs: [tabId], selectedTabId: tabId, title: null } },
+        tabs: {
+          [tabId]: {
+            id: tabId,
+            paneId,
+            title: 'Terminal',
+            customTitle: null,
+            content: { kind: 'terminal', launch },
+            createdAt: 2
+          }
+        },
+        createdAt: 2,
+        updatedAt: 2
+      })
+    )
+  })
+
+  it.each([
+    { mode: 'the lowest-ID terminal', withTerminals: true, rows: 41, cols: 123 },
+    { mode: 'defaults with no terminal', withTerminals: false, rows: 24, cols: 80 }
+  ])(
+    'uses $mode for replacement dimensions when closing the last workspace',
+    ({ withTerminals, rows, cols }) => {
+      const fixture = snapshot()
+      const closing = fixture.state.workspaces[0]!
+      closing.description = 'Old description'
+      closing.color = '#112233'
+      closing.workingDirectory = '/workspace'
+      closing.ssh = { host: 'dev-alias', user: 'deploy', port: 2222 }
+      const pane = closing.panes[fixture.paneId]!
+      const [lowerId, higherId] = fixture.terminalIds.toSorted((a, b) => a.localeCompare(b))
+      const browser = closing.tabs[fixture.browserId]!
+      if (withTerminals) {
+        const lowest = closing.tabs[lowerId!]!
+        lowest.content = {
+          kind: 'terminal',
+          launch: { cwd: '/workspace/tools', rows: 41, cols: 123 }
+        }
+        closing.tabs = {
+          [higherId!]: closing.tabs[higherId!]!,
+          [lowest.id]: lowest,
+          [browser.id]: browser
+        }
+        pane.tabs = [higherId!, lowerId!, fixture.browserId]
+        pane.selectedTabId = higherId!
+      } else {
+        closing.tabs = { [browser.id]: browser }
+        pane.tabs = [fixture.browserId]
+        pane.selectedTabId = fixture.browserId
+      }
+      const workspaceId = randomUUID()
+      const paneId = randomUUID()
+      const tabId = randomUUID()
+      const next = closeWorkspace(
+        fixture.state,
+        fixture.workspaceId,
+        { workspaceId, paneId, tabId },
+        3
+      )
+
+      expect(next.workspaces).toHaveLength(1)
+      expect(JSON.stringify(next.workspaces[0])).toBe(
+        JSON.stringify({
+          id: workspaceId,
+          name: 'Workspace 1',
+          description: null,
+          color: null,
+          workingDirectory: '/workspace',
+          environment: closing.environment,
+          layout: { kind: 'leaf', paneId },
+          selectedPaneId: paneId,
+          panes: { [paneId]: { id: paneId, tabs: [tabId], selectedTabId: tabId, title: null } },
+          tabs: {
+            [tabId]: {
+              id: tabId,
+              paneId,
+              title: 'Terminal',
+              customTitle: null,
+              content: { kind: 'terminal', launch: { cwd: '/workspace', rows, cols } },
+              createdAt: 3
+            }
+          },
+          createdAt: 3,
+          updatedAt: 3
+        })
+      )
+    }
+  )
+})
 
 describe('WorkspaceTerminalRuntime', () => {
   it('rejects disconnected SSH workspace creation before spawning or committing, including CLI/API calls', async () => {
