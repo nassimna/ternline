@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { constants } from 'node:fs'
-import { access } from 'node:fs/promises'
+import { access, stat } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 
 import type {
@@ -43,7 +43,7 @@ async function executablePath(
       const candidate = join(directory, command)
       try {
         await access(candidate, constants.X_OK)
-        return candidate
+        if ((await stat(candidate)).isFile()) return candidate
       } catch {
         // Continue through the bounded, whitelisted candidates.
       }

@@ -45,7 +45,7 @@ function currentFocus(state: State): FocusTarget {
   }
 }
 
-function validFocus(state: State, target: FocusTarget): boolean {
+export function validFocus(state: State, target: FocusTarget): boolean {
   const placement = state.windowPlacements.find((item) => item.id === target.windowId)
   const workspace = state.workspaces.find((item) => item.id === target.workspaceId)
   return Boolean(
@@ -61,7 +61,7 @@ function commit(state: State): State {
   return durableApplicationStateSchema.parse(state)
 }
 
-function pruneHistory(state: State): void {
+export function pruneHistory(state: State): void {
   const history = state.focusHistory
   const beforeCursor = history.entries
     .slice(0, history.cursor + 1)

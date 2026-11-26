@@ -63,7 +63,8 @@ interface TerminalSession {
   descriptor: TerminalDescriptor
   terminating: boolean
   checkpoint?: TerminalCheckpoint
-  journal: TerminalAttachResult['output']
+  journal: (TerminalAttachResult['output'][number] | undefined)[]
+  journalHead: number
   journalBytes: number
   lastSequence: number
   reconstructionComplete: boolean
@@ -195,6 +196,7 @@ export class TerminalService {
       descriptor,
       terminating: false,
       journal: [],
+      journalHead: 0,
       journalBytes: 0,
       lastSequence: 0,
       reconstructionComplete: true,
@@ -214,10 +216,15 @@ export class TerminalService {
     const session = this.get(id)
     if (session.terminating)
       throw new TerminalServiceError('termination_pending', 'Terminal is being terminated')
+    const { journal, journalHead } = session
+    const output = new Array<TerminalAttachResult['output'][number]>(journal.length - journalHead)
+    for (let index = 0; index < output.length; index += 1) {
+      output[index] = { ...journal[journalHead + index]! }
+    }
     return {
       terminal: { ...session.descriptor },
       ...(session.checkpoint ? { checkpoint: { ...session.checkpoint } } : {}),
-      output: session.journal.map((chunk) => ({ ...chunk })),
+      output,
       lastSequence: session.lastSequence,
       reconstructionComplete: session.reconstructionComplete
     }
@@ -275,12 +282,19 @@ export class TerminalService {
         'Checkpoint is older than the accepted one'
       )
     }
-    while (session.journal[0] && session.journal[0].sequence <= checkpoint.sequence) {
-      const removed = session.journal.shift()!
-      session.journalBytes -= removed.byteLength
+    let head = session.journalHead
+    let first = session.journal[head]
+    while (first && first.sequence <= checkpoint.sequence) {
+      session.journalBytes -= first.byteLength
+      head += 1
+      first = session.journal[head]
     }
-    session.reconstructionComplete = session.journal[0]
-      ? session.journal[0].sequence === checkpoint.sequence + 1
+    if (head > session.journalHead) {
+      session.journal = session.journal.slice(head)
+      session.journalHead = 0
+    }
+    session.reconstructionComplete = first
+      ? first.sequence === checkpoint.sequence + 1
       : checkpoint.sequence === session.lastSequence
     session.checkpoint = { ...checkpoint }
     session.checkpointRequested = false
@@ -375,9 +389,15 @@ export class TerminalService {
         ? POST_CHECKPOINT_JOURNAL_LIMIT_BYTES
         : STARTUP_JOURNAL_LIMIT_BYTES
       while (session.journalBytes > limit) {
-        const removed = session.journal.shift()!
-        session.journalBytes -= removed.byteLength
+        const head = session.journalHead
+        session.journalBytes -= session.journal[head]!.byteLength
+        session.journal[head] = undefined
+        session.journalHead += 1
         session.reconstructionComplete = false
+      }
+      if (session.journalHead * 2 >= session.journal.length) {
+        session.journal = session.journal.slice(session.journalHead)
+        session.journalHead = 0
       }
       this.emit(session, { event: 'terminal.output', data: { terminalId: id, chunk } })
       if (

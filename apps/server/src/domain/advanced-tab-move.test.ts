@@ -105,10 +105,22 @@ it('moves a live tab identity across windows while keeping a valid source worksp
           windowId: sourceWindow,
           workspaceId: sourceWorkspace,
           paneId: sourcePane,
+          tabId: remainingTab
+        },
+        {
+          windowId: sourceWindow,
+          workspaceId: sourceWorkspace,
+          paneId: sourcePane,
           tabId: movedTab
+        },
+        {
+          windowId: targetWindow,
+          workspaceId: targetWorkspace,
+          paneId: targetPane,
+          tabId: targetTab
         }
       ],
-      cursor: 0
+      cursor: 1
     }
   })
   const request = {
@@ -128,6 +140,7 @@ it('moves a live tab identity across windows while keeping a valid source worksp
       expectedWindowRevision: 3
     }
   }
+  const originalHistory = structuredClone(state.focusHistory)
   const moved = moveExactTab(state, request, 5)
   expect(moved.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([remainingTab])
   expect(moved.workspaces[1]?.panes[targetPane]?.tabs).toEqual([targetTab, movedTab])
@@ -135,14 +148,53 @@ it('moves a live tab identity across windows while keeping a valid source worksp
   expect(moved.workspaces[0]?.tabs[movedTab]).toBeUndefined()
   expect(moved.windowPlacements.map(({ revision }) => revision)).toEqual([3, 4])
   expect(moved.selectedWorkspaceId).toBe(targetWorkspace)
-  expect(moved.focusHistory.entries.at(-1)).toMatchObject({
-    tabId: movedTab,
-    windowId: targetWindow
+  expect(moved.focusHistory).toEqual({
+    entries: [
+      {
+        windowId: sourceWindow,
+        workspaceId: sourceWorkspace,
+        paneId: sourcePane,
+        tabId: remainingTab
+      },
+      { windowId: targetWindow, workspaceId: targetWorkspace, paneId: targetPane, tabId: movedTab }
+    ],
+    cursor: 1
   })
+  expect(state.focusHistory).toEqual(originalHistory)
   expect(durableApplicationStateSchema.safeParse(moved).success).toBe(true)
   expect(() =>
     moveExactTab(state, { ...request, source: { ...request.source, expectedWindowRevision: 1 } }, 5)
   ).toThrow('Window placement changed')
+
+  for (const side of ['first', 'second'] as const) {
+    const splitState = structuredClone(state)
+    const source = splitState.workspaces[0]!
+    const siblingPane = randomUUID()
+    source.panes[sourcePane]!.tabs = [movedTab]
+    source.panes[siblingPane] = {
+      id: siblingPane,
+      tabs: [remainingTab],
+      selectedTabId: remainingTab,
+      title: null
+    }
+    source.tabs[remainingTab]!.paneId = siblingPane
+    splitState.focusHistory.entries[0]!.paneId = siblingPane
+    const sibling = { kind: 'leaf', paneId: siblingPane }
+    source.layout = {
+      kind: 'split',
+      splitId: randomUUID(),
+      axis: 'vertical',
+      ratio: 0.4,
+      first: side === 'first' ? { kind: 'leaf', paneId: sourcePane } : sibling,
+      second: side === 'second' ? { kind: 'leaf', paneId: sourcePane } : sibling
+    }
+    const result = moveExactTab(durableApplicationStateSchema.parse(splitState), request, 5)
+    expect(result.workspaces[0]?.layout).toEqual(sibling)
+    expect(result.workspaces[0]?.panes[sourcePane]).toBeUndefined()
+    expect(result.workspaces[0]?.selectedPaneId).toBe(siblingPane)
+    expect(result.workspaces[1]?.panes[targetPane]?.tabs).toEqual([targetTab, movedTab])
+    expect(splitState.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([movedTab])
+  }
 
   const browserSessionId = randomUUID()
   const browserState = structuredClone(state)

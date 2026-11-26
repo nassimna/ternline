@@ -5,6 +5,8 @@ import {
   type DurableApplicationState
 } from '@agent-workspace/contracts'
 
+import { pruneHistory, validFocus } from './window-mutations'
+
 export interface ExactReopenTarget {
   windowId: string
   workspaceId: string
@@ -42,15 +44,6 @@ function currentFocus(state: DurableApplicationState): Focus {
     paneId: pane.id,
     tabId: pane.selectedTabId
   }
-}
-
-function validFocus(state: DurableApplicationState, focus: Focus): boolean {
-  const window = state.windowPlacements.find((item) => item.id === focus.windowId)
-  const workspace = state.workspaces.find((item) => item.id === focus.workspaceId)
-  return Boolean(
-    window?.workspaceIds.includes(focus.workspaceId) &&
-    workspace?.panes[focus.paneId]?.tabs.includes(focus.tabId)
-  )
 }
 
 function sameFocus(a: Focus, b: Focus): boolean {
@@ -171,12 +164,8 @@ export function reopenClosedTab(
     nextPlacement.focusedWorkspaceId = workspace.id
     nextPlacement.revision += 1
   }
+  pruneHistory(next)
   const history = next.focusHistory
-  const retained = history.entries
-    .slice(0, history.cursor + 1)
-    .filter((item) => validFocus(next, item)).length
-  history.entries = history.entries.filter((item) => validFocus(next, item))
-  history.cursor = Math.min(Math.max(0, retained - 1), Math.max(0, history.entries.length - 1))
   const focus = currentFocus(next)
   if (!sameFocus(previousFocus, focus)) {
     if (history.entries.length === 0 && validFocus(next, previousFocus))

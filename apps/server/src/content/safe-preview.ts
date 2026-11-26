@@ -36,8 +36,12 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
           !parsed.password &&
           href.length <= 2048 &&
           label.length <= 2048
-        )
-          return [{ kind: 'link', label, href }]
+        ) {
+          const nodes: SafeMarkdownNode[] = [{ kind: 'link', label, href }]
+          if (a > 0) nodes.unshift({ kind: 'text', text: bounded.slice(0, a) })
+          if (c + 1 < bounded.length) nodes.push({ kind: 'text', text: bounded.slice(c + 1) })
+          return nodes
+        }
       } catch {
         // An unsafe or invalid link remains literal text.
       }
@@ -96,5 +100,5 @@ export function boundedDiff(before: string, after: string) {
       text: takeCharacters(line, 16_384)
     })
   }
-  return { lines, truncated: lines.length >= 4096 }
+  return { lines, truncated: beforeLines.length > 2048 || afterLines.length > 2048 }
 }

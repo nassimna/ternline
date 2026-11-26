@@ -24,6 +24,35 @@ const terminal = {
 }
 
 describe('TerminalReconciler', () => {
+  it.each([0, 1, 2, 3, 255, 256, 257, 4096, 65536])(
+    'preserves every byte when decoding a %i-byte chunk',
+    async (byteLength) => {
+      const bytes = Uint8Array.from({ length: byteLength }, (_, index) => index % 256)
+      const data = btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''))
+      const terminalSink = sink()
+      const onGap = vi.fn()
+      const reconciler = new TerminalReconciler(terminalSink, onGap)
+
+      await reconciler.applyChunk({ sequence: 1, data, byteLength })
+
+      expect(terminalSink.output).toEqual([bytes])
+      expect(reconciler.lastAppliedSequence).toBe(1)
+      expect(onGap).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['%', 'Y===', 'a'])('requests resync for invalid Base64 %j', async (data) => {
+    const terminalSink = sink()
+    const onGap = vi.fn()
+    const reconciler = new TerminalReconciler(terminalSink, onGap)
+
+    await reconciler.applyChunk({ sequence: 1, data, byteLength: 1 })
+
+    expect(terminalSink.output).toEqual([])
+    expect(reconciler.lastAppliedSequence).toBe(0)
+    expect(onGap).toHaveBeenCalledOnce()
+  })
+
   it('restores a checkpoint and journal without waiting for new output', async () => {
     const terminalSink = sink()
     const reconciler = new TerminalReconciler(terminalSink, vi.fn())

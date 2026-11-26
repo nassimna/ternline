@@ -11,7 +11,7 @@ import {
   layoutSaveRequestSchema
 } from '@agent-workspace/contracts'
 
-import { flags, required } from './options'
+import { flags, nonnegativeInteger, required } from './options'
 
 type LayoutMutation = 'layout.save' | 'layout.delete' | 'layout.apply' | 'layout.import'
 
@@ -70,13 +70,6 @@ export function parseLayoutCommand(args: string[], sessionFile: string): LayoutC
   }
 }
 
-function nonnegativeRevision(value: string): number {
-  if (!/^(0|[1-9][0-9]*)$/u.test(value) || !Number.isSafeInteger(Number(value))) {
-    throw new Error('--expected-revision must be a nonnegative safe integer')
-  }
-  return Number(value)
-}
-
 async function readLayoutEnvelope(path: string) {
   const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0))
   try {
@@ -107,7 +100,10 @@ async function readLayoutEnvelope(path: string) {
 export async function layoutRequest(parsed: LayoutCommand, idempotencyEpoch: string) {
   const { values } = parsed
   const identity = {
-    expectedRevision: nonnegativeRevision(required(values, '--expected-revision')),
+    expectedRevision: nonnegativeInteger(
+      required(values, '--expected-revision'),
+      '--expected-revision'
+    ),
     idempotencyEpoch,
     idempotencyKey: values.get('--idempotency-key') ?? randomUUID()
   }

@@ -32,6 +32,13 @@ export function required(values: Map<string, string>, flag: string): string {
   return value
 }
 
+export function nonnegativeInteger(value: string, label: string): number {
+  if (!/^(0|[1-9][0-9]*)$/u.test(value) || !Number.isSafeInteger(Number(value))) {
+    throw new Error(`${label} must be a nonnegative safe integer`)
+  }
+  return Number(value)
+}
+
 export function jsonParams(args: string[]): unknown {
   const { values } = flags(args, ['--params-json'])
   const raw = required(values, '--params-json')

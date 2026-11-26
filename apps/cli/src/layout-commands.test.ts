@@ -7,12 +7,52 @@ import { test } from 'node:test'
 
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
 import { layoutRequest, parseLayoutCommand, runLayoutCommand } from './layout-commands'
+import { organizationRequest, parseOrganizationCommand } from './organization-commands'
 
 const epoch = randomUUID()
 const layoutId = randomUUID()
 const first = randomUUID()
 const second = randomUUID()
 const key = randomUUID()
+
+await test('layout and organization revisions preserve integer boundaries and exact errors', async () => {
+  for (const request of [
+    (value: string) =>
+      layoutRequest(
+        parse(['layout', 'delete', '--layout-id', layoutId, '--expected-revision', value]),
+        epoch
+      ),
+    (value: string) =>
+      organizationRequest(
+        parseOrganizationCommand(
+          ['group', 'delete', '--group-id', first, '--expected-revision', value],
+          '/private/session'
+        )!,
+        epoch
+      )
+  ]) {
+    for (const value of ['0', '1', '9007199254740991']) {
+      assert.equal((await request(value)).expectedRevision, Number(value))
+    }
+    for (const value of [
+      '-1',
+      '01',
+      '+1',
+      '1.0',
+      '1e3',
+      ' 1',
+      '1 ',
+      'NaN',
+      'Infinity',
+      '9007199254740992'
+    ]) {
+      await assert.rejects(async () => request(value), {
+        name: 'Error',
+        message: '--expected-revision must be a nonnegative safe integer'
+      })
+    }
+  }
+})
 
 function parse(args: string[]) {
   const parsed = parseLayoutCommand(args, '/private/session')
