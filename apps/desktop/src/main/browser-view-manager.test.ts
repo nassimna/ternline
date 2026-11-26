@@ -1606,12 +1606,17 @@ describe('BrowserViewManager', () => {
     expect(view.webContents.close).toHaveBeenCalledTimes(1)
   })
 
-  it('pauses downloads until an app-owned save dialog selects a path and cancels declined downloads', async () => {
+  it.each([
+    ['../unsafe?.txt', 'unsafe_.txt'],
+    ['é'.repeat(128) + '.txt', 'é'.repeat(120)],
+    ['😀'.repeat(64) + '.txt', '😀'.repeat(60)],
+    ['é'.repeat(119) + '😀.txt', 'é'.repeat(119)]
+  ])('saves downloads with a bounded filename (%s)', async (filename, expectedFilename) => {
     const harness = createHarness()
     const view = await mount(harness)
     const item = {
       getURL: () => 'https://example.test/file',
-      getFilename: () => '../unsafe?.txt',
+      getFilename: () => filename,
       pause: vi.fn(),
       resume: vi.fn(),
       cancel: vi.fn(),
@@ -1627,7 +1632,7 @@ describe('BrowserViewManager', () => {
       expect.objectContaining({
         title: browserMessages.native.saveDownloadTitle,
         buttonLabel: browserMessages.native.save,
-        defaultPath: '/downloads/unsafe_.txt'
+        defaultPath: `/downloads/${expectedFilename}`
       })
     )
     expect(item.setSavePath).toHaveBeenCalledWith('/tmp/file.txt')
