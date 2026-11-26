@@ -24,9 +24,8 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
     const a = bounded.indexOf('[')
     const b = bounded.indexOf('](')
     const c = bounded.lastIndexOf(')')
-    const d = bounded.indexOf('http')
-    if (a >= 0 && b > a && c > b && d === b + 2) {
-      const href = bounded.slice(d, c)
+    if (a >= 0 && b > a && c > b) {
+      const href = bounded.slice(b + 2, c)
       const label = bounded.slice(a + 1, b)
       try {
         const parsed = new URL(href)
