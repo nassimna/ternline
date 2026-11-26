@@ -100,5 +100,5 @@ export function boundedDiff(before: string, after: string) {
       text: takeCharacters(line, 16_384)
     })
   }
-  return { lines, truncated: lines.length >= 4096 }
+  return { lines, truncated: beforeLines.length > 2048 || afterLines.length > 2048 }
 }
