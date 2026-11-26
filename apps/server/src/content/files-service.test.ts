@@ -29,17 +29,22 @@ describe('Files service capabilities', () => {
     const files = new FilesService(store)
     try {
       const descriptor = files.listRoots({ limit: 64 }).roots[0]!
-      const entry = files.listDirectory({
-        directoryDescriptorId: descriptor.directoryDescriptorId,
-        generation: descriptor.generation,
-        limit: 100,
-        cancellationId: randomUUID()
-      }).entries[0]!
-      const document = files.issueDocument({
-        authorizedDescriptorId: entry.entryDescriptorId,
-        descriptorGeneration: entry.generation,
-        expectedKind: 'plainText'
-      }).document
+      const listEntries = () =>
+        files.listDirectory({
+          directoryDescriptorId: descriptor.directoryDescriptorId,
+          generation: descriptor.generation,
+          limit: 100,
+          cancellationId: randomUUID()
+        }).entries
+      const entry = listEntries()[0]!
+      const issue = (currentEntry: typeof entry) =>
+        files.issueDocument({
+          authorizedDescriptorId: currentEntry.entryDescriptorId,
+          descriptorGeneration: currentEntry.generation,
+          expectedKind: 'plainText'
+        }).document
+      const document = issue(entry)
+      expect(issue(entry)).toEqual(document)
       const params = {
         document,
         expectedRevision: 1,
@@ -48,6 +53,7 @@ describe('Files service capabilities', () => {
       }
       const result = files.save(params)
       expect(result).toEqual({ document: { ...document, identityVersion: 2 }, contentRevision: 2 })
+      expect(issue(listEntries()[0]!)).toEqual(result.document)
       expect(readFileSync(join(root, 'note.txt'), 'utf8')).toBe('new 🌍')
       expect(readdirSync(root)).toEqual(['note.txt'])
       expect(() => files.save(params)).toThrowError(
@@ -63,6 +69,8 @@ describe('Files service capabilities', () => {
       ).toThrowError(expect.objectContaining({ code: 'stale_revision' }))
       renameSync(join(root, 'note.txt'), join(root, 'old.txt'))
       writeFileSync(join(root, 'note.txt'), 'attacker')
+      const replacement = issue(listEntries().find((item) => item.label === 'note.txt')!)
+      expect(replacement.documentId).not.toBe(document.documentId)
       expect(() =>
         files.save({
           ...params,
@@ -73,16 +81,7 @@ describe('Files service capabilities', () => {
       ).toThrowError(expect.objectContaining({ code: 'stale_revision' }))
       expect(readFileSync(join(root, 'note.txt'), 'utf8')).toBe('attacker')
       linkSync(join(root, 'note.txt'), join(root, 'hardlink.txt'))
-      expect(
-        files
-          .listDirectory({
-            directoryDescriptorId: descriptor.directoryDescriptorId,
-            generation: descriptor.generation,
-            limit: 100,
-            cancellationId: randomUUID()
-          })
-          .entries.map((item) => item.label)
-      ).toEqual(['old.txt'])
+      expect(listEntries().map((item) => item.label)).toEqual(['old.txt'])
     } finally {
       files.close()
       rmSync(parent, { recursive: true, force: true })
