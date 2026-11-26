@@ -1403,8 +1403,8 @@ export function selectTab(
   if (!sameTarget(previousFocus, nextFocus)) {
     const history = next.focusHistory
     if (history.entries.length === 0) history.entries.push(previousFocus)
+    history.entries = history.entries.slice(0, history.cursor + 1)
     if (!sameTarget(history.entries.at(-1)!, nextFocus)) {
-      history.entries = history.entries.slice(0, history.cursor + 1)
       history.entries.push(nextFocus)
     }
     if (history.entries.length > 128) history.entries.shift()
