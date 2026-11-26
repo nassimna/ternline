@@ -384,12 +384,18 @@ export class FilesService {
     } finally {
       closeSync(fd)
     }
-    let document = [...this.documents.values()].find(
-      (item) =>
+    const entryPath = entry.parts.join('\0')
+    let document: Document | undefined
+    for (const item of this.documents.values()) {
+      if (
         item.rootId === entry.rootId &&
-        item.parts.join('\0') === entry.parts.join('\0') &&
-        item.identity === entry.identity
-    )
+        item.identity === entry.identity &&
+        item.parts.join('\0') === entryPath
+      ) {
+        document = item
+        break
+      }
+    }
     if (!document) {
       if (this.documents.size >= MAX_DOCUMENTS) fail('resource_limit')
       document = {
