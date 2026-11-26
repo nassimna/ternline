@@ -104,6 +104,66 @@ describe('TerminalService', () => {
     }
   )
 
+  it('retains the rolling suffix through steady overflow and a subsequent checkpoint', async () => {
+    const { service, pty } = createFixture()
+    const { terminal } = await service.create({ rows: 24, cols: 80 })
+    const chunkBytes = 4 * 1024
+    const input = Array.from({ length: 259 }, (_, index) =>
+      String(index + 1).padEnd(chunkBytes, 'x')
+    )
+    const expected = input.map((text, index) => ({
+      sequence: index + 1,
+      data: Buffer.from(text).toString('base64'),
+      byteLength: chunkBytes
+    }))
+
+    try {
+      for (const text of input.slice(0, 129)) pty.output(text)
+      expect(service.attach(terminal.id)).toMatchObject({
+        output: expected.slice(1, 129),
+        lastSequence: 129,
+        reconstructionComplete: false
+      })
+
+      for (const text of input.slice(129, 258)) pty.output(text)
+      expect(service.attach(terminal.id)).toMatchObject({
+        output: expected.slice(130, 258),
+        lastSequence: 258,
+        reconstructionComplete: false
+      })
+
+      const checkpoint = {
+        sequence: 130,
+        rows: 24,
+        cols: 80,
+        activeBuffer: 'normal' as const,
+        data: 'screen'
+      }
+      service.checkpoint(terminal.id, checkpoint)
+      expect(service.attach(terminal.id)).toMatchObject({
+        output: expected.slice(130, 258),
+        reconstructionComplete: true
+      })
+
+      const laterCheckpoint = { ...checkpoint, sequence: 194 }
+      service.checkpoint(terminal.id, laterCheckpoint)
+      expect(service.attach(terminal.id)).toMatchObject({
+        checkpoint: laterCheckpoint,
+        output: expected.slice(194, 258),
+        reconstructionComplete: true
+      })
+
+      pty.output(input[258]!)
+      expect(service.attach(terminal.id)).toMatchObject({
+        output: expected.slice(195),
+        lastSequence: 259,
+        reconstructionComplete: false
+      })
+    } finally {
+      service.dispose()
+    }
+  })
+
   it.each([false, true])(
     'evicts tiny chunks before each output event with checkpoint=%s',
     async (withCheckpoint) => {
