@@ -34,15 +34,65 @@ describe('safe Markdown previews', () => {
 
 describe('bounded diffs', () => {
   it.each([
+    {
+      name: 'removes a duplicate',
+      before: 'retry\nretry\n',
+      after: 'retry\n',
+      lines: [
+        { kind: 'removed', text: 'retry' },
+        { kind: 'context', text: 'retry' }
+      ]
+    },
+    {
+      name: 'adds a duplicate',
+      before: 'retry\n',
+      after: 'retry\nretry\n',
+      lines: [
+        { kind: 'context', text: 'retry' },
+        { kind: 'added', text: 'retry' }
+      ]
+    },
+    {
+      name: 'matches the first occurrences and preserves scan order',
+      before: 'retry\nold\nanchor\nretry\nretry\n',
+      after: 'retry\nanchor\nretry\nretry\nretry\nretry\n',
+      lines: [
+        { kind: 'removed', text: 'old' },
+        { kind: 'context', text: 'retry' },
+        { kind: 'context', text: 'anchor' },
+        { kind: 'context', text: 'retry' },
+        { kind: 'context', text: 'retry' },
+        { kind: 'added', text: 'retry' },
+        { kind: 'added', text: 'retry' }
+      ]
+    }
+  ])('$name', ({ before, after, lines }) => {
+    expect(boundedDiff(before, after)).toStrictEqual({ lines, truncated: false })
+  })
+
+  it.each([
     [2048, 2048, false],
     [2049, 2049, true],
     [2049, 1, true],
     [1, 2049, true]
   ])('reports omitted input lines (%i before, %i after)', (beforeCount, afterCount, truncated) => {
     const result = boundedDiff('same\n'.repeat(beforeCount), 'same\n'.repeat(afterCount))
-    expect(result.lines).toEqual(
-      Array.from({ length: Math.min(afterCount, 2048) }, () => ({ kind: 'context', text: 'same' }))
-    )
+    const beforeScanCount = Math.min(beforeCount, 2048)
+    const afterScanCount = Math.min(afterCount, 2048)
+    expect(result.lines).toEqual([
+      ...Array.from({ length: Math.max(0, beforeScanCount - afterCount) }, () => ({
+        kind: 'removed',
+        text: 'same'
+      })),
+      ...Array.from({ length: Math.min(beforeCount, afterScanCount) }, () => ({
+        kind: 'context',
+        text: 'same'
+      })),
+      ...Array.from({ length: Math.max(0, afterScanCount - beforeCount) }, () => ({
+        kind: 'added',
+        text: 'same'
+      }))
+    ])
     expect(result.truncated).toBe(truncated)
   })
 
