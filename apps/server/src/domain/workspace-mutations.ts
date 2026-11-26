@@ -214,7 +214,7 @@ function workspaceFromParams(
   }
 }
 
-function validFocus(state: DurableApplicationState, target: FocusTarget): boolean {
+export function isValidTabFocus(state: DurableApplicationState, target: FocusTarget): boolean {
   const placement = state.windowPlacements.find((item) => item.id === target.windowId)
   const workspace = state.workspaces.find((item) => item.id === target.workspaceId)
   return Boolean(
@@ -594,19 +594,24 @@ function splitLeaf(
   return second ? { ...layout, second } : null
 }
 
-function reconcileTabFocus(next: DurableApplicationState, previousFocus: FocusTarget): void {
+export function pruneTabFocusHistory(next: DurableApplicationState): void {
   const history = next.focusHistory
   const retainedThroughCursor = history.entries
     .slice(0, history.cursor + 1)
-    .filter((entry) => validFocus(next, entry)).length
-  history.entries = history.entries.filter((entry) => validFocus(next, entry))
+    .filter((entry) => isValidTabFocus(next, entry)).length
+  history.entries = history.entries.filter((entry) => isValidTabFocus(next, entry))
   history.cursor = Math.min(
     Math.max(0, retainedThroughCursor - 1),
     Math.max(0, history.entries.length - 1)
   )
+}
+
+function reconcileTabFocus(next: DurableApplicationState, previousFocus: FocusTarget): void {
+  const history = next.focusHistory
+  pruneTabFocusHistory(next)
   const nextFocus = focusTarget(next, next.selectedWorkspaceId)
   if (sameTarget(previousFocus, nextFocus)) return
-  if (history.entries.length === 0 && validFocus(next, previousFocus)) {
+  if (history.entries.length === 0 && isValidTabFocus(next, previousFocus)) {
     history.entries.push(previousFocus)
   }
   if (history.entries.length === 0 || !sameTarget(history.entries.at(-1)!, nextFocus)) {
