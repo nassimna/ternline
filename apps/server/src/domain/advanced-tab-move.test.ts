@@ -135,9 +135,11 @@ it('moves a live tab identity across windows while keeping a valid source worksp
   expect(moved.workspaces[0]?.tabs[movedTab]).toBeUndefined()
   expect(moved.windowPlacements.map(({ revision }) => revision)).toEqual([3, 4])
   expect(moved.selectedWorkspaceId).toBe(targetWorkspace)
-  expect(moved.focusHistory.entries.at(-1)).toMatchObject({
-    tabId: movedTab,
-    windowId: targetWindow
+  expect(moved.focusHistory).toEqual({
+    entries: [
+      { windowId: targetWindow, workspaceId: targetWorkspace, paneId: targetPane, tabId: movedTab }
+    ],
+    cursor: 0
   })
   expect(durableApplicationStateSchema.safeParse(moved).success).toBe(true)
   expect(() =>
