@@ -331,10 +331,16 @@ export function isAppOwnedBrowserPartition(value: string): boolean {
 }
 
 export function sanitizeDownloadFilename(value: string): string {
-  const leaf = stripControlCharacters(basename(value.replaceAll('\\', '/')))
+  const filename = stripControlCharacters(basename(value.replaceAll('\\', '/')))
     .replace(/[<>:"|?*]/gu, '_')
     .replace(/[. ]+$/u, '')
-    .slice(0, 240)
+  let leaf = ''
+  let bytes = 0
+  for (const character of filename) {
+    bytes += Buffer.byteLength(character)
+    if (bytes > 240) break
+    leaf += character
+  }
   return leaf === '' || leaf === '.' || leaf === '..'
     ? browserMessages.native.fallbackDownloadFilename
     : leaf
