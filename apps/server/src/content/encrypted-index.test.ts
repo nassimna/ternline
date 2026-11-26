@@ -131,6 +131,30 @@ it('keeps 512 snippet code points after filtering controls and indexes text beyo
   }
 })
 
+it('indexes Unicode words and caps eligible occurrences before deduplication', () => {
+  const path = profile()
+  const source = randomUUID()
+  const document = { documentId: randomUUID(), identityVersion: 1 }
+  const text = `${'x '.repeat(4096)}𐐀 𐐀𐐁 Café 𝟙𝟚 ${'repeat '.repeat(4092)}Boundary Beyond`
+  try {
+    const index = EncryptedIndex.open(path, key)
+    try {
+      index.authorizeSource(source, 0)
+      index.indexText(source, document, 'agentTranscript', text, {
+        maxBytes: Buffer.byteLength(text),
+        deadlineMs: Date.now() + 2000
+      })
+      expect(index.search('!𐐨𐐩 café 𝟙𝟚 repeat boundary', 10)).toMatchObject([{ document }])
+      expect(index.search('beyond', 10)).toEqual([])
+      expect(index.exportSourceSummary(source)).toMatchObject({ documentCount: 1, tokenCount: 5 })
+    } finally {
+      index.close()
+    }
+  } finally {
+    rmSync(path, { recursive: true, force: true })
+  }
+})
+
 it('fails closed on unsafe artifacts, wrong keys, and schema drift; preserves corrupt artifacts explicitly', async () => {
   const path = profile()
   try {

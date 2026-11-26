@@ -50,8 +50,11 @@ const readText = (key: Buffer, nonce: Buffer, ciphertext: Buffer): string => {
 function tokenize(text: string): string[] {
   const values: string[] = []
   // Rust splits at every non-alphanumeric scalar and limits before deduplication.
-  for (const value of text.split(/[^\p{Alphabetic}\p{Number}]+/u)) {
-    if ([...value].length < 2) continue
+  // Consume whole separator runs to avoid searching at each separator.
+  for (const [, value] of text.matchAll(
+    /(?:[^\p{Alphabetic}\p{Number}]+|^)([\p{Alphabetic}\p{Number}]{2,})?/gu
+  )) {
+    if (value === undefined) continue
     values.push(value.toLowerCase())
     if (values.length === 4096) break
   }
