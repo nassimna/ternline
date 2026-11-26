@@ -85,18 +85,31 @@ export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
   return nodes
 }
 
+function countLines(lines: string[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const line of lines) counts.set(line, (counts.get(line) ?? 0) + 1)
+  return counts
+}
+
 export function boundedDiff(before: string, after: string) {
   const beforeLines = previewLines(before)
   const afterLines = previewLines(after)
-  const beforeSet = new Set(beforeLines)
-  const afterSet = new Set(afterLines)
+  const beforeCounts = countLines(beforeLines)
+  const afterCounts = countLines(afterLines)
   const lines: Array<{ kind: 'removed' | 'context' | 'added'; text: string }> = []
   for (const line of beforeLines.slice(0, 2048)) {
-    if (!afterSet.has(line)) lines.push({ kind: 'removed', text: takeCharacters(line, 16_384) })
+    const remaining = afterCounts.get(line) ?? 0
+    if (remaining > 0) {
+      afterCounts.set(line, remaining - 1)
+    } else {
+      lines.push({ kind: 'removed', text: takeCharacters(line, 16_384) })
+    }
   }
   for (const line of afterLines.slice(0, 2048)) {
+    const remaining = beforeCounts.get(line) ?? 0
+    if (remaining > 0) beforeCounts.set(line, remaining - 1)
     lines.push({
-      kind: beforeSet.has(line) ? 'context' : 'added',
+      kind: remaining > 0 ? 'context' : 'added',
       text: takeCharacters(line, 16_384)
     })
   }
