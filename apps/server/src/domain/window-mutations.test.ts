@@ -6,12 +6,14 @@ import {
   closeWindowWorkspaces,
   createWindowPlacement,
   focusWindowPlacement,
+  validFocus,
   WindowMutationError
 } from './window-mutations'
 import { projectStateToWindow } from './window-projection'
 import { projectApplicationSnapshot } from './application-projection'
 import { projectOrganization } from './organization-mutations'
 import { reopenClosedTab } from './recently-closed-mutations'
+import { closeTab } from './workspace-mutations'
 
 function fixture() {
   const windowId = randomUUID()
@@ -75,6 +77,63 @@ function fixture() {
   })
   return { state, windowId, workspaces }
 }
+
+it('checks every focus target membership without changing the state', () => {
+  const { state, windowId } = fixture()
+  const workspace = state.workspaces[0]!
+  const pane = workspace.panes[workspace.selectedPaneId]!
+  const target = {
+    windowId,
+    workspaceId: workspace.id,
+    paneId: pane.id,
+    tabId: pane.selectedTabId
+  }
+  const before = structuredClone(state)
+  expect(validFocus(state, target)).toBe(true)
+  for (const key of ['windowId', 'workspaceId', 'paneId', 'tabId'] as const) {
+    expect(validFocus(state, { ...target, [key]: randomUUID() })).toBe(false)
+  }
+  const other = state.workspaces[1]!
+  expect(validFocus(state, { ...target, workspaceId: other.id })).toBe(false)
+  expect(state).toEqual(before)
+  state.windowPlacements[0]!.workspaceIds = [other.id]
+  expect(validFocus(state, target)).toBe(false)
+})
+
+it('records restored tab focus after retaining earlier history', () => {
+  const { state, windowId } = fixture()
+  const workspace = state.workspaces[0]!
+  const tabId = workspace.panes[workspace.selectedPaneId]!.selectedTabId
+  const closedId = randomUUID()
+  const closed = closeTab(state, workspace.id, tabId, closedId, randomUUID(), 2)
+  const before = structuredClone(closed)
+  const restoredId = randomUUID()
+  const restored = reopenClosedTab(
+    closed,
+    closedId,
+    {
+      windowId,
+      workspaceId: workspace.id,
+      paneId: workspace.selectedPaneId,
+      destinationIndex: 1,
+      expectedWindowRevision: closed.windowPlacements[0]!.revision
+    },
+    restoredId,
+    randomUUID(),
+    3
+  )
+  const focus = {
+    windowId,
+    workspaceId: workspace.id,
+    paneId: workspace.selectedPaneId,
+    tabId: restoredId
+  }
+  expect(restored.focusHistory.entries).toEqual([...closed.focusHistory.entries, focus])
+  expect(restored.focusHistory.cursor).toBe(restored.focusHistory.entries.length - 1)
+  expect(restored.workspaces[0]!.tabs[restoredId]!.content).toEqual(workspace.tabs[tabId]!.content)
+  expect(restored.recentlyClosed).toEqual([])
+  expect(closed).toEqual(before)
+})
 
 it('moves one workspace, fences revisions, focuses only hosted windows, and rehomes on close', () => {
   const { state, windowId, workspaces } = fixture()
