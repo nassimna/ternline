@@ -5,6 +5,8 @@ import {
   type DurableApplicationState
 } from '@agent-workspace/contracts'
 
+import { validFocus } from './window-mutations'
+
 export interface ExactReopenTarget {
   windowId: string
   workspaceId: string
@@ -42,15 +44,6 @@ function currentFocus(state: DurableApplicationState): Focus {
     paneId: pane.id,
     tabId: pane.selectedTabId
   }
-}
-
-function validFocus(state: DurableApplicationState, focus: Focus): boolean {
-  const window = state.windowPlacements.find((item) => item.id === focus.windowId)
-  const workspace = state.workspaces.find((item) => item.id === focus.workspaceId)
-  return Boolean(
-    window?.workspaceIds.includes(focus.workspaceId) &&
-    workspace?.panes[focus.paneId]?.tabs.includes(focus.tabId)
-  )
 }
 
 function sameFocus(a: Focus, b: Focus): boolean {

@@ -45,7 +45,7 @@ function currentFocus(state: State): FocusTarget {
   }
 }
 
-function validFocus(state: State, target: FocusTarget): boolean {
+export function validFocus(state: State, target: FocusTarget): boolean {
   const placement = state.windowPlacements.find((item) => item.id === target.windowId)
   const workspace = state.workspaces.find((item) => item.id === target.workspaceId)
   return Boolean(
