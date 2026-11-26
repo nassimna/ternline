@@ -275,10 +275,12 @@ export class TerminalService {
         'Checkpoint is older than the accepted one'
       )
     }
-    while (session.journal[0] && session.journal[0].sequence <= checkpoint.sequence) {
-      const removed = session.journal.shift()!
-      session.journalBytes -= removed.byteLength
+    let count = 0
+    while (session.journal[count] && session.journal[count]!.sequence <= checkpoint.sequence) {
+      session.journalBytes -= session.journal[count]!.byteLength
+      count += 1
     }
+    session.journal.splice(0, count)
     session.reconstructionComplete = session.journal[0]
       ? session.journal[0].sequence === checkpoint.sequence + 1
       : checkpoint.sequence === session.lastSequence
