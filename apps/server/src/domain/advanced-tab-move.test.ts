@@ -166,6 +166,43 @@ it('moves a live tab identity across windows while keeping a valid source worksp
     moveExactTab(state, { ...request, source: { ...request.source, expectedWindowRevision: 1 } }, 5)
   ).toThrow('Window placement changed')
 
+  const reordered = moveExactTab(
+    state,
+    {
+      ...request,
+      target: {
+        windowId: sourceWindow,
+        workspaceId: sourceWorkspace,
+        paneId: sourcePane,
+        destinationIndex: 2,
+        expectedWindowRevision: 2
+      }
+    },
+    5
+  )
+  expect(reordered.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([remainingTab, movedTab])
+  expect(reordered.focusHistory).toEqual({
+    entries: originalHistory.entries.slice(0, 2),
+    cursor: 1
+  })
+  expect(state.focusHistory).toEqual(originalHistory)
+
+  const fullEntries = Array.from({ length: 128 }, (_, index) =>
+    index % 2 === 0 ? originalHistory.entries[0]! : originalHistory.entries[2]!
+  )
+  const movedWithFullHistory = moveExactTab(
+    { ...state, focusHistory: { entries: fullEntries, cursor: 127 } },
+    request,
+    5
+  )
+  expect(movedWithFullHistory.focusHistory).toEqual({
+    entries: [
+      ...fullEntries.slice(1),
+      { windowId: targetWindow, workspaceId: targetWorkspace, paneId: targetPane, tabId: movedTab }
+    ],
+    cursor: 127
+  })
+
   for (const side of ['first', 'second'] as const) {
     const splitState = structuredClone(state)
     const source = splitState.workspaces[0]!
