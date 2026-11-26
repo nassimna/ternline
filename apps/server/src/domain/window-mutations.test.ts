@@ -13,7 +13,7 @@ import { projectStateToWindow } from './window-projection'
 import { projectApplicationSnapshot } from './application-projection'
 import { projectOrganization } from './organization-mutations'
 import { reopenClosedTab } from './recently-closed-mutations'
-import { closeTab } from './workspace-mutations'
+import { closeTab, openBrowserTab, splitPane } from './workspace-mutations'
 import { navigateBrowser, BrowserMutationError } from './browser-mutations'
 
 function fixture() {
@@ -263,6 +263,115 @@ it('atomically closes a nonfinal window with Rust-parity records and survivor fo
       now: 2
     })
   ).toThrow(WindowMutationError)
+})
+
+it.each([
+  { partition: {}, expectedPartition: 'persist:agent-workspace-default' },
+  { partition: { profilePartition: 'persist:custom' }, expectedPartition: 'persist:custom' }
+])('opens and splits browser tabs in $expectedPartition', ({ partition, expectedPartition }) => {
+  const { state } = fixture()
+  const { id: workspaceId, selectedPaneId: paneId } = state.workspaces[0]!
+  const tabId = randomUUID()
+  const browserSessionId = randomUUID()
+  const url = 'https://example.com/'
+  const expected = {
+    kind: 'browser',
+    metadata: {
+      browserSessionId,
+      url,
+      navigationTitle: '',
+      canBack: false,
+      canForward: false,
+      loading: false,
+      devToolsOpen: false,
+      profilePartition: expectedPartition,
+      stateRevision: 0,
+      correlationId: null
+    }
+  }
+
+  const opened = openBrowserTab(
+    state,
+    { workspaceId, paneId, metadata: { url }, ...partition },
+    tabId,
+    browserSessionId,
+    2
+  )
+  const split = splitPane(
+    state,
+    {
+      workspaceId,
+      targetPaneId: paneId,
+      axis: 'horizontal',
+      ratio: 0.5,
+      placement: 'after',
+      content: { kind: 'newBrowser', url, ...partition }
+    },
+    { paneId: randomUUID(), splitId: randomUUID(), tabId, browserSessionId },
+    2
+  )
+
+  expect(opened.workspaces[0]!.tabs[tabId]!.content).toStrictEqual(expected)
+  expect(split.workspaces[0]!.tabs[tabId]!.content).toStrictEqual(expected)
+})
+
+it('reopens a browser tab with a fresh session in the default partition', () => {
+  const { state, windowId } = fixture()
+  const workspace = state.workspaces[0]!
+  const paneId = workspace.selectedPaneId
+  const tabId = workspace.panes[paneId]!.selectedTabId
+  const tab = workspace.tabs[tabId]!
+  tab.title = 'Browser'
+  tab.content = {
+    kind: 'browser',
+    metadata: {
+      browserSessionId: randomUUID(),
+      url: 'https://example.com/?page=2',
+      navigationTitle: 'Example',
+      canBack: true,
+      canForward: true,
+      loading: true,
+      devToolsOpen: true,
+      profilePartition: 'persist:custom',
+      stateRevision: 7,
+      correlationId: randomUUID()
+    }
+  }
+  const closedId = randomUUID()
+  const closed = closeTab(state, workspace.id, tabId, closedId, randomUUID(), 2)
+  const restoredId = randomUUID()
+  const browserSessionId = randomUUID()
+
+  const restored = reopenClosedTab(
+    closed,
+    closedId,
+    {
+      windowId,
+      workspaceId: workspace.id,
+      paneId,
+      destinationIndex: 1,
+      expectedWindowRevision: closed.windowPlacements[0]!.revision
+    },
+    restoredId,
+    browserSessionId,
+    3
+  )
+
+  expect(restored.workspaces[0]!.tabs[restoredId]!.content).toStrictEqual({
+    kind: 'browser',
+    metadata: {
+      browserSessionId,
+      url: 'https://example.com/',
+      navigationTitle: '',
+      canBack: false,
+      canForward: false,
+      loading: false,
+      devToolsOpen: false,
+      profilePartition: 'persist:agent-workspace-default',
+      stateRevision: 0,
+      correlationId: null
+    }
+  })
 })
 
 it.each([false, true])(

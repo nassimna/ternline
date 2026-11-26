@@ -860,6 +860,25 @@ export function openTerminalTab(
   return commitChangedState(next)
 }
 
+export function initialBrowserMetadata(
+  browserSessionId: string,
+  url: string,
+  profilePartition?: string
+) {
+  return {
+    browserSessionId,
+    url,
+    navigationTitle: '',
+    canBack: false,
+    canForward: false,
+    loading: false,
+    devToolsOpen: false,
+    profilePartition: profilePartition ?? 'persist:agent-workspace-default',
+    stateRevision: 0,
+    correlationId: null
+  }
+}
+
 /** Browser creation follows Rust's browser mutation path, which retains focus history. */
 export function openBrowserTab(
   state: DurableApplicationState,
@@ -912,18 +931,11 @@ export function openBrowserTab(
     customTitle: null,
     content: {
       kind: 'browser',
-      metadata: {
+      metadata: initialBrowserMetadata(
         browserSessionId,
-        url: request.metadata.url,
-        navigationTitle: '',
-        canBack: false,
-        canForward: false,
-        loading: false,
-        devToolsOpen: false,
-        profilePartition: request.profilePartition ?? 'persist:agent-workspace-default',
-        stateRevision: 0,
-        correlationId: null
-      }
+        request.metadata.url,
+        request.profilePartition
+      )
     },
     createdAt
   }
@@ -1089,18 +1101,11 @@ export function splitPane(
             }
           : {
               kind: 'browser',
-              metadata: {
-                browserSessionId: ids.browserSessionId,
-                url: content.url,
-                navigationTitle: '',
-                canBack: false,
-                canForward: false,
-                loading: false,
-                devToolsOpen: false,
-                profilePartition: content.profilePartition ?? 'persist:agent-workspace-default',
-                stateRevision: 0,
-                correlationId: null
-              }
+              metadata: initialBrowserMetadata(
+                ids.browserSessionId,
+                content.url,
+                content.profilePartition
+              )
             },
       createdAt
     }

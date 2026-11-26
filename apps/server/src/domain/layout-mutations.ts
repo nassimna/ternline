@@ -15,6 +15,7 @@ import {
 } from '@agent-workspace/contracts'
 
 import {
+  initialBrowserMetadata,
   isValidTabFocus,
   pruneTabFocusHistory,
   WorkspaceMutationError
@@ -499,18 +500,7 @@ export function planLayoutApplication(
           current?.content.kind === 'browser' &&
           portableBrowserUrl(current.content.metadata.url) === tab.content.url
             ? current.content.metadata
-            : {
-                browserSessionId: newId(),
-                url: tab.content.url,
-                navigationTitle: '',
-                canBack: false,
-                canForward: false,
-                loading: false,
-                devToolsOpen: false,
-                profilePartition: 'persist:agent-workspace-default',
-                stateRevision: 0,
-                correlationId: null
-              }
+            : initialBrowserMetadata(newId(), tab.content.url)
         tabs[id] = {
           id: tab.id,
           paneId: tab.paneId,

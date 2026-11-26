@@ -6,6 +6,7 @@ import {
 } from '@agent-workspace/contracts'
 
 import { pruneHistory, validFocus } from './window-mutations'
+import { initialBrowserMetadata } from './workspace-mutations'
 
 export interface ExactReopenTarget {
   windowId: string
@@ -124,18 +125,7 @@ export function reopenClosedTab(
       throw new RecentlyClosedError('policy_denied')
     content = {
       kind: 'browser',
-      metadata: {
-        browserSessionId,
-        url: record.restore.url,
-        navigationTitle: '',
-        canBack: false,
-        canForward: false,
-        loading: false,
-        devToolsOpen: false,
-        profilePartition: 'persist:agent-workspace-default',
-        stateRevision: 0,
-        correlationId: null
-      }
+      metadata: initialBrowserMetadata(browserSessionId, record.restore.url)
     }
   }
 
