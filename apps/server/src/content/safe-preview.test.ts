@@ -1,3 +1,4 @@
+import { safeMarkdownDocumentSchema } from '@agent-workspace/protocol-client'
 import { describe, expect, it } from 'vitest'
 
 import { boundedDiff, parseSafeMarkdown } from './safe-preview'
@@ -65,6 +66,43 @@ describe('safe Markdown previews', () => {
     expect(parseSafeMarkdown(source)).toStrictEqual([
       { kind: 'codeBlock', language: languagePrefix, text: `${rows}${finalRowPrefix}` }
     ])
+  })
+
+  it('returns exactly 2048 complete paragraphs from 2049 plain rows', () => {
+    const rows = Array.from({ length: 2049 }, (_, index) => `row ${index + 1}`)
+    const nodes = safeMarkdownDocumentSchema.shape.nodes.parse(parseSafeMarkdown(rows.join('\n')))
+
+    expect(nodes).toEqual(
+      rows.slice(0, 2048).map((text) => ({ kind: 'paragraph', children: [{ kind: 'text', text }] }))
+    )
+  })
+
+  it('counts mixed blocks and stops at the first block that exceeds the budget', () => {
+    const prefix = `${'row\n'.repeat(2044)}# A [link](https://example.com) here\n- item\n\n`
+    const code = '```ts\nconst value = 1\n```'
+    const nodes = safeMarkdownDocumentSchema.shape.nodes.parse(
+      parseSafeMarkdown(`${prefix}${code}\n${code}`)
+    )
+
+    expect(nodes).toHaveLength(2047)
+    expect(nodes.slice(2044)).toEqual([
+      {
+        kind: 'heading',
+        level: 1,
+        children: [
+          { kind: 'text', text: 'A ' },
+          { kind: 'link', label: 'link', href: 'https://example.com' },
+          { kind: 'text', text: ' here' }
+        ]
+      },
+      {
+        kind: 'list',
+        ordered: false,
+        items: [{ kind: 'listItem', children: [{ kind: 'text', text: 'item' }] }]
+      },
+      { kind: 'codeBlock', language: 'ts', text: 'const value = 1' }
+    ])
+    expect(parseSafeMarkdown(`${prefix}too large\n${code}`)).toEqual(nodes.slice(0, -1))
   })
 })
 
