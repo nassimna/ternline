@@ -681,6 +681,16 @@ export function moveTab(
   return commitChangedState(next)
 }
 
+export function retainRecentlyClosed(
+  records: DurableApplicationState['recentlyClosed'],
+  now: number
+): DurableApplicationState['recentlyClosed'] {
+  return records
+    .filter((item) => Math.max(0, now - item.closedAt) <= 30 * 24 * 60 * 60 * 1_000)
+    .sort((a, b) => a.closedAt - b.closedAt || a.id.localeCompare(b.id))
+    .slice(-100)
+}
+
 /** Produces the redacted restore record and closes a tab in one durable revision. */
 export function closeTab(
   state: DurableApplicationState,
@@ -797,10 +807,7 @@ export function closeTab(
   delete workspace.tabs[tabId]
   workspace.updatedAt = now
   next.recentlyClosed.push(record)
-  next.recentlyClosed = next.recentlyClosed
-    .filter((item) => Math.max(0, now - item.closedAt) <= 30 * 24 * 60 * 60 * 1_000)
-    .sort((a, b) => a.closedAt - b.closedAt || a.id.localeCompare(b.id))
-    .slice(-100)
+  next.recentlyClosed = retainRecentlyClosed(next.recentlyClosed, now)
   reconcileTabFocus(next, previousFocus)
   reconcileLegacyLimit(state, next)
   return commitChangedState(next)

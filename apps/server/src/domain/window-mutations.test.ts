@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   closeWindowPlacement,
   closeWindowWorkspaces,
@@ -317,6 +317,84 @@ it('atomically closes a nonfinal window with Rust-parity records and survivor fo
       now: 2
     })
   ).toThrow(WindowMutationError)
+})
+
+describe.each(['tab', 'window'] as const)('recently closed retention on %s close', (target) => {
+  const retentionMs = 30 * 24 * 60 * 60 * 1_000
+  const now = retentionMs + 2
+  const oldId = '00000000-0000-4000-8000-000000000001'
+  const boundaryId = '00000000-0000-4000-8000-000000000002'
+  const futureId = '00000000-0000-4000-8000-000000000003'
+  const beforeTieId = '00000000-0000-4000-8000-00000000000a'
+  const closedId = '00000000-0000-4000-8000-00000000000b'
+  const afterTieId = '00000000-0000-4000-8000-00000000000c'
+  const fullHistory = Array.from({ length: 100 }, (_, index) => ({
+    id: `00000000-0000-4000-8000-${(index + 256).toString(16).padStart(12, '0')}`,
+    closedAt: now - 100 + index
+  }))
+
+  it.each([
+    {
+      name: 'keeps the age boundary and future records and orders timestamp ties by ID',
+      history: [
+        { id: oldId, closedAt: now - retentionMs - 1 },
+        { id: boundaryId, closedAt: now - retentionMs },
+        { id: beforeTieId, closedAt: now },
+        { id: afterTieId, closedAt: now },
+        { id: futureId, closedAt: now + 1 }
+      ],
+      expectedIds: [boundaryId, beforeTieId, closedId, afterTieId, futureId]
+    },
+    {
+      name: 'drops the oldest record when the new record exceeds the 100-item cap',
+      history: fullHistory,
+      expectedIds: [...fullHistory.slice(1).map(({ id }) => id), closedId]
+    }
+  ])('$name', ({ history, expectedIds }) => {
+    const { state, windowId } = fixture()
+    const workspace = state.workspaces[1]!
+    const tabId = workspace.panes[workspace.selectedPaneId]!.selectedTabId
+    state.recentlyClosed = history.map(({ id, closedAt }) => ({
+      id,
+      itemKind: 'tab',
+      priorWorkspaceId: workspace.id,
+      priorTabId: tabId,
+      contentKind: 'terminal',
+      title: 'Terminal',
+      closedAt,
+      restore: {
+        kind: 'terminal',
+        authorized_root_id: workspace.id,
+        root_relative_cwd: '',
+        rows: 24,
+        cols: 80
+      }
+    }))
+
+    const secondId = randomUUID()
+    const input =
+      target === 'tab'
+        ? durableApplicationStateSchema.parse(state)
+        : createWindowPlacement(state, {
+            sourceWindowId: windowId,
+            sourceRevision: 1,
+            workspaceId: workspace.id,
+            windowId: secondId,
+            label: 'Second'
+          })
+    const before = structuredClone(input)
+    const closed =
+      target === 'tab'
+        ? closeTab(input, workspace.id, tabId, closedId, randomUUID(), now)
+        : closeWindowWorkspaces(input, {
+            windowId: secondId,
+            expectedRevision: 0,
+            closedItemIds: [closedId],
+            now
+          })
+    expect(closed.recentlyClosed.map(({ id }) => id)).toEqual(expectedIds)
+    expect(input).toEqual(before)
+  })
 })
 
 it.each([

@@ -1,6 +1,7 @@
 import type { DurableApplicationState } from '@agent-workspace/contracts'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { isAbsolute, relative } from 'node:path'
+import { retainRecentlyClosed } from './workspace-mutations'
 
 type State = DurableApplicationState
 type Placement = State['windowPlacements'][number]
@@ -279,10 +280,7 @@ export function closeWindowWorkspaces(
     throw new WindowMutationError('resource_limit', 'Window revision cannot advance')
   owner.revision += 1
   next.recentlyClosed.push(...records)
-  next.recentlyClosed = next.recentlyClosed
-    .filter((item) => Math.max(0, input.now - item.closedAt) <= 30 * 24 * 60 * 60 * 1_000)
-    .sort((a, b) => a.closedAt - b.closedAt || a.id.localeCompare(b.id))
-    .slice(-100)
+  next.recentlyClosed = retainRecentlyClosed(next.recentlyClosed, input.now)
   pruneHistory(next)
   recordFocus(next, currentFocus(next))
   return commit(next)
