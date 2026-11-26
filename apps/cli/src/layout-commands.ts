@@ -11,7 +11,7 @@ import {
   layoutSaveRequestSchema
 } from '@agent-workspace/contracts'
 
-import { flags, nonnegativeInteger, required } from './options'
+import { flags, nonnegativeInteger, required, workspaceIdFlags } from './options'
 
 type LayoutMutation = 'layout.save' | 'layout.delete' | 'layout.apply' | 'layout.import'
 
@@ -26,23 +26,6 @@ export interface LayoutCommand {
 const MAX_ENVELOPE_BYTES = 256 * 1024
 const revisionOptions = ['--expected-revision', '--idempotency-key'] as const
 
-function saveFlags(args: string[]) {
-  const workspaceIds: string[] = []
-  const remainder: string[] = []
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== '--workspace-id') {
-      remainder.push(args[index]!)
-      continue
-    }
-    const id = args[++index]
-    if (!id || id.startsWith('--')) throw new Error('--workspace-id requires a value')
-    workspaceIds.push(id)
-  }
-  const { values } = flags(remainder, ['--layout-id', '--name', ...revisionOptions])
-  if (workspaceIds.length === 0) throw new Error('--workspace-id is required')
-  return { values, workspaceIds }
-}
-
 export function parseLayoutCommand(args: string[], sessionFile: string): LayoutCommand | undefined {
   if (args[0] !== 'layout') return undefined
   const verb = args[1]
@@ -51,7 +34,7 @@ export function parseLayoutCommand(args: string[], sessionFile: string): LayoutC
   }
   const parsed =
     verb === 'save'
-      ? saveFlags(args.slice(2))
+      ? workspaceIdFlags(args.slice(2), ['--layout-id', '--name', ...revisionOptions])
       : flags(args.slice(2), [
           '--layout-id',
           ...(verb === 'import' ? ['--file'] : []),

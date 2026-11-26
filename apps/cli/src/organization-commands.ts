@@ -11,7 +11,7 @@ import {
   workspaceSelectionReplaceRequestSchema
 } from '@agent-workspace/contracts'
 
-import { flags, nonnegativeInteger, required } from './options'
+import { flags, nonnegativeInteger, required, workspaceIdFlags } from './options'
 
 type Operation =
   | 'workspace.selectMany'
@@ -41,29 +41,15 @@ const groupOptions: Record<string, readonly string[]> = {
 
 const revisionOptions = ['--expected-revision', '--idempotency-key'] as const
 
-function selectionFlags(args: string[]): { values: Map<string, string>; selection: string[] } {
-  const selection: string[] = []
-  const remainder: string[] = []
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== '--workspace-id') {
-      remainder.push(args[index]!)
-      continue
-    }
-    const id = args[++index]
-    if (!id || id.startsWith('--')) throw new Error('--workspace-id requires a value')
-    selection.push(id)
-  }
-  const { values } = flags(remainder, ['--focused-workspace-id', ...revisionOptions])
-  if (selection.length === 0) throw new Error('--workspace-id is required')
-  return { values, selection }
-}
-
 export function parseOrganizationCommand(
   args: string[],
   sessionFile: string
 ): OrganizationCommand | undefined {
   if (args[0] === 'workspace' && args[1] === 'select-many') {
-    const { values, selection } = selectionFlags(args.slice(2))
+    const { values, workspaceIds: selection } = workspaceIdFlags(args.slice(2), [
+      '--focused-workspace-id',
+      ...revisionOptions
+    ])
     required(values, '--focused-workspace-id')
     required(values, '--expected-revision')
     return {
