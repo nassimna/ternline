@@ -305,27 +305,7 @@ export function closeWorkspace(
   next.focusedWindowId = selectedPlacement.id
   selectedPlacement.focusedWorkspaceId = next.selectedWorkspaceId
 
-  const oldHistory = next.focusHistory
-  const retainedThroughCursor = oldHistory.entries
-    .slice(0, oldHistory.cursor + 1)
-    .filter((entry) => validFocus(next, entry)).length
-  oldHistory.entries = oldHistory.entries.filter((entry) => validFocus(next, entry))
-  oldHistory.cursor = Math.min(
-    Math.max(0, retainedThroughCursor - 1),
-    Math.max(0, oldHistory.entries.length - 1)
-  )
-  const newFocus = focusTarget(next, next.selectedWorkspaceId)
-  if (!sameTarget(previousFocus, newFocus)) {
-    if (oldHistory.entries.length === 0 && validFocus(next, previousFocus)) {
-      oldHistory.entries.push(previousFocus)
-    }
-    if (oldHistory.entries.length === 0 || !sameTarget(oldHistory.entries.at(-1)!, newFocus)) {
-      oldHistory.entries = oldHistory.entries.slice(0, oldHistory.cursor + 1)
-      oldHistory.entries.push(newFocus)
-    }
-    if (oldHistory.entries.length > 128) oldHistory.entries.shift()
-    oldHistory.cursor = oldHistory.entries.length - 1
-  }
+  reconcileTabFocus(next, previousFocus)
 
   for (const placement of next.windowPlacements) {
     const previous = state.windowPlacements.find((item) => item.id === placement.id)

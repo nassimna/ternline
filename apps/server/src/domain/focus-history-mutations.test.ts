@@ -4,8 +4,9 @@ import { expect, it } from 'vitest'
 
 import { navigateFocusHistory } from './focus-history-mutations'
 import { WindowMutationError } from './window-mutations'
+import { closeWorkspace } from './workspace-mutations'
 
-it('moves backward and forward through durable focus without adding entries', () => {
+function createTwoWorkspaceState() {
   const windowId = randomUUID()
   const workspaceIds = [randomUUID(), randomUUID()]
   const paneIds = [randomUUID(), randomUUID()]
@@ -71,6 +72,11 @@ it('moves backward and forward through durable focus without adding entries', ()
     focusedWindowId: windowId,
     focusHistory: { entries: targets, cursor: 1 }
   })
+  return { state, targets, workspaceIds }
+}
+
+it('moves backward and forward through durable focus without adding entries', () => {
+  const { state, targets, workspaceIds } = createTwoWorkspaceState()
   const back = navigateFocusHistory(state, 'back')
   expect(back.target).toEqual(targets[0])
   expect(back.state).toMatchObject({
@@ -83,4 +89,32 @@ it('moves backward and forward through durable focus without adding entries', ()
   expect(forward.target).toEqual(targets[1])
   expect(forward.state.revision).toBe(5)
   expect(forward.state.focusHistory.entries).toEqual(targets)
+})
+
+it('prunes a closed unfocused workspace from both sides of the focus history cursor', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const first = targets[0]!
+  const second = targets[1]!
+  state.focusHistory = { entries: [first, second, first, second], cursor: 1 }
+  const source = structuredClone(state)
+
+  const next = closeWorkspace(state, first.workspaceId)
+
+  expect(next.selectedWorkspaceId).toBe(second.workspaceId)
+  expect(next.focusHistory).toEqual({ entries: [second, second], cursor: 0 })
+  expect(state).toEqual(source)
+})
+
+it('records the remaining workspace when closing the focused workspace clears history', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const first = targets[0]!
+  const second = targets[1]!
+  state.focusHistory = { entries: [second], cursor: 0 }
+  const source = structuredClone(state)
+
+  const next = closeWorkspace(state, second.workspaceId)
+
+  expect(next.selectedWorkspaceId).toBe(first.workspaceId)
+  expect(next.focusHistory).toEqual({ entries: [first], cursor: 0 })
+  expect(state).toEqual(source)
 })
