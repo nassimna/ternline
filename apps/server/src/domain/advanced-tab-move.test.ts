@@ -105,10 +105,22 @@ it('moves a live tab identity across windows while keeping a valid source worksp
           windowId: sourceWindow,
           workspaceId: sourceWorkspace,
           paneId: sourcePane,
+          tabId: remainingTab
+        },
+        {
+          windowId: sourceWindow,
+          workspaceId: sourceWorkspace,
+          paneId: sourcePane,
           tabId: movedTab
+        },
+        {
+          windowId: targetWindow,
+          workspaceId: targetWorkspace,
+          paneId: targetPane,
+          tabId: targetTab
         }
       ],
-      cursor: 0
+      cursor: 1
     }
   })
   const request = {
@@ -128,6 +140,7 @@ it('moves a live tab identity across windows while keeping a valid source worksp
       expectedWindowRevision: 3
     }
   }
+  const originalHistory = structuredClone(state.focusHistory)
   const moved = moveExactTab(state, request, 5)
   expect(moved.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([remainingTab])
   expect(moved.workspaces[1]?.panes[targetPane]?.tabs).toEqual([targetTab, movedTab])
@@ -137,10 +150,17 @@ it('moves a live tab identity across windows while keeping a valid source worksp
   expect(moved.selectedWorkspaceId).toBe(targetWorkspace)
   expect(moved.focusHistory).toEqual({
     entries: [
+      {
+        windowId: sourceWindow,
+        workspaceId: sourceWorkspace,
+        paneId: sourcePane,
+        tabId: remainingTab
+      },
       { windowId: targetWindow, workspaceId: targetWorkspace, paneId: targetPane, tabId: movedTab }
     ],
-    cursor: 0
+    cursor: 1
   })
+  expect(state.focusHistory).toEqual(originalHistory)
   expect(durableApplicationStateSchema.safeParse(moved).success).toBe(true)
   expect(() =>
     moveExactTab(state, { ...request, source: { ...request.source, expectedWindowRevision: 1 } }, 5)
@@ -158,6 +178,7 @@ it('moves a live tab identity across windows while keeping a valid source worksp
       title: null
     }
     source.tabs[remainingTab]!.paneId = siblingPane
+    splitState.focusHistory.entries[0]!.paneId = siblingPane
     const sibling = { kind: 'leaf', paneId: siblingPane }
     source.layout = {
       kind: 'split',

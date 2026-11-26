@@ -5,7 +5,7 @@ import {
 import { tabMoveExactParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
-import { validFocus, WindowMutationError } from './window-mutations'
+import { pruneHistory, WindowMutationError } from './window-mutations'
 import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
 
 type Request = z.infer<typeof tabMoveExactParamsSchema>
@@ -116,12 +116,8 @@ export function moveExactTab(
   next.focusedWindowId = targetPlacement.id
   next.selectedWorkspaceId = to.id
   next.workspaceSelection = [to.id]
+  pruneHistory(next)
   const history = next.focusHistory
-  const retained = history.entries
-    .slice(0, history.cursor + 1)
-    .filter((entry) => validFocus(next, entry)).length
-  history.entries = history.entries.filter((entry) => validFocus(next, entry))
-  history.cursor = Math.min(Math.max(0, retained - 1), Math.max(0, history.entries.length - 1))
   const focus: FocusTarget = {
     windowId: targetPlacement.id,
     workspaceId: to.id,

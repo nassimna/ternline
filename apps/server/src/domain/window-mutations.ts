@@ -61,7 +61,7 @@ function commit(state: State): State {
   return durableApplicationStateSchema.parse(state)
 }
 
-function pruneHistory(state: State): void {
+export function pruneHistory(state: State): void {
   const history = state.focusHistory
   const beforeCursor = history.entries
     .slice(0, history.cursor + 1)
