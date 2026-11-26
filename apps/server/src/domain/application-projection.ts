@@ -75,6 +75,26 @@ function paneOrder(layout: PaneTree): string[] {
   return [...paneOrder(layout.first), ...paneOrder(layout.second)]
 }
 
+export function projectBrowserState(
+  metadata: Extract<
+    DurableApplicationState['workspaces'][number]['tabs'][string]['content'],
+    { kind: 'browser' }
+  >['metadata']
+) {
+  return {
+    browserSessionId: metadata.browserSessionId,
+    url: metadata.url,
+    navigationTitle: metadata.navigationTitle ?? '',
+    canBack: metadata.canBack ?? false,
+    canForward: metadata.canForward ?? false,
+    loading: metadata.loading ?? false,
+    devToolsOpen: metadata.devToolsOpen ?? false,
+    profilePartition: metadata.profilePartition ?? 'persist:agent-workspace-default',
+    stateRevision: metadata.stateRevision ?? 0,
+    correlationId: metadata.correlationId ?? null
+  }
+}
+
 /** Project durable Rust state into the exact renderer and CLI workspace snapshot shape. */
 export function projectApplicationSnapshot(
   state: DurableApplicationState,
@@ -137,19 +157,7 @@ export function projectApplicationSnapshot(
               }
             : {
                 kind: 'browser' as const,
-                state: {
-                  browserSessionId: tab.content.metadata.browserSessionId,
-                  url: tab.content.metadata.url,
-                  navigationTitle: tab.content.metadata.navigationTitle ?? '',
-                  canBack: tab.content.metadata.canBack ?? false,
-                  canForward: tab.content.metadata.canForward ?? false,
-                  loading: tab.content.metadata.loading ?? false,
-                  devToolsOpen: tab.content.metadata.devToolsOpen ?? false,
-                  profilePartition:
-                    tab.content.metadata.profilePartition ?? 'persist:agent-workspace-default',
-                  stateRevision: tab.content.metadata.stateRevision ?? 0,
-                  correlationId: tab.content.metadata.correlationId ?? null
-                }
+                state: projectBrowserState(tab.content.metadata)
               }
         return {
           id: tab.id,
