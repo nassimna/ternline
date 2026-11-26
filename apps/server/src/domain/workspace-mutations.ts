@@ -883,7 +883,6 @@ export function initialBrowserMetadata(
   }
 }
 
-/** Browser creation follows Rust's browser mutation path, which retains focus history. */
 export function openBrowserTab(
   state: DurableApplicationState,
   input: z.input<typeof tabOpenBrowserParamsSchema>,
@@ -925,6 +924,7 @@ export function openBrowserTab(
     throw new WorkspaceMutationError('invalid_timestamp', 'Tab creation timestamp is invalid')
   }
 
+  const previousFocus = focusTarget(state, state.selectedWorkspaceId)
   const next = structuredClone(state)
   const workspace = next.workspaces.find((item) => item.id === request.workspaceId)!
   const pane = workspace.panes[request.paneId]!
@@ -947,6 +947,7 @@ export function openBrowserTab(
   pane.selectedTabId = tabId
   workspace.selectedPaneId = pane.id
   workspace.updatedAt = createdAt
+  reconcileTabFocus(next, previousFocus)
   return commitChangedState(next)
 }
 
