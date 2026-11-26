@@ -17,11 +17,17 @@ export async function linuxListeningPorts(rootPid: number): Promise<number[]> {
     ])
     const listeners = new Map([...parseTcpListeners(tcp), ...parseTcpListeners(tcp6)])
     if (!listeners.size) continue
-    for (const descriptor of descriptors) {
-      const target = await readlink(`/proc/${pid}/fd/${descriptor}`).catch(() => '')
-      const inode = /^socket:\[(\d+)\]$/.exec(target)?.[1]
-      const port = inode ? listeners.get(inode) : undefined
-      if (port) ports.add(port)
+    for (let offset = 0; offset < descriptors.length; offset += 128) {
+      const targets = await Promise.all(
+        descriptors
+          .slice(offset, offset + 128)
+          .map((descriptor) => readlink(`/proc/${pid}/fd/${descriptor}`).catch(() => ''))
+      )
+      for (const target of targets) {
+        const inode = /^socket:\[(\d+)\]$/.exec(target)?.[1]
+        const port = inode ? listeners.get(inode) : undefined
+        if (port) ports.add(port)
+      }
     }
   }
   return [...ports].sort((a, b) => a - b).slice(0, MAX_LISTENING_PORTS)
