@@ -145,9 +145,16 @@ export class BrowserAutomationDevtools {
         const tree = await this.command<{ nodes: AccessibilityNode[] }>(
           'Accessibility.getFullAXTree'
         )
-        const nodes = tree.nodes
-          .filter((node) => !node.ignored)
-          .map((node) => ({
+        const nodes = []
+        let byteLength = 2 // Opening and closing array brackets.
+        let truncated = false
+        for (const node of tree.nodes) {
+          if (node.ignored) continue
+          if (nodes.length === 200) {
+            truncated = true
+            break
+          }
+          const projectedNode = {
             nodeId: node.nodeId,
             parentId: node.parentId,
             role: node.role?.value ?? '',
@@ -168,15 +175,21 @@ export class BrowserAutomationDevtools {
                 'level'
               ].includes(property.name)
             )
-          }))
-        const before = nodes.length
-        while (nodes.length > 200 || Buffer.byteLength(JSON.stringify(nodes)) > MAX_BUFFER_BYTES)
-          nodes.pop()
+          }
+          const nodeBytes = Buffer.byteLength(JSON.stringify(projectedNode))
+          const nextByteLength = byteLength + nodeBytes + (nodes.length === 0 ? 0 : 1)
+          if (nextByteLength > MAX_BUFFER_BYTES) {
+            truncated = true
+            break
+          }
+          nodes.push(projectedNode)
+          byteLength = nextByteLength
+        }
         return {
           url: this.#contents.getURL().slice(0, 4096),
           title: this.#contents.getTitle().slice(0, 4096),
           nodes,
-          truncated: nodes.length !== before
+          truncated
         }
       }
       case 'appearance':
