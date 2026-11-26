@@ -4,7 +4,13 @@ import { expect, it } from 'vitest'
 
 import { navigateFocusHistory } from './focus-history-mutations'
 import { WindowMutationError } from './window-mutations'
-import { closeWorkspace, openBrowserTab, openTerminalTab, selectTab } from './workspace-mutations'
+import {
+  closeWorkspace,
+  openBrowserTab,
+  openTerminalTab,
+  selectTab,
+  splitPane
+} from './workspace-mutations'
 
 function createTwoWorkspaceState() {
   const windowId = randomUUID()
@@ -120,6 +126,55 @@ it('returns to the previous terminal and forward to the new browser tab', () => 
     ...alpha,
     tabId: browserId
   })
+})
+
+it.each(['terminal', 'browser'])('inserts a %s tab at index zero after going back', (kind) => {
+  const { state, targets } = createTwoWorkspaceState()
+  const [first, second] = targets
+  const { workspaceId, paneId: targetPaneId } = second!
+  const paneId = randomUUID()
+  const existingTabId = randomUUID()
+  const launch = { cwd: '/tmp', rows: 24, cols: 80 }
+  const split = splitPane(
+    state,
+    {
+      workspaceId,
+      targetPaneId,
+      axis: 'horizontal',
+      ratio: 0.5,
+      placement: 'after',
+      content: { kind: 'newTerminal', launch }
+    },
+    { paneId, tabId: existingTabId, splitId: randomUUID(), browserSessionId: randomUUID() },
+    2
+  )
+  const { state: source } = navigateFocusHistory(split, 'back')
+  const snapshot = structuredClone(source)
+  const tabId = randomUUID()
+  const request = { workspaceId, paneId, destinationIndex: 0 }
+
+  const next =
+    kind === 'terminal'
+      ? openTerminalTab(source, { ...request, launch }, tabId, 3)
+      : openBrowserTab(
+          source,
+          { ...request, metadata: { url: 'https://example.com/' } },
+          tabId,
+          randomUUID(),
+          3
+        )
+
+  expect(next.workspaces[1]).toMatchObject({
+    selectedPaneId: paneId,
+    panes: { [paneId]: { tabs: [tabId, existingTabId], selectedTabId: tabId } },
+    updatedAt: 3
+  })
+  expect(next.focusHistory).toEqual({
+    entries: [first, second, { ...second, paneId, tabId }],
+    cursor: 2
+  })
+  expect(next.revision).toBe(6)
+  expect(source).toEqual(snapshot)
 })
 
 it('drops intervening forward history when selecting the former last tab', () => {

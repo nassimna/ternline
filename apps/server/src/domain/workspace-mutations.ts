@@ -813,6 +813,25 @@ export function closeTab(
   return commitChangedState(next)
 }
 
+function insertTab(
+  state: DurableApplicationState,
+  { workspaceId, paneId }: { workspaceId: string; paneId: string },
+  index: number,
+  tab: Workspace['tabs'][string]
+): DurableApplicationState {
+  const previousFocus = focusTarget(state, state.selectedWorkspaceId)
+  const next = structuredClone(state)
+  const workspace = next.workspaces.find((item) => item.id === workspaceId)!
+  const pane = workspace.panes[paneId]!
+  workspace.tabs[tab.id] = tab
+  pane.tabs.splice(index, 0, tab.id)
+  pane.selectedTabId = tab.id
+  workspace.selectedPaneId = pane.id
+  workspace.updatedAt = tab.createdAt
+  reconcileTabFocus(next, previousFocus)
+  return next
+}
+
 /** Inserts and selects a terminal tab; the launch command remains runtime-only. */
 export function openTerminalTab(
   state: DurableApplicationState,
@@ -836,11 +855,7 @@ export function openTerminalTab(
   if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
     throw new WorkspaceMutationError('invalid_timestamp', 'Tab creation timestamp is invalid')
   }
-  const previousFocus = focusTarget(state, state.selectedWorkspaceId)
-  const next = structuredClone(state)
-  const workspace = next.workspaces.find((item) => item.id === request.workspaceId)!
-  const pane = workspace.panes[request.paneId]!
-  workspace.tabs[tabId] = {
+  const next = insertTab(state, request, index, {
     id: tabId,
     paneId: request.paneId,
     title: 'Terminal',
@@ -854,12 +869,7 @@ export function openTerminalTab(
       }
     },
     createdAt
-  }
-  pane.tabs.splice(index, 0, tabId)
-  pane.selectedTabId = tabId
-  workspace.selectedPaneId = pane.id
-  workspace.updatedAt = createdAt
-  reconcileTabFocus(next, previousFocus)
+  })
   reconcileLegacyLimit(state, next)
   return commitChangedState(next)
 }
@@ -924,13 +934,9 @@ export function openBrowserTab(
     throw new WorkspaceMutationError('invalid_timestamp', 'Tab creation timestamp is invalid')
   }
 
-  const previousFocus = focusTarget(state, state.selectedWorkspaceId)
-  const next = structuredClone(state)
-  const workspace = next.workspaces.find((item) => item.id === request.workspaceId)!
-  const pane = workspace.panes[request.paneId]!
-  workspace.tabs[tabId] = {
+  const next = insertTab(state, request, index, {
     id: tabId,
-    paneId: pane.id,
+    paneId: originalPane.id,
     title: 'Browser',
     customTitle: null,
     content: {
@@ -942,12 +948,7 @@ export function openBrowserTab(
       )
     },
     createdAt
-  }
-  pane.tabs.splice(index, 0, tabId)
-  pane.selectedTabId = tabId
-  workspace.selectedPaneId = pane.id
-  workspace.updatedAt = createdAt
-  reconcileTabFocus(next, previousFocus)
+  })
   return commitChangedState(next)
 }
 
