@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   closeSync,
@@ -440,9 +441,7 @@ export class FilesService {
         read += count
       }
       if (identity(fd, true) !== document.identity) fail('stale_revision')
-      try {
-        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
-      } catch {
+      if (!isUtf8(bytes)) {
         return {
           kind: 'unavailable' as const,
           document: params.document,
