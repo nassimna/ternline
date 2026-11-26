@@ -91,6 +91,36 @@ it('retains the hosted caller window when the layout preserves workspace identit
   expect(durableApplicationStateSchema.safeParse(applied).success).toBe(true)
 })
 
+it('prunes removed tab focus before the cursor and preserves forward history', () => {
+  const { state, windowId, layoutId } = fixture()
+  const workspace = state.workspaces[0]!
+  const pane = workspace.panes[workspace.selectedPaneId]!
+  const current = {
+    windowId,
+    workspaceId: workspace.id,
+    paneId: pane.id,
+    tabId: pane.selectedTabId
+  }
+  const removed = { ...current, tabId: randomUUID() }
+  const forward = { ...current, tabId: randomUUID() }
+  const tab = workspace.tabs[current.tabId]!
+  for (const { tabId } of [removed, forward]) {
+    pane.tabs.push(tabId)
+    workspace.tabs[tabId] = { ...tab, id: tabId }
+  }
+  state.focusHistory = { entries: [removed, current, forward], cursor: 1 }
+  const template = state.savedLayouts[0]!.template.workspaces[0]!
+  template.id = workspace.id
+  template.panes[pane.id]!.tabs.push(forward.tabId)
+  template.tabs[forward.tabId] = { ...template.tabs[current.tabId]!, id: forward.tabId }
+  const original = durableApplicationStateSchema.parse(state)
+
+  const applied = planLayoutApplication(state, layoutId, randomUUID, windowId)
+
+  expect(applied.focusHistory).toEqual({ entries: [current, forward], cursor: 0 })
+  expect(state).toEqual(original)
+})
+
 it.each(['hosted', 'unhosted'] as const)(
   'refuses layout apply when another %s window would disappear',
   (hostingState) => {
@@ -155,6 +185,8 @@ it('preserves exact catalog tab bindings when a layout replaces pane content', (
   const originalPane = workspace.panes[workspace.selectedPaneId]!
   const oldTabId = originalPane.selectedTabId
   const replacementTabId = randomUUID()
+  const oldFocus = { windowId, workspaceId: workspace.id, paneId: originalPane.id, tabId: oldTabId }
+  state.focusHistory = { entries: [oldFocus], cursor: 0 }
   const template = state.savedLayouts[0]!.template.workspaces[0]!
   template.id = workspace.id
   const oldTab = template.tabs[oldTabId]!
@@ -164,6 +196,10 @@ it('preserves exact catalog tab bindings when a layout replaces pane content', (
   template.tabs[replacementTabId] = { ...oldTab, id: replacementTabId }
   const candidate = planLayoutApplication(state, layoutId, randomUUID, windowId)
   expect(durableApplicationStateSchema.safeParse(candidate).success).toBe(true)
+  expect(candidate.focusHistory).toEqual({
+    entries: [{ ...oldFocus, tabId: replacementTabId }],
+    cursor: 0
+  })
   expect(() =>
     assertLayoutBindingsPreserved(state, candidate, [
       {

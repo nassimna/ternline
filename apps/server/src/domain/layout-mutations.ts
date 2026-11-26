@@ -14,7 +14,11 @@ import {
   type LayoutTemplate
 } from '@agent-workspace/contracts'
 
-import { WorkspaceMutationError } from './workspace-mutations'
+import {
+  isValidTabFocus,
+  pruneTabFocusHistory,
+  WorkspaceMutationError
+} from './workspace-mutations'
 
 type Workspace = DurableApplicationState['workspaces'][number]
 type Layout = DurableApplicationState['savedLayouts'][number]
@@ -353,16 +357,6 @@ function focusTarget(state: DurableApplicationState): FocusTarget {
   }
 }
 
-function validFocus(state: DurableApplicationState, target: FocusTarget): boolean {
-  const placement = state.windowPlacements.find((item) => item.id === target.windowId)
-  const workspace = state.workspaces.find((item) => item.id === target.workspaceId)
-  return Boolean(
-    placement?.workspaceIds.includes(target.workspaceId) &&
-    workspace?.panes[target.paneId]?.tabs.includes(target.tabId) &&
-    workspace.tabs[target.tabId]?.paneId === target.paneId
-  )
-}
-
 function reconcileLayoutTopology(
   before: DurableApplicationState,
   next: DurableApplicationState,
@@ -425,18 +419,11 @@ function reconcileLayoutTopology(
   selectedPlacement.focusedWorkspaceId = next.selectedWorkspaceId
 
   const history = next.focusHistory
-  const retainedThroughCursor = history.entries
-    .slice(0, history.cursor + 1)
-    .filter((entry) => validFocus(next, entry)).length
-  history.entries = history.entries.filter((entry) => validFocus(next, entry))
-  history.cursor = Math.min(
-    Math.max(0, retainedThroughCursor - 1),
-    Math.max(0, history.entries.length - 1)
-  )
+  pruneTabFocusHistory(next)
   const previousFocus = focusTarget(before)
   const currentFocus = focusTarget(next)
   if (!isDeepStrictEqual(previousFocus, currentFocus)) {
-    if (history.entries.length === 0 && validFocus(next, previousFocus)) {
+    if (history.entries.length === 0 && isValidTabFocus(next, previousFocus)) {
       history.entries.push(previousFocus)
     }
     if (!isDeepStrictEqual(history.entries.at(-1), currentFocus)) {
