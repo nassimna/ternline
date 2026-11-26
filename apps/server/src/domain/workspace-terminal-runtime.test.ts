@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
-import { closeWorkspace, createWorkspace } from './workspace-mutations'
+import { closePane, closeTab, closeWorkspace, createWorkspace } from './workspace-mutations'
 import { projectApplicationSnapshot } from './application-projection'
 import { saveLayout } from './layout-mutations'
 
@@ -229,6 +229,60 @@ describe('initial workspace mutations', () => {
       )
     }
   )
+
+  it.each([
+    { operation: 'tab', source: 'terminal', rows: 41, cols: 123 },
+    { operation: 'tab', source: 'browser', rows: 24, cols: 80 },
+    { operation: 'pane', source: 'terminal', rows: 41, cols: 123 },
+    { operation: 'pane', source: 'browser', rows: 24, cols: 80 }
+  ])('replaces the final $operation with a $source source', ({ operation, source, rows, cols }) => {
+    const { state, workspaceId, paneId, terminalIds, browserId } = snapshot()
+    const workspace = state.workspaces[0]!
+    const pane = workspace.panes[paneId]!
+    workspace.workingDirectory = '/workspace'
+    pane.title = 'Tools'
+    if (source === 'terminal') {
+      const [lowerId, higherId] = terminalIds.toSorted((a, b) => a.localeCompare(b))
+      const lowest = workspace.tabs[lowerId!]!
+      lowest.content = {
+        kind: 'terminal',
+        launch: { cwd: '/workspace/tools', rows: 41, cols: 123 }
+      }
+      pane.tabs = operation === 'tab' ? [lowest.id] : [higherId!, lowest.id]
+    } else {
+      pane.tabs = [browserId]
+    }
+    pane.selectedTabId = pane.tabs[0]!
+    workspace.tabs = Object.fromEntries(pane.tabs.map((id) => [id, workspace.tabs[id]!]))
+
+    const original = structuredClone(state)
+    const replacementTabId = randomUUID()
+    const now = 3
+    const next =
+      operation === 'tab'
+        ? closeTab(state, workspaceId, pane.selectedTabId, randomUUID(), replacementTabId, now)
+        : closePane(state, workspaceId, paneId, replacementTabId, now)
+
+    expect(next.workspaces[0]!.tabs).toStrictEqual({
+      [replacementTabId]: {
+        id: replacementTabId,
+        paneId,
+        title: 'Terminal',
+        customTitle: null,
+        content: { kind: 'terminal', launch: { cwd: '/workspace', rows, cols } },
+        createdAt: now
+      }
+    })
+    expect(next.workspaces[0]!.panes).toStrictEqual({
+      [paneId]: {
+        id: paneId,
+        tabs: [replacementTabId],
+        selectedTabId: replacementTabId,
+        title: operation === 'tab' ? 'Tools' : null
+      }
+    })
+    expect(state).toStrictEqual(original)
+  })
 })
 
 describe('WorkspaceTerminalRuntime', () => {

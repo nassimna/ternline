@@ -163,15 +163,23 @@ function initialWorkspace(
   }
 }
 
+function replacementTerminalLaunch(workspace: Workspace) {
+  const terminal = Object.values(workspace.tabs)
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .find((tab) => tab.content.kind === 'terminal')
+  const launch = terminal?.content.kind === 'terminal' ? terminal.content.launch : undefined
+  return {
+    cwd: workspace.workingDirectory,
+    rows: launch?.rows ?? 24,
+    cols: launch?.cols ?? 80
+  }
+}
+
 function replacementWorkspace(
   closing: Workspace,
   ids: NewWorkspaceIds,
   createdAt: number
 ): Workspace {
-  const terminal = Object.values(closing.tabs)
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .find((tab) => tab.content.kind === 'terminal')
-  const launch = terminal?.content.kind === 'terminal' ? terminal.content.launch : undefined
   return initialWorkspace(
     ids,
     createdAt,
@@ -182,11 +190,7 @@ function replacementWorkspace(
       workingDirectory: closing.workingDirectory,
       ...(closing.environment === undefined ? {} : { environment: closing.environment })
     },
-    {
-      cwd: closing.workingDirectory,
-      rows: launch?.rows ?? 24,
-      cols: launch?.cols ?? 80
-    }
+    replacementTerminalLaunch(closing)
   )
 }
 
@@ -770,23 +774,13 @@ export function closeTab(
   const workspace = next.workspaces.find((item) => item.id === workspaceId)!
   const pane = workspace.panes[originalTab.paneId]!
   if (finalTab) {
-    const dimensions = Object.values(original.tabs)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .find((item) => item.content.kind === 'terminal')
-    const launch = dimensions?.content.kind === 'terminal' ? dimensions.content.launch : undefined
+    const launch = replacementTerminalLaunch(original)
     workspace.tabs[replacementTabId!] = {
       id: replacementTabId!,
       paneId: pane.id,
       title: 'Terminal',
       customTitle: null,
-      content: {
-        kind: 'terminal',
-        launch: {
-          cwd: workspace.workingDirectory,
-          rows: launch?.rows ?? 24,
-          cols: launch?.cols ?? 80
-        }
-      },
+      content: { kind: 'terminal', launch },
       createdAt: now
     }
     pane.tabs = [replacementTabId!]
@@ -1171,24 +1165,14 @@ export function closePane(
   const workspace = next.workspaces.find((item) => item.id === workspaceId)!
   const closing = workspace.panes[paneId]!
   if (finalPane) {
-    const dimensions = Object.values(original.tabs)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .find((tab) => tab.content.kind === 'terminal')
-    const launch = dimensions?.content.kind === 'terminal' ? dimensions.content.launch : undefined
+    const launch = replacementTerminalLaunch(original)
     for (const tabId of closing.tabs) delete workspace.tabs[tabId]
     workspace.tabs[replacementTabId!] = {
       id: replacementTabId!,
       paneId,
       title: 'Terminal',
       customTitle: null,
-      content: {
-        kind: 'terminal',
-        launch: {
-          cwd: workspace.workingDirectory,
-          rows: launch?.rows ?? 24,
-          cols: launch?.cols ?? 80
-        }
-      },
+      content: { kind: 'terminal', launch },
       createdAt: updatedAt
     }
     workspace.panes[paneId] = {
