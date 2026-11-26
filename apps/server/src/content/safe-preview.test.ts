@@ -21,6 +21,31 @@ describe('safe Markdown previews', () => {
     ])
   })
 
+  it('parses a link after http in the surrounding text', () => {
+    expect(parseSafeMarkdown('Use http or [the secure version](https://example.com).')).toEqual([
+      {
+        kind: 'paragraph',
+        children: [
+          { kind: 'text', text: 'Use http or ' },
+          { kind: 'link', label: 'the secure version', href: 'https://example.com' },
+          { kind: 'text', text: '.' }
+        ]
+      }
+    ])
+  })
+
+  it('parses a link with http in its label', () => {
+    expect(parseSafeMarkdown('[Learn about http](https://example.com).')).toEqual([
+      {
+        kind: 'paragraph',
+        children: [
+          { kind: 'link', label: 'Learn about http', href: 'https://example.com' },
+          { kind: 'text', text: '.' }
+        ]
+      }
+    ])
+  })
+
   it.each([
     'A [link](javascript:alert(1)) and tail.',
     'A [link](https://user:password@example.com) and tail.',
