@@ -6,28 +6,10 @@ import { tabDetachParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { WindowMutationError } from './window-mutations'
+import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
 
 type Request = z.infer<typeof tabDetachParamsSchema>
 type Ids = { windowId: string; workspaceId: string; paneId: string; replacementTabId: string }
-type Layout =
-  | { kind: 'leaf'; paneId: string }
-  | {
-      kind: 'split'
-      splitId: string
-      axis: 'horizontal' | 'vertical'
-      ratio: number
-      first: Layout
-      second: Layout
-    }
-
-function collapsePane(layout: Layout, paneId: string): Layout | null {
-  if (layout.kind === 'leaf') return layout.paneId === paneId ? null : layout
-  const first = collapsePane(layout.first, paneId)
-  const second = collapsePane(layout.second, paneId)
-  if (!first) return second
-  if (!second) return first
-  return { ...layout, first, second }
-}
 
 /** Creates one unhosted window and workspace with the same live tab identity. */
 export function detachExactTab(
@@ -102,10 +84,7 @@ export function detachExactTab(
   } else {
     sourcePane.tabs.splice(index, 1)
     if (sourcePane.tabs.length === 0) {
-      const collapsed = collapsePane(from.layout as Layout, sourcePane.id)
-      if (!collapsed)
-        throw new WindowMutationError('policy_denied', 'Source layout cannot be emptied')
-      from.layout = collapsed
+      from.layout = collapsePane(from.layout as Layout, sourcePane.id)
       delete from.panes[sourcePane.id]
       if (from.selectedPaneId === sourcePane.id) from.selectedPaneId = Object.keys(from.panes)[0]!
     } else if (sourcePane.selectedTabId === moving.id) {

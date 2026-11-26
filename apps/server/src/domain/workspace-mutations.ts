@@ -547,7 +547,7 @@ function commitChangedState(next: DurableApplicationState): DurableApplicationSt
   return next
 }
 
-type PaneLayout =
+export type PaneLayout =
   | { kind: 'leaf'; paneId: string }
   | {
       kind: 'split'
@@ -558,7 +558,7 @@ type PaneLayout =
       second: PaneLayout
     }
 
-function collapsePane(layout: PaneLayout, paneId: string): PaneLayout {
+export function collapsePane(layout: PaneLayout, paneId: string): PaneLayout {
   if (layout.kind === 'leaf') {
     throw new WorkspaceMutationError('pane_not_found', 'Pane is not in the layout')
   }

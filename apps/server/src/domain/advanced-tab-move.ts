@@ -6,29 +6,10 @@ import { tabMoveExactParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { WindowMutationError } from './window-mutations'
+import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
 
 type Request = z.infer<typeof tabMoveExactParamsSchema>
 type FocusTarget = DurableApplicationState['focusHistory']['entries'][number]
-type Layout =
-  | { kind: 'leaf'; paneId: string }
-  | {
-      kind: 'split'
-      splitId: string
-      axis: 'horizontal' | 'vertical'
-      ratio: number
-      first: Layout
-      second: Layout
-    }
-
-function collapsePane(layout: Layout, paneId: string): Layout | null {
-  if (layout.kind === 'leaf') return layout.paneId === paneId ? null : layout
-  const first = collapsePane(layout.first, paneId)
-  const second = collapsePane(layout.second, paneId)
-  if (!first) return second
-  if (!second) return first
-  return { ...layout, first, second }
-}
-
 function validFocus(state: DurableApplicationState, focus: FocusTarget): boolean {
   const placement = state.windowPlacements.find((item) => item.id === focus.windowId)
   const workspace = state.workspaces.find((item) => item.id === focus.workspaceId)
@@ -114,10 +95,7 @@ export function moveExactTab(
   sourcePane.tabs.splice(sourceIndex, 1)
   if (sourcePane !== targetPane) {
     if (sourcePane.tabs.length === 0) {
-      const collapsed = collapsePane(from.layout as Layout, sourcePane.id)
-      if (!collapsed)
-        throw new WindowMutationError('policy_denied', 'Source workspace cannot become empty')
-      from.layout = collapsed
+      from.layout = collapsePane(from.layout as Layout, sourcePane.id)
       delete from.panes[sourcePane.id]
       if (from.selectedPaneId === sourcePane.id) {
         from.selectedPaneId = Object.keys(from.panes)[0]!
