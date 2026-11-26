@@ -144,6 +144,35 @@ it('moves a live tab identity across windows while keeping a valid source worksp
     moveExactTab(state, { ...request, source: { ...request.source, expectedWindowRevision: 1 } }, 5)
   ).toThrow('Window placement changed')
 
+  for (const side of ['first', 'second'] as const) {
+    const splitState = structuredClone(state)
+    const source = splitState.workspaces[0]!
+    const siblingPane = randomUUID()
+    source.panes[sourcePane]!.tabs = [movedTab]
+    source.panes[siblingPane] = {
+      id: siblingPane,
+      tabs: [remainingTab],
+      selectedTabId: remainingTab,
+      title: null
+    }
+    source.tabs[remainingTab]!.paneId = siblingPane
+    const sibling = { kind: 'leaf', paneId: siblingPane }
+    source.layout = {
+      kind: 'split',
+      splitId: randomUUID(),
+      axis: 'vertical',
+      ratio: 0.4,
+      first: side === 'first' ? { kind: 'leaf', paneId: sourcePane } : sibling,
+      second: side === 'second' ? { kind: 'leaf', paneId: sourcePane } : sibling
+    }
+    const result = moveExactTab(durableApplicationStateSchema.parse(splitState), request, 5)
+    expect(result.workspaces[0]?.layout).toEqual(sibling)
+    expect(result.workspaces[0]?.panes[sourcePane]).toBeUndefined()
+    expect(result.workspaces[0]?.selectedPaneId).toBe(siblingPane)
+    expect(result.workspaces[1]?.panes[targetPane]?.tabs).toEqual([targetTab, movedTab])
+    expect(splitState.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([movedTab])
+  }
+
   const browserSessionId = randomUUID()
   const browserState = structuredClone(state)
   browserState.workspaces[0]!.tabs[movedTab]!.content = {
