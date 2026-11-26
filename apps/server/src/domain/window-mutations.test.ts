@@ -79,6 +79,60 @@ function fixture() {
   return { state, windowId, workspaces }
 }
 
+it('projects the latest unread body at each attention level with a 160-code-point limit', () => {
+  const { state } = fixture()
+  const workspace = state.workspaces[0]!
+  const pane = workspace.panes[workspace.selectedPaneId]!
+  const notification = {
+    id: randomUUID(),
+    workspaceId: workspace.id,
+    paneId: pane.id,
+    tabId: pane.selectedTabId,
+    source: 'internal',
+    level: 'error',
+    title: 'Terminal notification',
+    body: null,
+    createdAt: 1,
+    readAt: null
+  } as const
+  state.notifications.push(notification)
+  expect(projectApplicationSnapshot(state).attention.latestUnread?.bodyExcerpt).toBeNull()
+
+  const bodyExcerpt = `a\u2028${'b'.repeat(157)}😀`
+  const latest = {
+    ...notification,
+    id: randomUUID(),
+    level: 'info',
+    body: `${bodyExcerpt} omitted`,
+    createdAt: 2
+  } as const
+  state.notifications.push(latest)
+  const snapshot = projectApplicationSnapshot(durableApplicationStateSchema.parse(state))
+  const projectedWorkspace = snapshot.workspaces[0]!
+  const expectedAttention = {
+    unreadCount: 2,
+    highestLevel: 'error',
+    latestUnread: {
+      notificationId: latest.id,
+      title: latest.title,
+      bodyExcerpt,
+      source: latest.source,
+      createdAt: latest.createdAt
+    }
+  }
+  for (const { attention } of [
+    snapshot,
+    projectedWorkspace,
+    projectedWorkspace.panes[0]!,
+    projectedWorkspace.tabs[0]!
+  ]) {
+    expect(attention).toEqual(expectedAttention)
+  }
+
+  state.notifications[1] = { ...latest, body: '' }
+  expect(() => projectApplicationSnapshot(state)).toThrow('text must be normalized')
+})
+
 it('checks every focus target membership without changing the state', () => {
   const { state, windowId } = fixture()
   const workspace = state.workspaces[0]!
