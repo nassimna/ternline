@@ -5,7 +5,7 @@ import {
 import { tabDetachParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
-import { WindowMutationError } from './window-mutations'
+import { recordFocus, WindowMutationError } from './window-mutations'
 import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
 
 type Request = z.infer<typeof tabDetachParamsSchema>
@@ -136,15 +136,12 @@ export function detachExactTab(
     Math.max(0, retained - 1),
     Math.max(0, next.focusHistory.entries.length - 1)
   )
-  next.focusHistory.entries = next.focusHistory.entries.slice(0, next.focusHistory.cursor + 1)
-  next.focusHistory.entries.push({
+  recordFocus(next, {
     windowId: ids.windowId,
     workspaceId: ids.workspaceId,
     paneId: ids.paneId,
     tabId: moving.id
   })
-  if (next.focusHistory.entries.length > 128) next.focusHistory.entries.shift()
-  next.focusHistory.cursor = next.focusHistory.entries.length - 1
   next.revision += 1
   return durableApplicationStateSchema.parse(next)
 }
