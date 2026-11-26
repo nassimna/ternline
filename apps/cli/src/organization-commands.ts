@@ -11,7 +11,7 @@ import {
   workspaceSelectionReplaceRequestSchema
 } from '@agent-workspace/contracts'
 
-import { flags, required } from './options'
+import { flags, nonnegativeInteger, required } from './options'
 
 type Operation =
   | 'workspace.selectMany'
@@ -88,13 +88,6 @@ export function parseOrganizationCommand(
     operation: `group.${action}` as Operation,
     values
   }
-}
-
-function nonnegativeInteger(value: string, label: string): number {
-  if (!/^(0|[1-9][0-9]*)$/u.test(value) || !Number.isSafeInteger(Number(value))) {
-    throw new Error(`${label} must be a nonnegative safe integer`)
-  }
-  return Number(value)
 }
 
 export function organizationRequest(parsed: OrganizationCommand, idempotencyEpoch: string) {
