@@ -104,6 +104,76 @@ describe('TerminalService', () => {
     }
   )
 
+  it.each([false, true])(
+    'evicts tiny chunks before each output event with checkpoint=%s',
+    async (withCheckpoint) => {
+      const { service, pty } = createFixture()
+      const { terminal } = await service.create({ rows: 24, cols: 80 })
+      try {
+        if (withCheckpoint) {
+          service.checkpoint(terminal.id, {
+            sequence: 0,
+            rows: 24,
+            cols: 80,
+            activeBuffer: 'normal',
+            data: 'screen'
+          })
+        }
+        const limit = (withCheckpoint ? 256 : 512) * 1024
+        const count = limit / 8
+        for (let index = 0; index < count; index += 1) pty.output('12345678')
+        const before = service.attach(terminal.id)
+        expect(before.reconstructionComplete).toBe(true)
+        service.subscribe(terminal.id, (event) => {
+          if (event.event === 'terminal.output') {
+            snapshots.push(service.attach(terminal.id))
+          }
+          events.push(event.event)
+        })
+        const snapshots: ReturnType<TerminalService['attach']>[] = []
+        const events: string[] = []
+
+        pty.output('y'.repeat(MAX_OUTPUT_CHUNK_BYTES * 2))
+
+        expect(events).toEqual(['terminal.output', 'terminal.output'])
+        expect(snapshots).toHaveLength(2)
+        for (const [index, snapshot] of snapshots.entries()) {
+          expect(snapshot.output).toEqual([
+            ...before.output.slice(((index + 1) * MAX_OUTPUT_CHUNK_BYTES) / 8),
+            ...Array.from({ length: index + 1 }, (_, offset) => ({
+              sequence: count + offset + 1,
+              data: Buffer.from('y'.repeat(MAX_OUTPUT_CHUNK_BYTES)).toString('base64'),
+              byteLength: MAX_OUTPUT_CHUNK_BYTES
+            }))
+          ])
+          expect(snapshot.lastSequence).toBe(count + index + 1)
+          expect(snapshot.reconstructionComplete).toBe(false)
+          expect(snapshot.checkpoint).toEqual(before.checkpoint)
+          expect(snapshot.output.reduce((sum, chunk) => sum + chunk.byteLength, 0)).toBe(limit)
+        }
+        expect(service.attach(terminal.id)).toEqual(snapshots[1])
+
+        const lastSequence = count + 2
+        service.checkpoint(terminal.id, {
+          sequence: lastSequence,
+          rows: 24,
+          cols: 80,
+          activeBuffer: 'normal',
+          data: 'new screen'
+        })
+        pty.output('z'.repeat(64 * 1024))
+        expect(events.slice(-2)).toEqual(['terminal.output', 'terminal.checkpointRequested'])
+        expect(service.attach(terminal.id)).toMatchObject({
+          output: [{ sequence: lastSequence + 1, byteLength: 64 * 1024 }],
+          lastSequence: lastSequence + 1,
+          reconstructionComplete: true
+        })
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
   it('keeps ordered output, accepts checkpoints, and marks missing replay data', async () => {
     const { service, pty } = createFixture()
     const { terminal } = await service.create({ rows: 24, cols: 80, cwd: resolve('.') })

@@ -376,11 +376,13 @@ export class TerminalService {
       const limit = session.checkpoint
         ? POST_CHECKPOINT_JOURNAL_LIMIT_BYTES
         : STARTUP_JOURNAL_LIMIT_BYTES
+      let count = 0
       while (session.journalBytes > limit) {
-        const removed = session.journal.shift()!
-        session.journalBytes -= removed.byteLength
+        session.journalBytes -= session.journal[count]!.byteLength
+        count += 1
         session.reconstructionComplete = false
       }
+      if (count > 0) session.journal.splice(0, count)
       this.emit(session, { event: 'terminal.output', data: { terminalId: id, chunk } })
       if (
         session.checkpoint &&
