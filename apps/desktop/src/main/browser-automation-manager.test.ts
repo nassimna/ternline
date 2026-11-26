@@ -577,6 +577,30 @@ describe('BrowserAutomationManager', () => {
 })
 
 describe('createElectronAutomationPage', () => {
+  it.each([
+    { key: 'a', keyCode: 'a', modifiers: [], types: ['keyDown', 'char', 'keyUp'] },
+    { key: '!', keyCode: '!', modifiers: [], types: ['keyDown', 'char', 'keyUp'] },
+    { key: 'space', keyCode: 'Space', modifiers: [], types: ['keyDown', 'char', 'keyUp'] },
+    { key: 'Plus', keyCode: 'Plus', modifiers: [], types: ['keyDown', 'char', 'keyUp'] },
+    { key: 'backspace', keyCode: 'Backspace', modifiers: [], types: ['keyDown', 'keyUp'] },
+    { key: 'a', keyCode: 'a', modifiers: ['control'] as const, types: ['keyDown', 'keyUp'] }
+  ])(
+    'sends native events for $key with modifiers $modifiers',
+    async ({ key, keyCode, modifiers, types }) => {
+      const sendInputEvent = vi.fn()
+      const page = createElectronAutomationPage({
+        contents: { sendInputEvent } as unknown as Electron.WebContents,
+        owned: false,
+        target: targetBinding(),
+        revalidate: () => true
+      })
+
+      await page.sendKey(key, [...modifiers])
+
+      expect(sendInputEvent.mock.calls).toEqual(types.map((type) => [{ type, keyCode, modifiers }]))
+    }
+  )
+
   it.each(['selector', 'text', 'role'] as const)(
     'reports Chromium roles for %s queries and removes temporary markers on success or failure',
     async (target) => {
