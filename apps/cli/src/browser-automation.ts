@@ -74,14 +74,16 @@ export function parseBrowserAutomation(
     const nested = action === 'network' || action === 'recording'
     const verb = nested ? `${action}.${args[2] ?? ''}` : action
     if (!verb || !Object.hasOwn(actionFlags, verb)) return undefined
+    const allowedFlags = ['--session-id', '--verbose', ...actionFlags[verb]!]
     const tail = args.slice(nested ? 3 : 2)
     const normalized = tail.flatMap((value, index) =>
       ['--clear', '--follow', '--verbose'].includes(value) &&
+      allowedFlags.includes(value) &&
       (tail[index + 1] === undefined || tail[index + 1]!.startsWith('--'))
         ? [value, 'true']
         : [value]
     )
-    const { values } = flags(normalized, ['--session-id', '--verbose', ...actionFlags[verb]!])
+    const { values } = flags(normalized, allowedFlags)
     const number = (flag: string, fallback: number, maximum: number, minimum = 1) => {
       const value = values.get(flag) ?? String(fallback)
       if (

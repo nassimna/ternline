@@ -435,6 +435,30 @@ void test('screenshot output verifies bytes and releases its handle, including o
   }
 })
 
+void test('browser type accepts literal --follow text with bare --clear', () => {
+  const parsed = parseBrowserAutomation(
+    [
+      'browser',
+      'type',
+      '--session-id',
+      'session',
+      '--selector',
+      '#fixture-text',
+      '--text',
+      '--follow',
+      '--clear'
+    ],
+    '/private/session'
+  )
+  assert.equal(parsed?.command, 'browser.run')
+  assert.deepEqual(parsed.operation, {
+    kind: 'typeText',
+    selector: '#fixture-text',
+    text: '--follow',
+    clear: true
+  })
+})
+
 void test('agent controls parse semantic targets, waits, diagnostics and recording without JSON plumbing', () => {
   const parse = (tail: string[]) =>
     parseBrowserAutomation(
