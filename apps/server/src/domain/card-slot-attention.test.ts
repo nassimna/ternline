@@ -28,6 +28,59 @@ function fixture(): DurableApplicationState {
 }
 
 describe('process-local card slots and attention', () => {
+  it.each([
+    [null, null, 'none', 'none'],
+    [null, 'info', 'informational', 'notificationInfo'],
+    [null, 'warning', 'informational', 'notificationWarning'],
+    [null, 'error', 'urgent', 'notificationError'],
+    ['idle', null, 'none', 'none'],
+    ['idle', 'info', 'informational', 'notificationInfo'],
+    ['idle', 'warning', 'informational', 'notificationWarning'],
+    ['idle', 'error', 'urgent', 'notificationError'],
+    ['running', null, 'informational', 'agentRunning'],
+    ['running', 'info', 'informational', 'notificationInfo'],
+    ['running', 'warning', 'informational', 'notificationWarning'],
+    ['running', 'error', 'urgent', 'notificationError'],
+    ['waiting', null, 'waiting', 'agentWaiting'],
+    ['waiting', 'info', 'waiting', 'agentWaiting'],
+    ['waiting', 'warning', 'waiting', 'agentWaiting'],
+    ['waiting', 'error', 'urgent', 'notificationError'],
+    ['completed', null, 'completed', 'agentCompleted'],
+    ['completed', 'info', 'completed', 'agentCompleted'],
+    ['completed', 'warning', 'completed', 'agentCompleted'],
+    ['completed', 'error', 'urgent', 'notificationError'],
+    ['failed', null, 'urgent', 'agentFailed'],
+    ['failed', 'info', 'urgent', 'agentFailed'],
+    ['failed', 'warning', 'urgent', 'agentFailed'],
+    ['failed', 'error', 'urgent', 'notificationError']
+  ] as const)(
+    'folds agent %s with notification %s into %s (%s)',
+    (status, level, attentionState, reason) => {
+      const state = fixture()
+      state.notifications = level === null ? [] : [{ ...state.notifications[0]!, level }]
+      const before = structuredClone(state)
+      const service = new CardSlotAttentionService(() => state)
+      if (status !== null) {
+        service.replaceSlots({
+          workspaceId,
+          expectedRevision: 0,
+          agentStatus: { status, label: null },
+          progress: null
+        })
+      }
+
+      expect(service.getAttention({ workspaceId })).toEqual({
+        workspaceId,
+        revision: 0,
+        state: attentionState,
+        reason,
+        unreadCount: level === null ? 0 : 1,
+        ...(reason.startsWith('notification') ? { notificationId: infoId, paneId, tabId } : {})
+      })
+      expect(state).toEqual(before)
+    }
+  )
+
   it('uses per-slot CAS, no-op replacements, and bounded reconnect invalidations', () => {
     const state = fixture()
     const service = new CardSlotAttentionService(() => state)
