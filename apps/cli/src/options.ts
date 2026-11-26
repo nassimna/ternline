@@ -26,6 +26,23 @@ export function flags(
   return { values, command }
 }
 
+export function workspaceIdFlags(args: string[], allowed: readonly string[]) {
+  const workspaceIds: string[] = []
+  const remainder: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== '--workspace-id') {
+      remainder.push(args[index]!)
+      continue
+    }
+    const id = args[++index]
+    if (!id || id.startsWith('--')) throw new Error('--workspace-id requires a value')
+    workspaceIds.push(id)
+  }
+  const { values } = flags(remainder, allowed)
+  if (workspaceIds.length === 0) throw new Error('--workspace-id is required')
+  return { values, workspaceIds }
+}
+
 export function required(values: Map<string, string>, flag: string): string {
   const value = values.get(flag)
   if (!value) throw new Error(`${flag} is required`)

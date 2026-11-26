@@ -60,6 +60,29 @@ function parse(args: string[]) {
   return parsed
 }
 
+await test('layout save and select-many preserve workspace ID errors and their order', () => {
+  const cases: [string[], string][] = [
+    [['--workspace-id'], '--workspace-id requires a value'],
+    [['--workspace-id', ''], '--workspace-id requires a value'],
+    [['--workspace-id', '--expected-revision', '1'], '--workspace-id requires a value'],
+    [['--unknown', '--workspace-id'], '--workspace-id requires a value'],
+    [['--unknown'], 'Unknown or repeated option: --unknown'],
+    [
+      ['--expected-revision', '1', '--expected-revision', '2'],
+      'Unknown or repeated option: --expected-revision'
+    ],
+    [[], '--workspace-id is required']
+  ]
+  for (const [args, message] of cases) {
+    const error = { name: 'Error', message }
+    assert.throws(() => parseLayoutCommand(['layout', 'save', ...args], '/private/session'), error)
+    assert.throws(
+      () => parseOrganizationCommand(['workspace', 'select-many', ...args], '/private/session'),
+      error
+    )
+  }
+})
+
 await test('save preserves workspace order and exact idempotency identity', async () => {
   const command = parse([
     'layout',
