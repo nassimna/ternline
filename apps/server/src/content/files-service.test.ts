@@ -138,6 +138,57 @@ describe('Files service capabilities', () => {
     }
   })
 
+  it('validates UTF-8 across the whole file and preserves BOM and page boundaries', () => {
+    const root = mkdtempSync(join(tmpdir(), 'node-files-utf8-'))
+    writeFileSync(join(root, 'invalid.txt'), Buffer.from([0x00, 0xff]))
+    writeFileSync(join(root, 'valid.txt'), '\uFEFFaé')
+    const workspace = { id: randomUUID(), name: 'Fixture', workingDirectory: root }
+    const store = {
+      readSnapshot: () => ({ workspaces: [workspace] })
+    } as unknown as ApplicationStateStore
+    const files = new FilesService(store)
+    try {
+      const descriptor = files.listRoots({ limit: 64 }).roots[0]!
+      const entries = files.listDirectory({
+        directoryDescriptorId: descriptor.directoryDescriptorId,
+        generation: descriptor.generation,
+        limit: 100,
+        cancellationId: randomUUID()
+      }).entries
+      const issue = (name: string) =>
+        files.issueDocument({
+          authorizedDescriptorId: entries.find((entry) => entry.label === name)!.entryDescriptorId,
+          descriptorGeneration: descriptor.generation,
+          expectedKind: 'plainText'
+        }).document
+      const invalid = issue('invalid.txt')
+      for (const offset of [0, 3]) {
+        expect(files.read({ document: invalid, offset, maxBytes: 1 })).toEqual({
+          kind: 'unavailable',
+          document: invalid,
+          reason: 'unsupportedEncoding',
+          displayName: 'invalid.txt'
+        })
+      }
+
+      const valid = issue('valid.txt')
+      expect(files.read({ document: valid, offset: 0, maxBytes: 5 })).toMatchObject({
+        kind: 'text',
+        chunk: { offset: 0, text: '\uFEFFa', eof: false }
+      })
+      expect(files.read({ document: valid, offset: 4, maxBytes: 2 })).toMatchObject({
+        kind: 'text',
+        chunk: { offset: 4, text: 'é', eof: true }
+      })
+      expect(() => files.read({ document: valid, offset: 5, maxBytes: 2 })).toThrowError(
+        expect.objectContaining({ code: 'invalid_params' })
+      )
+    } finally {
+      files.close()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('keeps descriptor identities stable across paginated directory scans', () => {
     const parent = mkdtempSync(join(tmpdir(), 'node-files-pages-'))
     const root = join(parent, 'root')
