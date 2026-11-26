@@ -1,14 +1,15 @@
 import type { SafeMarkdownNode } from '@agent-workspace/protocol-client'
 
 function takeCharacters(value: string, count: number): string {
-  let result = ''
-  let characters = 0
-  for (const character of value) {
-    if (characters >= count || result.length + character.length > count) break
-    result += character
-    characters++
+  if (value.length <= count) return value
+
+  let end = count
+  const before = value.charCodeAt(end - 1)
+  const after = value.charCodeAt(end)
+  if (before >= 0xd800 && before <= 0xdbff && after >= 0xdc00 && after <= 0xdfff) {
+    end--
   }
-  return result
+  return value.slice(0, end)
 }
 
 // Rust str::lines removes the final empty row and the CR in CRLF.

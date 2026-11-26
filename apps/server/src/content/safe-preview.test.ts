@@ -55,6 +55,17 @@ describe('safe Markdown previews', () => {
       { kind: 'paragraph', children: [{ kind: 'text', text: source }] }
     ])
   })
+
+  it('bounds fenced code language and text at their UTF-16 limits', () => {
+    const languagePrefix = 'a'.repeat(31)
+    const rows = `${'a'.repeat(16_384)}\n`.repeat(3)
+    const finalRowPrefix = 'b'.repeat(16_380)
+    const source = `\`\`\`${languagePrefix}😀\n${rows}${finalRowPrefix}😀\n\`\`\``
+
+    expect(parseSafeMarkdown(source)).toStrictEqual([
+      { kind: 'codeBlock', language: languagePrefix, text: `${rows}${finalRowPrefix}` }
+    ])
+  })
 })
 
 describe('bounded diffs', () => {
@@ -93,6 +104,19 @@ describe('bounded diffs', () => {
     }
   ])('$name', ({ before, after, lines }) => {
     expect(boundedDiff(before, after)).toStrictEqual({ lines, truncated: false })
+  })
+
+  it.each([
+    ['keeps a pair that fits exactly', 16_382, '😀x', '😀'],
+    ['omits a pair that crosses the limit', 16_383, '😀', ''],
+    ['truncates a BMP suffix at the limit', 16_383, 'éx', 'é'],
+    ['keeps an isolated high surrogate at the limit', 16_383, '\uD83Dx', '\uD83D']
+  ])('%s', (_name, prefixLength, suffix, retainedSuffix) => {
+    const prefix = 'a'.repeat(prefixLength)
+    expect(boundedDiff('', prefix + suffix)).toStrictEqual({
+      lines: [{ kind: 'added', text: prefix + retainedSuffix }],
+      truncated: false
+    })
   })
 
   it.each([
