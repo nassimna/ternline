@@ -1098,13 +1098,7 @@ export function splitPane(
     const tab = workspace.tabs[tabId]!
     const source = workspace.panes[tab.paneId]!
     const index = source.tabs.indexOf(tabId)
-    source.tabs.splice(index, 1)
-    if (source.tabs.length === 0) {
-      delete workspace.panes[source.id]
-      workspace.layout = collapsePane(workspace.layout as PaneLayout, source.id)
-    } else if (source.selectedTabId === tabId) {
-      source.selectedTabId = source.tabs[Math.min(index, source.tabs.length - 1)]!
-    }
+    removeTransferSourceTab(workspace, source, tabId, index)
     tab.paneId = ids.paneId
   } else {
     tabId = ids.tabId
