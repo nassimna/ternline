@@ -577,6 +577,15 @@ function firstLeaf(layout: PaneLayout): string {
   return layout.kind === 'leaf' ? layout.paneId : firstLeaf(layout.first)
 }
 
+function collapseClosedPane(workspace: Workspace, paneId: string): void {
+  delete workspace.panes[paneId]
+  const layout = collapsePane(workspace.layout as PaneLayout, paneId)
+  workspace.layout = layout
+  if (workspace.selectedPaneId === paneId) {
+    workspace.selectedPaneId = firstLeaf(layout)
+  }
+}
+
 function findSplit(
   layout: PaneLayout,
   splitId: string
@@ -811,11 +820,7 @@ export function closeTab(
     const index = pane.tabs.indexOf(tabId)
     pane.tabs.splice(index, 1)
     if (pane.tabs.length === 0) {
-      delete workspace.panes[pane.id]
-      workspace.layout = collapsePane(workspace.layout as PaneLayout, pane.id)
-      if (workspace.selectedPaneId === pane.id) {
-        workspace.selectedPaneId = firstLeaf(workspace.layout as PaneLayout)
-      }
+      collapseClosedPane(workspace, pane.id)
     } else if (pane.selectedTabId === tabId) {
       pane.selectedTabId = pane.tabs[Math.min(index, pane.tabs.length - 1)]!
     }
@@ -1205,11 +1210,7 @@ export function closePane(
     }
   } else {
     for (const tabId of closing.tabs) delete workspace.tabs[tabId]
-    delete workspace.panes[paneId]
-    workspace.layout = collapsePane(workspace.layout as PaneLayout, paneId)
-    if (workspace.selectedPaneId === paneId) {
-      workspace.selectedPaneId = firstLeaf(workspace.layout as PaneLayout)
-    }
+    collapseClosedPane(workspace, paneId)
   }
   workspace.updatedAt = updatedAt
   reconcileTabFocus(next, previousFocus)
