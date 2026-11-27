@@ -1679,9 +1679,10 @@ export class NodeSidecar {
         case DESKTOP_IPC.workspaceList:
           return {
             handled: true,
-            value: workspaceListResultSchema.parse(
-              await this.listWorkspacesForTrustedOwner(windowId)
-            )
+            // The client validates JSON responses; HTTP 204 still needs the schema error.
+            value:
+              (await this.listWorkspacesForTrustedOwner(windowId)) ??
+              workspaceListResultSchema.parse(undefined)
           }
         case DESKTOP_IPC.workspaceSnapshot: {
           const { workspaceId } = workspaceSnapshotParamsSchema.parse(arg)
