@@ -6,7 +6,7 @@ import { tabDetachParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { WindowMutationError } from './window-mutations'
-import { recordFocus, removeTransferSourceTab } from './workspace-mutations'
+import { filterFocusHistory, recordFocus, removeTransferSourceTab } from './workspace-mutations'
 
 type Request = z.infer<typeof tabDetachParamsSchema>
 type Ids = { windowId: string; workspaceId: string; paneId: string; replacementTabId: string }
@@ -121,14 +121,7 @@ export function detachExactTab(
   next.focusedWindowId = ids.windowId
   next.selectedWorkspaceId = ids.workspaceId
   next.workspaceSelection = [ids.workspaceId]
-  const retained = next.focusHistory.entries
-    .slice(0, next.focusHistory.cursor + 1)
-    .filter((entry) => entry.tabId !== moving.id).length
-  next.focusHistory.entries = next.focusHistory.entries.filter((entry) => entry.tabId !== moving.id)
-  next.focusHistory.cursor = Math.min(
-    Math.max(0, retained - 1),
-    Math.max(0, next.focusHistory.entries.length - 1)
-  )
+  filterFocusHistory(next.focusHistory, (entry) => entry.tabId !== moving.id)
   recordFocus(next, {
     windowId: ids.windowId,
     workspaceId: ids.workspaceId,

@@ -522,6 +522,18 @@ export function recordFocus(state: DurableApplicationState, target: FocusTarget)
   history.cursor = history.entries.length - 1
 }
 
+export function filterFocusHistory(
+  history: DurableApplicationState['focusHistory'],
+  keep: (entry: FocusTarget) => boolean
+): void {
+  const retainedThroughCursor = history.entries.slice(0, history.cursor + 1).filter(keep).length
+  history.entries = history.entries.filter(keep)
+  history.cursor = Math.min(
+    Math.max(0, retainedThroughCursor - 1),
+    Math.max(0, history.entries.length - 1)
+  )
+}
+
 function commitChangedState(next: DurableApplicationState): DurableApplicationState {
   if (next.revision >= Number.MAX_SAFE_INTEGER) {
     throw new WorkspaceMutationError('revision_overflow', 'Application revision cannot advance')
@@ -627,21 +639,9 @@ function splitLeaf(
   return second ? { ...layout, second } : null
 }
 
-function pruneTabFocusHistory(next: DurableApplicationState): void {
-  const history = next.focusHistory
-  const retainedThroughCursor = history.entries
-    .slice(0, history.cursor + 1)
-    .filter((entry) => isValidTabFocus(next, entry)).length
-  history.entries = history.entries.filter((entry) => isValidTabFocus(next, entry))
-  history.cursor = Math.min(
-    Math.max(0, retainedThroughCursor - 1),
-    Math.max(0, history.entries.length - 1)
-  )
-}
-
 export function reconcileTabFocus(next: DurableApplicationState, previousFocus: FocusTarget): void {
   const history = next.focusHistory
-  pruneTabFocusHistory(next)
+  filterFocusHistory(history, (entry) => isValidTabFocus(next, entry))
   const nextFocus = focusTarget(next, next.selectedWorkspaceId)
   if (sameTarget(previousFocus, nextFocus)) return
   if (history.entries.length === 0 && isValidTabFocus(next, previousFocus)) {
