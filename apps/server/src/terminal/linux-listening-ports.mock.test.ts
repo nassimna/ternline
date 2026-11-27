@@ -53,7 +53,7 @@ it.skipIf(process.platform !== 'linux')(
 it.skipIf(process.platform !== 'linux')(
   'overlaps metadata reads for up to eight PIDs and matches each PID against its own tables',
   async () => {
-    const pids = Array.from({ length: 10 }, (_, index) => String(42 + index))
+    const queriedPids: number[] = []
     const pending = new Set<string>()
     let peakPids = 0
     let peakReads = 0
@@ -66,13 +66,19 @@ it.skipIf(process.platform !== 'linux')(
     }
 
     fs.readdir.mockImplementation(async (path: string) => {
-      if (path === '/proc') return pids
+      if (path === '/proc')
+        return ['44', '99', '43', '45', '46', '47', '48', '49', '50', '51', '42']
+      queriedPids.push(Number(path.split('/')[2]))
       await readMetadata(path)
       return ['0']
     })
     fs.readFile.mockImplementation(async (path: string) => {
       const pid = Number(path.split('/')[2])
-      if (path.endsWith('/stat')) return `${pid} (shell) S ${pid === 42 ? 1 : 42}`
+      if (path.endsWith('/stat')) {
+        if (pid === 42 || pid === 99) return `${pid} (shell) S 1`
+        const parent = pid === 44 || pid === 45 ? 43 : 42
+        return `${pid} (shell) S ${parent}`
+      }
       await readMetadata(path)
       const ipv6 = path.endsWith('/tcp6')
       if (pid === 45 && !ipv6) throw new Error('Process TCP table unavailable')
@@ -89,7 +95,10 @@ it.skipIf(process.platform !== 'linux')(
       return 'socket:[100]'
     })
 
-    expect(await linuxListeningPorts(42)).toEqual(pids.map((pid) => 4000 + Number(pid)))
+    expect(await linuxListeningPorts(42)).toEqual(
+      Array.from({ length: 10 }, (_, index) => 4042 + index)
+    )
+    expect(queriedPids).toEqual([42, 43, 45, 46, 47, 48, 49, 50, 51, 44])
     expect(peakPids).toBe(8)
     expect(peakReads).toBe(24)
     expect(peakDescriptors).toBe(1)

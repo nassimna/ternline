@@ -19,7 +19,7 @@ vi.mock('node:util', async (importOriginal) => ({
 
 import { macosListeningPorts } from './macos-listening-ports'
 
-it('selects the shell and descendants and includes IPv6 lsof listener records', async () => {
+it('selects the shell and out-of-order descendants in discovery order and includes IPv6 listeners', async () => {
   const execute = vi.mocked(execFile)
   execute.mockImplementation(((
     file: string,
@@ -30,14 +30,14 @@ it('selects the shell and descendants and includes IPv6 lsof listener records', 
     callback(
       null,
       file === '/bin/ps'
-        ? '100 1\n101 100\n102 101\n200 1\n'
+        ? '102 101\n200 1\n100 malformed\n101 100\n103 101\n101 200\n'
         : 'p102\nn*:8765\nn[::1]:5173\nn127.0.0.1:5173\n'
     )
   }) as typeof execFile)
   expect(await macosListeningPorts(100)).toEqual([5173, 8765])
   expect(execute).toHaveBeenLastCalledWith(
     '/usr/sbin/lsof',
-    ['-nP', '-a', '-p', '100,101,102', '-iTCP', '-sTCP:LISTEN', '-Fn'],
+    ['-nP', '-a', '-p', '100,101,103,102', '-iTCP', '-sTCP:LISTEN', '-Fn'],
     expect.any(Object),
     expect.any(Function)
   )
