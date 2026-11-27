@@ -12,7 +12,7 @@ import {
   splitPane
 } from './workspace-mutations'
 import { projectApplicationSnapshot } from './application-projection'
-import { saveLayout } from './layout-mutations'
+import { planLayoutApplication, saveLayout } from './layout-mutations'
 
 import { TerminalService, type PtyProcess } from '../terminal/terminal-service'
 import type { ApplicationStateStore } from '../persistence/application-state-store'
@@ -1014,6 +1014,11 @@ describe('WorkspaceTerminalRuntime', () => {
   })
   it('restores only terminal tabs with their durable ownership context', async () => {
     const fixture = snapshot()
+    const terminalIds = fixture.terminalIds.toSorted((a, b) => a.localeCompare(b))
+    const workspace = fixture.state.workspaces[0]!
+    workspace.tabs = Object.fromEntries(
+      [terminalIds[1]!, fixture.browserId, terminalIds[0]!].map((id) => [id, workspace.tabs[id]!])
+    )
     const processes: FakePty[] = []
     const environments: NodeJS.ProcessEnv[] = []
     const service = new TerminalService({
@@ -1025,25 +1030,78 @@ describe('WorkspaceTerminalRuntime', () => {
       }
     })
     const runtime = new WorkspaceTerminalRuntime(service)
-    await runtime.restore(fixture.state)
-    expect(processes).toHaveLength(2)
-    expect(runtime.sessionForTab(fixture.browserId)).toBeUndefined()
-    for (const tabId of fixture.terminalIds) {
-      const sessionId = runtime.sessionForTab(tabId)
-      expect(sessionId).toBeDefined()
-      expect(service.attach(sessionId!).terminal.cwd).toBe('/tmp')
-      expect(environments).toContainEqual(
-        expect.objectContaining({
+    try {
+      await runtime.restore(fixture.state)
+      expect(processes).toHaveLength(2)
+      expect(runtime.sessionForTab(fixture.browserId)).toBeUndefined()
+      for (const [index, tabId] of terminalIds.entries()) {
+        expect(environments[index]).toMatchObject({
           TL_WORKSPACE_ENV: 'inherited value',
           AGENT_WORKSPACE_WORKSPACE_ID: fixture.workspaceId,
           AGENT_WORKSPACE_PANE_ID: fixture.paneId,
           AGENT_WORKSPACE_TAB_ID: tabId
         })
-      )
+        const sessionId = runtime.sessionForTab(tabId)
+        expect(sessionId).toBeDefined()
+        expect(service.attach(sessionId!).terminal.cwd).toBe('/tmp')
+      }
+      await expect(runtime.restore(fixture.state)).rejects.toThrow('already starting')
+    } finally {
+      service.dispose()
     }
-    await expect(runtime.restore(fixture.state)).rejects.toThrow('already starting')
-    service.dispose()
     expect(processes.every((pty) => pty.killed)).toBe(true)
+  })
+
+  it('applies a saved layout by creating terminal sessions in tab ID order', async () => {
+    const { state, workspaceId, paneId, terminalIds, browserId } = snapshot()
+    const [firstId, secondId] = terminalIds.toSorted((a, b) => a.localeCompare(b))
+    const workspace = state.workspaces[0]!
+    workspace.tabs = Object.fromEntries(
+      [secondId!, browserId, firstId!].map((id) => [id, workspace.tabs[id]!])
+    )
+    state.windowPlacements[0]!.hostingState = 'hosted'
+    const layoutId = randomUUID()
+    const before = saveLayout(state, layoutId, 'Tools', [workspaceId], 2)
+    before.workspaces[0]!.environment = {}
+    const candidate = planLayoutApplication(before, layoutId, randomUUID, workspaceId)
+    expect(Object.keys(candidate.workspaces[0]!.tabs)).toEqual([secondId, browserId, firstId])
+    const request = {
+      layoutId,
+      targetWindowId: workspaceId,
+      expectedRevision: before.revision,
+      expectedWindowRevision: before.windowPlacements[0]!.revision,
+      idempotencyEpoch: randomUUID(),
+      idempotencyKey: randomUUID()
+    }
+    const result = { revision: candidate.revision, replayed: false }
+    const commitLayoutApply = vi.fn(() => result)
+    const store = {
+      exclusive: (operation: () => Promise<unknown>) => operation(),
+      preflightLayoutApply: () => ({ replay: null, before, candidate }),
+      commitLayoutApply
+    } as unknown as ApplicationStateStore
+    const service = new TerminalService({ spawn: () => Promise.resolve(new FakePty()) })
+    const create = vi.spyOn(service, 'create')
+    const runtime = new WorkspaceTerminalRuntime(service)
+    try {
+      await runtime.restore(before)
+      create.mockClear()
+
+      expect(await runtime.applyLayout(store, request)).toStrictEqual(result)
+      expect(commitLayoutApply).toHaveBeenCalledExactlyOnceWith(request, candidate)
+      expect(create.mock.calls.map(([, binding]) => binding)).toEqual([
+        { workspaceId, paneId, tabId: firstId },
+        { workspaceId, paneId, tabId: secondId }
+      ])
+      for (const [index, tabId] of [firstId!, secondId!].entries()) {
+        const session = create.mock.settledResults[index]
+        assert(session?.type === 'fulfilled')
+        expect(runtime.sessionForTab(tabId)).toBe(session.value.terminal.id)
+      }
+      expect(runtime.sessionForTab(browserId)).toBeUndefined()
+    } finally {
+      service.dispose()
+    }
   })
 
   it('terminates earlier PTYs if a later restore launch fails', async () => {

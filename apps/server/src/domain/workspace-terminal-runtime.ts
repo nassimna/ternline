@@ -38,6 +38,14 @@ import { RecentlyClosedError } from './recently-closed-mutations'
 import { testSshConnection } from '../remote/ssh-workspace-connection'
 import { TerminalServiceError, type TerminalService } from '../terminal/terminal-service'
 
+function* workspaceTerminalTabs(workspaces: DurableApplicationState['workspaces']) {
+  for (const workspace of workspaces) {
+    for (const tab of Object.values(workspace.tabs).sort((a, b) => a.id.localeCompare(b.id))) {
+      if (tab.content.kind === 'terminal') yield { workspace, tab, launch: tab.content.launch }
+    }
+  }
+}
+
 /** Owns the ephemeral terminal identities rebuilt from durable tab launch specs. */
 export class WorkspaceTerminalRuntime {
   private readonly sessions = new Map<string, string>()
@@ -97,21 +105,18 @@ export class WorkspaceTerminalRuntime {
     const created: string[] = []
     try {
       const state = durableApplicationStateSchema.parse(snapshot)
-      for (const workspace of state.workspaces) {
-        for (const tab of Object.values(workspace.tabs).sort((a, b) => a.id.localeCompare(b.id))) {
-          if (tab.content.kind !== 'terminal') continue
-          const { terminal } = await this.createWorkspaceTerminal(
-            tab.content.launch,
-            {
-              workspaceId: workspace.id,
-              paneId: tab.paneId,
-              tabId: tab.id
-            },
-            workspace
-          )
-          created.push(terminal.id)
-          this.sessions.set(tab.id, terminal.id)
-        }
+      for (const { workspace, tab, launch } of workspaceTerminalTabs(state.workspaces)) {
+        const { terminal } = await this.createWorkspaceTerminal(
+          launch,
+          {
+            workspaceId: workspace.id,
+            paneId: tab.paneId,
+            tabId: tab.id
+          },
+          workspace
+        )
+        created.push(terminal.id)
+        this.sessions.set(tab.id, terminal.id)
       }
       this.started = true
     } catch (error) {
@@ -375,42 +380,37 @@ export class WorkspaceTerminalRuntime {
 
       let result: { revision: number; replayed: boolean }
       try {
-        for (const workspace of plan.candidate.workspaces) {
-          for (const tab of Object.values(workspace.tabs).sort((a, b) =>
-            a.id.localeCompare(b.id)
-          )) {
-            if (tab.content.kind !== 'terminal') continue
-            const previous = beforeTabs.get(tab.id)
-            const template = templateTabs.get(tab.id)
-            const oldSessionId = this.sessionForTab(tab.id)
-            if (
-              previous?.content.kind === 'terminal' &&
-              template?.content.kind === 'terminal' &&
-              isDeepStrictEqual(previous.content.launch, template.content.launch) &&
-              isDeepStrictEqual(
-                plan.before.workspaces.find((workspace) => workspace.tabs[tab.id])?.environment,
-                workspace.environment
-              ) &&
-              isDeepStrictEqual(
-                plan.before.workspaces.find((workspace) => workspace.tabs[tab.id])?.ssh,
-                workspace.ssh
-              ) &&
-              oldSessionId
-            ) {
-              preserved.set(tab.id, oldSessionId)
-              continue
-            }
-            const { terminal } = await this.createWorkspaceTerminal(
-              tab.content.launch,
-              {
-                workspaceId: workspace.id,
-                paneId: tab.paneId,
-                tabId: tab.id
-              },
-              workspace
-            )
-            created.set(tab.id, terminal.id)
+        for (const { workspace, tab, launch } of workspaceTerminalTabs(plan.candidate.workspaces)) {
+          const previous = beforeTabs.get(tab.id)
+          const template = templateTabs.get(tab.id)
+          const oldSessionId = this.sessionForTab(tab.id)
+          if (
+            previous?.content.kind === 'terminal' &&
+            template?.content.kind === 'terminal' &&
+            isDeepStrictEqual(previous.content.launch, template.content.launch) &&
+            isDeepStrictEqual(
+              plan.before.workspaces.find((workspace) => workspace.tabs[tab.id])?.environment,
+              workspace.environment
+            ) &&
+            isDeepStrictEqual(
+              plan.before.workspaces.find((workspace) => workspace.tabs[tab.id])?.ssh,
+              workspace.ssh
+            ) &&
+            oldSessionId
+          ) {
+            preserved.set(tab.id, oldSessionId)
+            continue
           }
+          const { terminal } = await this.createWorkspaceTerminal(
+            launch,
+            {
+              workspaceId: workspace.id,
+              paneId: tab.paneId,
+              tabId: tab.id
+            },
+            workspace
+          )
+          created.set(tab.id, terminal.id)
         }
         result = store.commitLayoutApply(request, plan.candidate)
       } catch (error) {
