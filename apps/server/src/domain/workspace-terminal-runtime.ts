@@ -50,6 +50,21 @@ export class WorkspaceTerminalRuntime {
     private readonly checkSshConnection: typeof testSshConnection = testSshConnection
   ) {}
 
+  private rollbackStagedTerminal(
+    sessionId: string | null | undefined,
+    error: unknown,
+    message: string
+  ): never {
+    if (sessionId) {
+      try {
+        this.terminals.close(sessionId)
+      } catch (rollbackError) {
+        throw new AggregateError([error, rollbackError], message, { cause: rollbackError })
+      }
+    }
+    throw error
+  }
+
   private createWorkspaceTerminal(
     launch: WorkspaceCreateRequest['initialTerminal'],
     binding: Parameters<TerminalService['create']>[1],
@@ -235,14 +250,7 @@ export class WorkspaceTerminalRuntime {
       }
       this.sessions.set(tabId, terminal.id)
     } catch (error) {
-      try {
-        this.terminals.close(terminal.id)
-      } catch (rollbackError) {
-        throw new AggregateError([error, rollbackError], 'Agent terminal rollback failed', {
-          cause: rollbackError
-        })
-      }
-      throw error
+      this.rollbackStagedTerminal(terminal.id, error, 'Agent terminal rollback failed')
     }
     if (previous) {
       try {
@@ -462,14 +470,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitWorkspaceCreate(request, ids, createdAt)
       } catch (error) {
-        try {
-          this.terminals.close(terminal.id)
-        } catch (rollbackError) {
-          throw new AggregateError([error, rollbackError], 'Workspace create rollback failed', {
-            cause: rollbackError
-          })
-        }
-        throw error
+        this.rollbackStagedTerminal(terminal.id, error, 'Workspace create rollback failed')
       }
       if (result.replayed) {
         this.terminals.close(terminal.id)
@@ -501,14 +502,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitTabOpenTerminal(request, tabId, createdAt)
       } catch (error) {
-        try {
-          this.terminals.close(terminal.id)
-        } catch (rollbackError) {
-          throw new AggregateError([error, rollbackError], 'Terminal tab open rollback failed', {
-            cause: rollbackError
-          })
-        }
-        throw error
+        this.rollbackStagedTerminal(terminal.id, error, 'Terminal tab open rollback failed')
       }
       if (result.replayed) {
         this.terminals.close(terminal.id)
@@ -595,16 +589,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitPaneSplit(request, ids, createdAt)
       } catch (error) {
-        if (terminalId) {
-          try {
-            this.terminals.close(terminalId)
-          } catch (rollbackError) {
-            throw new AggregateError([error, rollbackError], 'Pane split rollback failed', {
-              cause: rollbackError
-            })
-          }
-        }
-        throw error
+        this.rollbackStagedTerminal(terminalId, error, 'Pane split rollback failed')
       }
       if (result.replayed) {
         if (terminalId) this.terminals.close(terminalId)
@@ -666,16 +651,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitPaneClose(request, replacementTabId, updatedAt)
       } catch (error) {
-        if (replacementSessionId) {
-          try {
-            this.terminals.close(replacementSessionId)
-          } catch (rollbackError) {
-            throw new AggregateError([error, rollbackError], 'Pane close rollback failed', {
-              cause: rollbackError
-            })
-          }
-        }
-        throw error
+        this.rollbackStagedTerminal(replacementSessionId, error, 'Pane close rollback failed')
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
@@ -748,16 +724,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitWorkspaceClose(request, replacementIds, createdAt)
       } catch (error) {
-        if (replacementSessionId) {
-          try {
-            this.terminals.close(replacementSessionId)
-          } catch (rollbackError) {
-            throw new AggregateError([error, rollbackError], 'Workspace close rollback failed', {
-              cause: rollbackError
-            })
-          }
-        }
-        throw error
+        this.rollbackStagedTerminal(replacementSessionId, error, 'Workspace close rollback failed')
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
@@ -852,16 +819,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitWorkspaceBatchClose(request, ids, createdAt)
       } catch (error) {
-        if (replacementSessionId) {
-          try {
-            this.terminals.close(replacementSessionId)
-          } catch (rollbackError) {
-            throw new AggregateError([error, rollbackError], 'Batch close rollback failed', {
-              cause: rollbackError
-            })
-          }
-        }
-        throw error
+        this.rollbackStagedTerminal(replacementSessionId, error, 'Batch close rollback failed')
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
@@ -939,16 +897,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitTabClose(request, closedItemId, replacementTabId, now)
       } catch (error) {
-        if (replacementSessionId) {
-          try {
-            this.terminals.close(replacementSessionId)
-          } catch (rollbackError) {
-            throw new AggregateError([error, rollbackError], 'Tab close rollback failed', {
-              cause: rollbackError
-            })
-          }
-        }
-        throw error
+        this.rollbackStagedTerminal(replacementSessionId, error, 'Tab close rollback failed')
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
@@ -1008,14 +957,7 @@ export class WorkspaceTerminalRuntime {
       try {
         result = store.commitTerminalRestart(request, updatedAt)
       } catch (error) {
-        try {
-          this.terminals.close(terminal.id)
-        } catch (rollbackError) {
-          throw new AggregateError([error, rollbackError], 'Terminal restart rollback failed', {
-            cause: rollbackError
-          })
-        }
-        throw error
+        this.rollbackStagedTerminal(terminal.id, error, 'Terminal restart rollback failed')
       }
       if (result.replayed) {
         this.terminals.close(terminal.id)
