@@ -769,17 +769,7 @@ export class WorkspaceTerminalRuntime {
         }
       }
       if (replacementSessionId) this.sessions.set(replacementIds.tabId, replacementSessionId)
-      for (const tab of Object.values(closing.tabs)) {
-        if (tab.content.kind !== 'terminal') continue
-        const sessionId = this.sessions.get(tab.id)
-        this.sessions.delete(tab.id)
-        if (!sessionId) continue
-        try {
-          this.terminals.close(sessionId)
-        } catch {
-          serviceLogger.emit('warn', 'workspaceTerminalCleanupFailed')
-        }
-      }
+      this.retireWorkspaceTerminals(Object.values(closing.tabs))
       return { ...result, replacementTerminalId: replacementSessionId ?? null }
     })
   }
@@ -798,20 +788,25 @@ export class WorkspaceTerminalRuntime {
         tabs.map(() => randomUUID()),
         this.now()
       )
-      if (!result.replayed)
-        for (const tab of tabs) {
-          if (tab.content.kind !== 'terminal') continue
-          const sessionId = this.sessions.get(tab.id)
-          this.sessions.delete(tab.id)
-          if (!sessionId) continue
-          try {
-            this.terminals.close(sessionId)
-          } catch {
-            serviceLogger.emit('warn', 'workspaceTerminalCleanupFailed')
-          }
-        }
+      if (!result.replayed) this.retireWorkspaceTerminals(tabs)
       return result
     })
+  }
+
+  private retireWorkspaceTerminals(
+    tabs: readonly DurableApplicationState['workspaces'][number]['tabs'][string][]
+  ): void {
+    for (const tab of tabs) {
+      if (tab.content.kind !== 'terminal') continue
+      const sessionId = this.sessions.get(tab.id)
+      this.sessions.delete(tab.id)
+      if (!sessionId) continue
+      try {
+        this.terminals.close(sessionId)
+      } catch {
+        serviceLogger.emit('warn', 'workspaceTerminalCleanupFailed')
+      }
+    }
   }
 
   /** Closes the authoritative selection after preparing any required replacement PTY. */

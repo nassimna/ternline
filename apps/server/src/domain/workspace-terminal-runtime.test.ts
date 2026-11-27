@@ -9,6 +9,7 @@ import { saveLayout } from './layout-mutations'
 
 import { TerminalService, type PtyProcess } from '../terminal/terminal-service'
 import type { ApplicationStateStore } from '../persistence/application-state-store'
+import { serviceLogger } from '../logging/service-logger'
 import { WorkspaceTerminalRuntime } from './workspace-terminal-runtime'
 import { duplicateTabExact } from './advanced-tab-duplicate'
 
@@ -286,6 +287,81 @@ describe('initial workspace mutations', () => {
 })
 
 describe('WorkspaceTerminalRuntime', () => {
+  it.each(['closeWorkspace', 'closeWindowWorkspaces'] as const)(
+    '%s retires terminals in order after a fresh commit even if the first close fails',
+    async (method) => {
+      const { state, workspaceId, terminalIds } = snapshot()
+      const other = snapshot().state
+      state.workspaces.push(other.workspaces[0]!)
+      state.windowPlacements.push(other.windowPlacements[0]!)
+      const service = new TerminalService({ spawn: () => Promise.resolve(new FakePty()) })
+      const runtime = new WorkspaceTerminalRuntime(service)
+      const idempotencyEpoch = randomUUID()
+      const result = {
+        revision: 1,
+        replacementWorkspaceId: null,
+        replacementPaneId: null,
+        replacementTabId: null,
+        idempotencyEpoch,
+        closedWindowId: workspaceId
+      }
+      const commit = vi
+        .fn()
+        .mockReturnValueOnce({ ...result, replayed: true })
+        .mockReturnValueOnce({ ...result, replayed: false })
+      const store = {
+        exclusive: (operation: () => unknown) => operation(),
+        readSnapshot: () => state,
+        preflightWorkspaceClose: () => null,
+        commitWorkspaceClose: commit,
+        closeWindowWorkspaces: commit
+      } as unknown as ApplicationStateStore
+      const runClose = async () => {
+        const mutation = {
+          expectedRevision: state.revision,
+          idempotencyEpoch,
+          idempotencyKey: randomUUID()
+        }
+        return method === 'closeWorkspace'
+          ? runtime.closeWorkspace(store, { ...mutation, workspaceId })
+          : runtime.closeWindowWorkspaces(store, {
+              mutation,
+              policy: 'closeWorkspaces',
+              window: { windowId: workspaceId, expectedRevision: 0 }
+            })
+      }
+      const close = vi.spyOn(service, 'close')
+      const warn = vi.spyOn(serviceLogger, 'emit').mockImplementation(() => {})
+      try {
+        await runtime.restore(state)
+        const sessions = () => terminalIds.map((id) => runtime.sessionForTab(id))
+        const [first, second] = sessions()
+        expect(first).toBeDefined()
+        expect(second).toBeDefined()
+
+        expect(await runClose()).toMatchObject({ replayed: true })
+        expect(close).not.toHaveBeenCalled()
+        expect(sessions()).toEqual([first, second])
+
+        commit.mockClear()
+        close
+          .mockImplementationOnce(() => {
+            throw new Error('close failed')
+          })
+          .mockImplementationOnce(() => {})
+        expect(await runClose()).toMatchObject({ replayed: false })
+        expect(commit).toHaveBeenCalledBefore(close)
+        expect(close.mock.calls).toEqual([[first], [second]])
+        expect(sessions()).toEqual([undefined, undefined])
+        expect(warn.mock.calls).toEqual([['warn', 'workspaceTerminalCleanupFailed']])
+      } finally {
+        close.mockRestore()
+        warn.mockRestore()
+        service.dispose()
+      }
+    }
+  )
+
   it('rejects disconnected SSH workspace creation before spawning or committing, including CLI/API calls', async () => {
     const fixture = snapshot()
     const spawn = vi.fn().mockResolvedValue(new FakePty())
