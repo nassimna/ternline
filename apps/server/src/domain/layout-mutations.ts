@@ -455,17 +455,11 @@ export function planLayoutApplication(
     const tabs: Workspace['tabs'] = {}
     for (const [id, tab] of Object.entries(template.tabs)) {
       const current = currentTabs.get(id)
+      let content: Workspace['tabs'][string]['content']
       if (tab.content.kind === 'terminal') {
-        tabs[id] = {
-          id: tab.id,
-          paneId: tab.paneId,
-          title: tab.title,
-          customTitle: tab.customTitle,
-          content: {
-            kind: 'terminal',
-            launch: { ...tab.content.launch, cwd: verifyPath(tab.content.launch.cwd, roots) }
-          },
-          createdAt: tab.createdAt
+        content = {
+          kind: 'terminal',
+          launch: { ...tab.content.launch, cwd: verifyPath(tab.content.launch.cwd, roots) }
         }
       } else {
         const metadata =
@@ -473,14 +467,15 @@ export function planLayoutApplication(
           portableBrowserUrl(current.content.metadata.url) === tab.content.url
             ? current.content.metadata
             : initialBrowserMetadata(newId(), tab.content.url)
-        tabs[id] = {
-          id: tab.id,
-          paneId: tab.paneId,
-          title: tab.title,
-          customTitle: tab.customTitle,
-          content: { kind: 'browser', metadata: structuredClone(metadata) },
-          createdAt: tab.createdAt
-        }
+        content = { kind: 'browser', metadata: structuredClone(metadata) }
+      }
+      tabs[id] = {
+        id: tab.id,
+        paneId: tab.paneId,
+        title: tab.title,
+        customTitle: tab.customTitle,
+        content,
+        createdAt: tab.createdAt
       }
     }
     return {
