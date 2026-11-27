@@ -61,9 +61,7 @@ export class BrowserAutomationRecording {
             stream.getTracks().forEach(track => track.stop());
             if (state.overflow) { reject(new Error('Recording size limit exceeded')); return; }
             const bytes = new Uint8Array(await new Blob(state.chunks, { type: mimeType }).arrayBuffer());
-            let binary = '';
-            for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
-            resolve(btoa(binary));
+            resolve(bytes.toBase64());
           };
         });
         recorder.start(250); state.startedAt = performance.now(); state.started = true;
