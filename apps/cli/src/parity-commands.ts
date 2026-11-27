@@ -1,14 +1,8 @@
 import { randomUUID } from 'node:crypto'
 
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
-import {
-  actionInvokeParamsSchema,
-  actionCancelParamsSchema,
-  paneSplitRequestSchema,
-  workspaceCloseRequestSchema,
-  workspaceBatchCloseRequestSchema
-} from '@agent-workspace/contracts'
 
+import { runJsonMutation } from './json-mutations'
 import { flags, required } from './options'
 
 type Operation =
@@ -155,13 +149,13 @@ export function parseParityCommand(args: string[], sessionFile: string): ParityC
   return undefined
 }
 
-export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) {
+function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) {
   const { values } = parsed
   if (parsed.operation === 'action.cancel')
-    return actionCancelParamsSchema.parse({
+    return {
       invocationId: required(values, '--invocation-id'),
       correlationId: required(values, '--correlation-id')
-    })
+    }
   if (parsed.operation === 'action.invoke') {
     const raw = values.get('--parameters-json') ?? '{}'
     if (Buffer.byteLength(raw) > 64 * 1024) throw new Error('--parameters-json exceeds 64 KiB')
@@ -174,7 +168,7 @@ export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) 
     if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
       throw new Error('--parameters-json must be a JSON object')
     }
-    return actionInvokeParamsSchema.parse({
+    return {
       actionId: required(values, '--action-id'),
       actionVersion: integer(
         required(values, '--action-version'),
@@ -200,7 +194,7 @@ export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) 
             }
           }
         : {})
-    })
+    }
   }
   const identity = {
     expectedRevision: integer(required(values, '--expected-revision'), '--expected-revision', 0),
@@ -208,14 +202,14 @@ export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) 
     idempotencyKey: values.get('--idempotency-key') ?? randomUUID()
   }
   if (parsed.operation === 'workspace.close') {
-    return workspaceCloseRequestSchema.parse({
+    return {
       workspaceId: required(values, '--workspace-id'),
       ...identity
-    })
+    }
   }
   if (parsed.operation === 'workspace.closeSelected') {
     const workingDirectory = values.get('--replacement-working-directory')
-    return workspaceBatchCloseRequestSchema.parse({
+    return {
       ...identity,
       ...(workingDirectory
         ? {
@@ -247,7 +241,7 @@ export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) 
             }
           }
         : {})
-    })
+    }
   }
   const axis = required(values, '--axis')
   if (axis !== 'horizontal' && axis !== 'vertical')
@@ -278,7 +272,7 @@ export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) 
               : {})
           }
         : { kind: 'existingTab', tabId: required(values, '--tab-id') }
-  return paneSplitRequestSchema.parse({
+  return {
     workspaceId: required(values, '--workspace-id'),
     targetPaneId: required(values, '--target-pane-id'),
     axis,
@@ -286,7 +280,7 @@ export function parityRequest(parsed: ParityCommand, idempotencyEpoch?: string) 
     ratio,
     content,
     ...identity
-  })
+  }
 }
 
 export async function runParityCommand(
@@ -300,16 +294,5 @@ export async function runParityCommand(
     parsed.values.set('--expected-revision', String(snapshot.revision))
   }
   const request = parityRequest(parsed, epoch)
-  switch (parsed.operation) {
-    case 'workspace.close':
-      return client.closeWorkspace(workspaceCloseRequestSchema.parse(request))
-    case 'workspace.closeSelected':
-      return client.closeSelectedWorkspaces(workspaceBatchCloseRequestSchema.parse(request))
-    case 'pane.split':
-      return client.splitPane(paneSplitRequestSchema.parse(request))
-    case 'action.invoke':
-      return client.invokeAction(actionInvokeParamsSchema.parse(request))
-    case 'action.cancel':
-      return client.cancelAction(actionCancelParamsSchema.parse(request))
-  }
+  return runJsonMutation(client, parsed.operation, request)
 }

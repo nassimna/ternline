@@ -3,8 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { test } from 'node:test'
 
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
-import { paneSplitRequestSchema } from '@agent-workspace/contracts'
-import { parseParityCommand, parityRequest, runParityCommand } from './parity-commands'
+import { parseParityCommand, runParityCommand } from './parity-commands'
 
 const epoch = randomUUID()
 const key = randomUUID()
@@ -96,7 +95,6 @@ await test('close-selected preserves replacement defaults, revision, key, and co
       initialTerminal: { cwd: '/tmp', rows: 24, cols: 80, command: ['sh', '-l'] }
     }
   }
-  assert.deepEqual(parityRequest(parsed, epoch), expected)
   const seen: unknown[] = []
   const client = {
     closeSelectedWorkspaces: (request: unknown) => {
@@ -104,13 +102,16 @@ await test('close-selected preserves replacement defaults, revision, key, and co
       return Promise.resolve({ revision: 13 })
     }
   } as unknown as AgentWorkspaceClient
-  await runParityCommand(client, parsed, epoch)
+  assert.deepEqual(await runParityCommand(client, parsed, epoch), { revision: 13 })
   assert.deepEqual(seen, [expected])
-  assert.equal(
-    'replacement' in
-      parityRequest(parse(['workspace', 'close-selected', '--expected-revision', '2']), epoch),
-    false
+  await runParityCommand(
+    client,
+    parse(['workspace', 'close-selected', '--expected-revision', '2']),
+    epoch
   )
+  assert.equal(seen.length, 2)
+  assert.ok(seen[1] && typeof seen[1] === 'object')
+  assert.equal(Object.hasOwn(seen[1], 'replacement'), false)
 })
 
 await test('pane split dispatches terminal, browser, and existing tab through validated requests', async () => {
@@ -129,9 +130,18 @@ await test('pane split dispatches terminal, browser, and existing tab through va
     key
   ]
   const cases = [
-    { tail: ['terminal', '--cwd', '/tmp', '--command', 'bash', '-l'], kind: 'newTerminal' },
-    { tail: ['browser', '--url', 'https://example.com/'], kind: 'newBrowser' },
-    { tail: ['existing-tab', '--tab-id', tabId], kind: 'existingTab' }
+    {
+      tail: ['terminal', '--cwd', '/tmp', '--command', 'bash', '-l'],
+      content: {
+        kind: 'newTerminal',
+        launch: { cwd: '/tmp', rows: 24, cols: 80, command: ['bash', '-l'] }
+      }
+    },
+    {
+      tail: ['browser', '--url', 'https://example.com/'],
+      content: { kind: 'newBrowser', url: 'https://example.com/' }
+    },
+    { tail: ['existing-tab', '--tab-id', tabId], content: { kind: 'existingTab', tabId } }
   ]
   const seen: unknown[] = []
   const client = {
@@ -140,13 +150,25 @@ await test('pane split dispatches terminal, browser, and existing tab through va
       return Promise.resolve({ revision: 4 })
     }
   } as unknown as AgentWorkspaceClient
-  for (const { tail, kind } of cases) {
-    const parsed = parse([...base, ...tail])
-    const request = parityRequest(parsed, epoch)
-    assert.equal(paneSplitRequestSchema.parse(request).content.kind, kind)
-    await runParityCommand(client, parsed, epoch)
-    assert.deepEqual(seen.at(-1), request)
+  for (const { tail } of cases) {
+    assert.deepEqual(await runParityCommand(client, parse([...base, ...tail]), epoch), {
+      revision: 4
+    })
   }
+  assert.deepEqual(
+    seen,
+    cases.map(({ content }) => ({
+      workspaceId,
+      targetPaneId: paneId,
+      axis: 'vertical',
+      placement: 'after',
+      ratio: 0.5,
+      content,
+      expectedRevision: 3,
+      idempotencyEpoch: epoch,
+      idempotencyKey: key
+    }))
+  )
 })
 
 await test('action invoke uses exact correlation and idempotency fields', async () => {
@@ -174,7 +196,6 @@ await test('action invoke uses exact correlation and idempotency fields', async 
     idempotency: { epoch, key },
     correlationId
   }
-  assert.deepEqual(parityRequest(parsed), expected)
   const seen: unknown[] = []
   const client = {
     invokeAction: (request: unknown) => {
@@ -182,7 +203,9 @@ await test('action invoke uses exact correlation and idempotency fields', async 
       return Promise.resolve({ invocation: { state: 'acknowledged' } })
     }
   } as unknown as AgentWorkspaceClient
-  await runParityCommand(client, parsed)
+  assert.deepEqual(await runParityCommand(client, parsed), {
+    invocation: { state: 'acknowledged' }
+  })
   assert.deepEqual(seen, [expected])
 })
 
@@ -198,7 +221,6 @@ await test('action cancel passes exact invocation and correlation identifiers', 
     correlationId
   ])
   const expected = { invocationId, correlationId }
-  assert.deepEqual(parityRequest(parsed), expected)
   const seen: unknown[] = []
   const client = {
     cancelAction: (request: unknown) => {
@@ -206,22 +228,42 @@ await test('action cancel passes exact invocation and correlation identifiers', 
       return Promise.resolve({ invocation: { state: 'canceled' } })
     }
   } as unknown as AgentWorkspaceClient
-  await runParityCommand(client, parsed)
+  assert.deepEqual(await runParityCommand(client, parsed), { invocation: { state: 'canceled' } })
   assert.deepEqual(seen, [expected])
   assert.throws(
     () => parse(['action', 'cancel', '--invocation-id', invocationId]),
     /correlation-id/
   )
-  assert.throws(
-    () =>
-      parityRequest(
-        parse(['action', 'cancel', '--invocation-id', 'wrong', '--correlation-id', correlationId])
-      ),
-    /invalid/i
-  )
 })
 
-await test('rejects incomplete replacement, invalid split, oversized and nonobject action parameters', () => {
+await test('action cancel rejects an invalid invocation UUID before dispatch', async (context) => {
+  const cancelAction = context.mock.fn()
+  const client = { cancelAction } as unknown as AgentWorkspaceClient
+  const parsed = parse([
+    'action',
+    'cancel',
+    '--invocation-id',
+    'wrong',
+    '--correlation-id',
+    randomUUID()
+  ])
+  await assert.rejects(runParityCommand(client, parsed), (error: Error) => {
+    assert.equal(error.name, 'ZodError')
+    assert.ok('issues' in error && Array.isArray(error.issues))
+    assert.equal(error.issues.length, 1)
+    assert.partialDeepStrictEqual(error.issues[0], {
+      code: 'invalid_format',
+      format: 'uuid',
+      path: ['invocationId'],
+      message: 'Invalid UUID'
+    })
+    return true
+  })
+  assert.equal(cancelAction.mock.callCount(), 0)
+})
+
+await test('rejects incomplete replacement, invalid split, oversized and nonobject action parameters', async () => {
+  const client = {} as AgentWorkspaceClient
   assert.throws(
     () =>
       parse(['workspace', 'close-selected', '--expected-revision', '1', '--replacement-name', 'X']),
@@ -254,8 +296,8 @@ await test('rejects incomplete replacement, invalid split, oversized and nonobje
     '--tab-id',
     tabId
   ]
-  assert.throws(
-    () => parityRequest(parse([...base.slice(0, 8), '--ratio', '1', ...base.slice(8)]), epoch),
+  await assert.rejects(
+    runParityCommand(client, parse([...base.slice(0, 8), '--ratio', '1', ...base.slice(8)]), epoch),
     /--ratio/
   )
   const action = [
@@ -268,9 +310,12 @@ await test('rejects incomplete replacement, invalid split, oversized and nonobje
     '--idempotency-epoch',
     epoch
   ]
-  assert.throws(() => parityRequest(parse([...action, '--parameters-json', '[]'])), /JSON object/)
-  assert.throws(
-    () => parityRequest(parse([...action, '--parameters-json', 'x'.repeat(64 * 1024 + 1)])),
+  await assert.rejects(
+    runParityCommand(client, parse([...action, '--parameters-json', '[]'])),
+    /JSON object/
+  )
+  await assert.rejects(
+    runParityCommand(client, parse([...action, '--parameters-json', 'x'.repeat(64 * 1024 + 1)])),
     /64 KiB/
   )
   assert.throws(() => parse([...action, '--target-window-id', randomUUID()]), /required together/)
