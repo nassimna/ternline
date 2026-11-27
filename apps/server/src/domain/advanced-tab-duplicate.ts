@@ -6,7 +6,7 @@ import type { tabDuplicateParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { openBrowserTab, openTerminalTab } from './workspace-mutations'
-import { WindowMutationError } from './window-mutations'
+import { requireExactTabWindows, WindowMutationError } from './window-mutations'
 
 type Request = z.infer<typeof tabDuplicateParamsSchema>
 
@@ -17,20 +17,7 @@ export function duplicateTabExact(
   ids: { tabId: string; browserSessionId: string },
   now: number
 ): DurableApplicationState {
-  const sourceWindow = state.windowPlacements.find((item) => item.id === request.source.windowId)
-  const targetWindow = state.windowPlacements.find((item) => item.id === request.target.windowId)
-  if (!sourceWindow)
-    throw new WindowMutationError('source_not_found', 'Source window is unavailable')
-  if (!targetWindow)
-    throw new WindowMutationError('target_not_found', 'Target window is unavailable')
-  if (
-    sourceWindow.revision !== request.source.expectedWindowRevision ||
-    targetWindow.revision !== request.target.expectedWindowRevision
-  ) {
-    throw new WindowMutationError('stale_window_revision', 'Window placement changed')
-  }
-  if (!sourceWindow.workspaceIds.includes(request.source.workspaceId))
-    throw new WindowMutationError('source_not_found', 'Source workspace is not in its window')
+  const { targetWindow } = requireExactTabWindows(state, request)
   if (
     !targetWindow.workspaceIds.includes(request.target.workspaceId) ||
     targetWindow.hostingState !== 'hosted'

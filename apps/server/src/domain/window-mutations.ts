@@ -1,5 +1,6 @@
 import type { DurableApplicationState } from '@agent-workspace/contracts'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
+import type { TabMoveExactParams } from '@agent-workspace/protocol-client'
 import { isAbsolute, relative } from 'node:path'
 import { retainRecentlyClosed } from './workspace-mutations'
 
@@ -20,6 +21,27 @@ export class WindowMutationError extends Error {
     super(message)
     this.name = 'WindowMutationError'
   }
+}
+
+export function requireExactTabWindows(
+  state: State,
+  { source, target }: Pick<TabMoveExactParams, 'source' | 'target'>
+): { sourceWindow: Placement; targetWindow: Placement } {
+  const sourceWindow = state.windowPlacements.find((item) => item.id === source.windowId)
+  const targetWindow = state.windowPlacements.find((item) => item.id === target.windowId)
+  if (!sourceWindow)
+    throw new WindowMutationError('source_not_found', 'Source window is unavailable')
+  if (!targetWindow)
+    throw new WindowMutationError('target_not_found', 'Target window is unavailable')
+  if (
+    sourceWindow.revision !== source.expectedWindowRevision ||
+    targetWindow.revision !== target.expectedWindowRevision
+  ) {
+    throw new WindowMutationError('stale_window_revision', 'Window placement changed')
+  }
+  if (!sourceWindow.workspaceIds.includes(source.workspaceId))
+    throw new WindowMutationError('source_not_found', 'Source workspace is not in its window')
+  return { sourceWindow, targetWindow }
 }
 
 function requirePlacement(
