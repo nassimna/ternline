@@ -3558,6 +3558,55 @@ it('forwards a committed Node browser observation with the owning workspace', as
   })
 })
 
+it('returns the validated bound workspace list and preserves response errors', async () => {
+  const windowId = 'test-window'
+  const capability = 'a'.repeat(43)
+  const value = { snapshot: projection }
+  const fetcher = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json(value))
+    .mockResolvedValueOnce(Response.json({ snapshot: { ...projection, revision: 'invalid' } }))
+    .mockResolvedValueOnce(new Response(null, { status: 204 }))
+  const issueWindowCapabilityForTrustedOwner = vi.fn().mockResolvedValue(capability)
+  const revokeWindowCapability = vi.fn().mockResolvedValue(undefined)
+  const windowCapabilityReads = new Map()
+  const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+  Object.assign(sidecar, {
+    client: new AgentWorkspaceClient('http://localhost', 'test-token', fetcher),
+    windowCapabilityReads,
+    issueWindowCapabilityForTrustedOwner,
+    revokeWindowCapability
+  })
+  const list = () => sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.workspaceList, [], vi.fn())
+
+  await expect(list()).resolves.toEqual({ handled: true, value })
+  expect(issueWindowCapabilityForTrustedOwner).toHaveBeenCalledExactlyOnceWith(windowId)
+  expect(fetcher).toHaveBeenCalledExactlyOnceWith(new URL('http://localhost/v1/workspaces/bound'), {
+    method: 'GET',
+    headers: {
+      'x-agent-workspace-window-capability': capability,
+      authorization: 'Bearer test-token'
+    }
+  })
+  expect(revokeWindowCapability).toHaveBeenCalledExactlyOnceWith(capability)
+
+  await expect(list()).rejects.toMatchObject({
+    name: 'ZodError',
+    issues: [
+      {
+        path: ['snapshot', 'revision'],
+        message: 'Invalid input: expected number, received string'
+      }
+    ]
+  })
+  await expect(list()).rejects.toMatchObject({
+    name: 'ZodError',
+    issues: [{ path: [], message: 'Invalid input: expected object, received undefined' }]
+  })
+  expect(revokeWindowCapability).toHaveBeenCalledTimes(3)
+  expect(windowCapabilityReads.size).toBe(0)
+})
+
 it('serves Node workspace and card reads only to the owning window', async () => {
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
   Object.assign(sidecar, {
