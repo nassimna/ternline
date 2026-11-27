@@ -368,11 +368,22 @@ export class EncryptedIndex {
     this.db.prepare('DELETE FROM documents WHERE authorization_id=?').run(id)
   }
   private prune(at: number): void {
+    // CROSS JOIN keeps documents outer so recent rows skip the source lookup.
     this.db
       .prepare(
-        'DELETE FROM documents WHERE pinned=0 AND indexed_at_ms < (? - (SELECT retention_days FROM source_authorizations WHERE authorization_id=documents.authorization_id) * 86400000)'
+        `DELETE FROM documents
+         WHERE id IN (
+           SELECT d.id
+           FROM documents d
+           CROSS JOIN source_authorizations s ON s.authorization_id = d.authorization_id
+           WHERE d.pinned = 0
+             AND d.indexed_at_ms < (
+               SELECT ? - min(retention_days * ${DAY}) FROM source_authorizations
+             )
+             AND d.indexed_at_ms < ? - s.retention_days * ${DAY}
+         )`
       )
-      .run(at)
+      .run(at, at)
   }
   indexText(
     id: string,
