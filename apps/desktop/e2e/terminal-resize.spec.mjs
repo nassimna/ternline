@@ -51,7 +51,14 @@ test('keeps exited output readable through resizes and restarts a working shell'
     const environment = { ...process.env, ZDOTDIR: profileDirectory }
     delete environment.ELECTRON_RUN_AS_NODE
     application = await electron.launch({
-      args: [mainEntry, `--user-data-dir=${profileDirectory}`, '--mute-audio', '--automation'],
+      args: [
+        mainEntry,
+        `--user-data-dir=${profileDirectory}`,
+        '--mute-audio',
+        '--automation',
+        '--disable-gpu',
+        '--disable-software-rasterizer'
+      ],
       cwd: desktopDirectory,
       env: environment
     })
@@ -65,6 +72,7 @@ test('keeps exited output readable through resizes and restarts a working shell'
       await page.keyboard.press('Enter')
     }
     await expect(terminal.locator('.terminal-statusbar')).toContainText('Connected')
+    await expect(output).toBeVisible()
     const previousTerminalId = await terminal.getAttribute('data-terminal-id')
     await send("printf 'EXIT_RESIZE_OUTPUT\\n'; exit 0")
     await expect(terminal.getByRole('button', { name: 'Restart terminal' })).toBeVisible()
