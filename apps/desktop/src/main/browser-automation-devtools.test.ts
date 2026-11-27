@@ -166,6 +166,39 @@ describe('BrowserAutomationDevtools', () => {
     expect(debuggerApi.detach).toHaveBeenCalledOnce()
   })
 
+  it.each([0, 1])(
+    'keeps the longest request header prefix at 8192 plus %i bytes',
+    async (extra) => {
+      const { devtools, event } = fixture()
+      await devtools.initialize()
+      await devtools.run({ kind: 'networkStart' })
+
+      const prefix = Array.from({ length: 7 }, (_, index): [string, string] => [
+        `header-${index}`,
+        'a'.repeat(1024)
+      ])
+      const last: [string, string] = ['boundary', '🧪"\\\n']
+      const padding = 8192 - Buffer.byteLength(JSON.stringify([...prefix, last]))
+      last[1] += 'a'.repeat(padding + extra)
+      expect(Buffer.byteLength(JSON.stringify([...prefix, last]))).toBe(8192 + extra)
+
+      event('Network.requestWillBeSent', {
+        requestId: 'r1',
+        timestamp: 1,
+        request: {
+          url: 'https://example.test/api',
+          method: 'GET',
+          headers: Object.fromEntries([...prefix, last, ['small', 'x']])
+        }
+      })
+      const request = (await devtools.run({ kind: 'networkGet', requestId: 'r1' })) as {
+        requestHeaders: Record<string, string>
+      }
+      expect(request.requestHeaders).toEqual(Object.fromEntries(extra ? prefix : [...prefix, last]))
+      devtools.dispose()
+    }
+  )
+
   it('retains structured diagnostics with stacks, bounds, filters, cursors, and clearing', async () => {
     const { devtools, event } = fixture()
     await devtools.initialize()
