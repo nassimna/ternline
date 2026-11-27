@@ -45,6 +45,39 @@ describe('safe Markdown previews', () => {
     ])
   })
 
+  it.each(['the guide', 'Guide [draft]'])(
+    'preserves bracketed prose before a link to %s',
+    (label) => {
+      const href = 'https://example.com/guide'
+      expect(parseSafeMarkdown(`Choose [preview] or [${label}](${href}).`)).toEqual([
+        {
+          kind: 'paragraph',
+          children: [
+            { kind: 'text', text: 'Choose [preview] or ' },
+            { kind: 'link', label, href },
+            { kind: 'text', text: '.' }
+          ]
+        }
+      ])
+    }
+  )
+
+  it('preserves escaped brackets in a link label', () => {
+    const label = String.raw`Use \] or \[ in substitutions`
+    const href = 'https://example.com/guide'
+
+    expect(parseSafeMarkdown(`See [${label}](${href}).`)).toEqual([
+      {
+        kind: 'paragraph',
+        children: [
+          { kind: 'text', text: 'See ' },
+          { kind: 'link', label, href },
+          { kind: 'text', text: '.' }
+        ]
+      }
+    ])
+  })
+
   it.each(['https://example.com/docs', 'https://example.com/docs(v2(draft))'])(
     'preserves trailing parentheses after a link to %s',
     (href) => {

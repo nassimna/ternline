@@ -36,8 +36,22 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
       }
       if (c === bounded.length) return [{ kind: 'text', text: bounded }]
 
+      let labelStart = a
+      let bracketDepth = 1
+      for (let index = a + 1; index < b; index++) {
+        const character = bounded[index]
+        if (character === '\\') {
+          index++
+        } else if (character === '[') {
+          if (bracketDepth === 0) labelStart = index
+          bracketDepth++
+        } else if (character === ']' && bracketDepth > 0) {
+          bracketDepth--
+        }
+      }
+
       const href = bounded.slice(b + 2, c)
-      const label = bounded.slice(a + 1, b)
+      const label = bounded.slice(labelStart + 1, b)
       if (
         !(href.startsWith('http://') || href.startsWith('https://')) ||
         href.length > 2048 ||
@@ -49,7 +63,7 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
         const parsed = new URL(href)
         if (!parsed.username && !parsed.password) {
           const nodes: SafeMarkdownNode[] = [{ kind: 'link', label, href }]
-          if (a > 0) nodes.unshift({ kind: 'text', text: bounded.slice(0, a) })
+          if (labelStart > 0) nodes.unshift({ kind: 'text', text: bounded.slice(0, labelStart) })
           if (c + 1 < bounded.length) nodes.push({ kind: 'text', text: bounded.slice(c + 1) })
           return nodes
         }
