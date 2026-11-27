@@ -181,4 +181,46 @@ describe('BrowserAutomationRecording', () => {
       expect(recordingWindow.destroy).toHaveBeenCalled()
     }
   )
+
+  it('writes canonical sizes and offsets for finite clusters with non-minimal sizes', async () => {
+    const padding = 'eced' + '00'.repeat(109)
+    const source =
+      header +
+      '1853806740c6' +
+      '1549a966872ad7b1831e8480' +
+      tracks +
+      '1f43b675200084e78100' +
+      frames[0] +
+      frames[1] +
+      padding +
+      '1f43b675400de78203e8' +
+      frames[2]
+    const expected =
+      header +
+      '185380674186' +
+      '114d9b74e9' +
+      '4dbb9253ab841549a96653ac88000000000000006e' +
+      '4dbb9253ab841654ae6b53ac880000000000000085' +
+      '4dbb9253ab841f43b67553ac8800000000000000a1' +
+      '4dbb9253ab841f43b67553ac88000000000000012b' +
+      '4dbb9253ab841c53bb6b53ac88000000000000013d' +
+      '1549a966922ad7b1831e84804489884094500000000000' +
+      tracks +
+      '1f43b6754084e78100' +
+      frames[0] +
+      frames[1] +
+      padding +
+      '1f43b6758de78203e8' +
+      frames[2] +
+      '1c53bb6bc4' +
+      'bba0b3880000000000000000b794f7880000000000000001f18800000000000000a1' +
+      'bba0b38800000000000003fcb794f7880000000000000001f188000000000000012b'
+
+    recordingWindow.webContents.executeJavaScript.mockResolvedValueOnce({
+      base64: Buffer.from(source, 'hex').toString('base64'),
+      durationMs: 2600
+    })
+    const recording = new BrowserAutomationRecording(100, 50)
+    expect((await recording.stop()).toString('hex')).toBe(expected)
+  })
 })
