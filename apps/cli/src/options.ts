@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 export function flags(
   args: string[],
   allowed: readonly string[],
@@ -54,6 +56,17 @@ export function nonnegativeInteger(value: string, label: string): number {
     throw new Error(`${label} must be a nonnegative safe integer`)
   }
   return Number(value)
+}
+
+export function mutationIdentity(values: Map<string, string>, idempotencyEpoch: string) {
+  return {
+    expectedRevision: nonnegativeInteger(
+      required(values, '--expected-revision'),
+      '--expected-revision'
+    ),
+    idempotencyEpoch,
+    idempotencyKey: values.get('--idempotency-key') ?? randomUUID()
+  }
 }
 
 export function jsonParams(args: string[]): unknown {

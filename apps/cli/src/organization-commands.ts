@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto'
-
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
 import {
   groupAssignRequestSchema,
@@ -11,7 +9,7 @@ import {
   workspaceSelectionReplaceRequestSchema
 } from '@agent-workspace/contracts'
 
-import { flags, nonnegativeInteger, required, workspaceIdFlags } from './options'
+import { flags, mutationIdentity, nonnegativeInteger, required, workspaceIdFlags } from './options'
 
 type Operation =
   | 'workspace.selectMany'
@@ -78,14 +76,7 @@ export function parseOrganizationCommand(
 
 export function organizationRequest(parsed: OrganizationCommand, idempotencyEpoch: string) {
   const { values, operation } = parsed
-  const identity = {
-    expectedRevision: nonnegativeInteger(
-      required(values, '--expected-revision'),
-      '--expected-revision'
-    ),
-    idempotencyEpoch,
-    idempotencyKey: values.get('--idempotency-key') ?? randomUUID()
-  }
+  const identity = mutationIdentity(values, idempotencyEpoch)
   switch (operation) {
     case 'workspace.selectMany':
       return workspaceSelectionReplaceRequestSchema.parse({
