@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ import {
   planLayoutApplication,
   saveLayout
 } from './layout-mutations'
+import { initialBrowserMetadata } from './workspace-mutations'
 
 function fixture() {
   const windowId = randomUUID()
@@ -151,6 +153,74 @@ it('clones the live browser metadata without allocating an ID when the portable 
   if (content.kind !== 'browser') throw new Error('Expected a browser tab')
   expect(content.metadata).toStrictEqual(expected)
   expect(content.metadata).not.toBe(liveMetadata)
+})
+
+it('preserves full tab records and pane order when applying a mixed layout', () => {
+  const { state, layoutId, windowId } = fixture()
+  const template = state.savedLayouts[0]!.template.workspaces[0]!
+  const terminalPaneId = template.selectedPaneId
+  const terminalId = template.panes[terminalPaneId]!.selectedTabId
+  const browserPaneId = randomUUID()
+  const browserId = randomUUID()
+  const browserSessionId = randomUUID()
+  const url = 'https://example.com/'
+  const terminal = {
+    id: terminalId,
+    paneId: terminalPaneId,
+    title: 'Build',
+    customTitle: 'Build logs',
+    content: { kind: 'terminal' as const, launch: { cwd: '/tmp', rows: 37, cols: 112 } },
+    createdAt: 10
+  }
+  const browser = {
+    id: browserId,
+    paneId: browserPaneId,
+    title: 'Docs',
+    customTitle: 'Reference docs',
+    content: { kind: 'browser' as const, url },
+    createdAt: 20
+  }
+  template.id = state.workspaces[0]!.id
+  template.layout = {
+    kind: 'split',
+    splitId: randomUUID(),
+    axis: 'horizontal',
+    ratio: 0.6,
+    first: { kind: 'leaf', paneId: browserPaneId },
+    second: { kind: 'leaf', paneId: terminalPaneId }
+  }
+  template.panes[browserPaneId] = {
+    id: browserPaneId,
+    tabs: [browserId],
+    selectedTabId: browserId,
+    title: null
+  }
+  template.tabs = { [terminalId]: terminal, [browserId]: browser }
+  const original = structuredClone(state)
+
+  const applied = planLayoutApplication(state, layoutId, () => browserSessionId, windowId)
+  const workspace = applied.workspaces[0]!
+
+  expect(workspace.tabs).toStrictEqual({
+    [terminalId]: {
+      ...terminal,
+      content: {
+        kind: 'terminal',
+        launch: {
+          ...terminal.content.launch,
+          cwd: realpathSync.native(terminal.content.launch.cwd)
+        }
+      }
+    },
+    [browserId]: {
+      ...browser,
+      content: { kind: 'browser', metadata: initialBrowserMetadata(browserSessionId, url) }
+    }
+  })
+  expect(Object.keys(workspace.tabs)).toStrictEqual([terminalId, browserId])
+  expect(workspace.layout).toStrictEqual(template.layout)
+  expect(workspace.panes).toStrictEqual(template.panes)
+  expect(state).toStrictEqual(original)
 })
 
 it('prunes removed tab focus before the cursor and preserves forward history', () => {
