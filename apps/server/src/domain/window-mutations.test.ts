@@ -16,10 +16,13 @@ import { reopenClosedTab } from './recently-closed-mutations'
 import {
   closePane,
   closeTab,
+  collapsePane,
   focusPane,
   moveTab,
   openBrowserTab,
-  splitPane
+  splitPane,
+  WorkspaceMutationError,
+  type PaneLayout
 } from './workspace-mutations'
 import { navigateBrowser, BrowserMutationError } from './browser-mutations'
 
@@ -800,6 +803,58 @@ it('selects the adjacent source tab and collapses the split when moving the last
   })
   expect(collapsed.selectedPaneId).toBe(destinationPaneId)
   expect(refocused).toEqual(beforeCollapse)
+})
+
+it('collapses a pane in the second subtree while preserving the input and surviving nodes', () => {
+  const layout = {
+    kind: 'split',
+    splitId: 'root',
+    axis: 'horizontal',
+    ratio: 0.5,
+    first: {
+      kind: 'split',
+      splitId: 'first',
+      axis: 'vertical',
+      ratio: 0.5,
+      first: { kind: 'leaf', paneId: 'a' },
+      second: { kind: 'leaf', paneId: 'b' }
+    },
+    second: {
+      kind: 'split',
+      splitId: 'second',
+      axis: 'vertical',
+      ratio: 0.5,
+      first: { kind: 'leaf', paneId: 'c' },
+      second: { kind: 'leaf', paneId: 'd' }
+    }
+  } satisfies PaneLayout
+  const before = structuredClone(layout)
+
+  const collapsed = collapsePane(layout, 'd')
+
+  expect(collapsed).toEqual({ ...before, second: before.second.first })
+  expect(collapsed.kind === 'split' && collapsed.first).toBe(layout.first)
+  expect(collapsed.kind === 'split' && collapsed.second).toBe(layout.second.first)
+  expect(layout).toEqual(before)
+})
+
+it('throws a pane_not_found mutation error when the pane is missing', () => {
+  const layout: PaneLayout = {
+    kind: 'split',
+    splitId: 'root',
+    axis: 'horizontal',
+    ratio: 0.5,
+    first: { kind: 'leaf', paneId: 'a' },
+    second: { kind: 'leaf', paneId: 'b' }
+  }
+
+  expect(() => collapsePane(layout, 'missing')).toThrow(
+    expect.objectContaining({
+      constructor: WorkspaceMutationError,
+      code: 'pane_not_found',
+      message: 'Pane is not in the layout'
+    })
+  )
 })
 
 it('reopens a browser tab with a fresh session in the default partition', () => {

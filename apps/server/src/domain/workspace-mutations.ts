@@ -540,19 +540,19 @@ export type PaneLayout =
     }
 
 export function collapsePane(layout: PaneLayout, paneId: string): PaneLayout {
-  if (layout.kind === 'leaf') {
-    throw new WorkspaceMutationError('pane_not_found', 'Pane is not in the layout')
-  }
+  const collapsed = collapsePaneIfPresent(layout, paneId)
+  if (!collapsed) throw new WorkspaceMutationError('pane_not_found', 'Pane is not in the layout')
+  return collapsed
+}
+
+function collapsePaneIfPresent(layout: PaneLayout, paneId: string): PaneLayout | null {
+  if (layout.kind === 'leaf') return null
   if (layout.first.kind === 'leaf' && layout.first.paneId === paneId) return layout.second
   if (layout.second.kind === 'leaf' && layout.second.paneId === paneId) return layout.first
-  if (layout.first.kind === 'split') {
-    try {
-      return { ...layout, first: collapsePane(layout.first, paneId) }
-    } catch (error) {
-      if (!(error instanceof WorkspaceMutationError) || error.code !== 'pane_not_found') throw error
-    }
-  }
-  return { ...layout, second: collapsePane(layout.second, paneId) }
+  const first = collapsePaneIfPresent(layout.first, paneId)
+  if (first) return { ...layout, first }
+  const second = collapsePaneIfPresent(layout.second, paneId)
+  return second ? { ...layout, second } : null
 }
 
 export function removeTransferSourceTab(
