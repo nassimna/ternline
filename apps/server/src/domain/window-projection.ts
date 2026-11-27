@@ -36,8 +36,15 @@ export function projectStateToWindow(
   const placement = state.windowPlacements.find((item) => item.id === windowId)
   if (!placement) return undefined
   const owned = new Set(placement.workspaceIds)
-  const projected = structuredClone(state)
-  projected.workspaces = projected.workspaces.filter((item) => owned.has(item.id))
+  const projected = structuredClone({
+    ...state,
+    workspaces: state.workspaces.filter((item) => owned.has(item.id)),
+    notifications: state.notifications.filter((item) => owned.has(item.workspaceId)),
+    recentlyClosed: state.recentlyClosed.filter((item) => owned.has(item.priorWorkspaceId)),
+    windowPlacements: [placement],
+    savedLayouts: [],
+    legacyOverLimit: null
+  })
   projected.selectedWorkspaceId = owned.has(state.selectedWorkspaceId)
     ? state.selectedWorkspaceId
     : placement.focusedWorkspaceId
@@ -53,10 +60,6 @@ export function projectStateToWindow(
   projected.workspaceGroups = projected.workspaceGroups.filter(
     (group) => ownedGroups.has(group.id) || !assignedGroups.has(group.id)
   )
-  projected.savedLayouts = []
-  projected.legacyOverLimit = null
-  projected.notifications = projected.notifications.filter((item) => owned.has(item.workspaceId))
-  projected.windowPlacements = [structuredClone(placement)]
   projected.focusedWindowId = windowId
   projected.focusHistory.entries = projected.focusHistory.entries.filter(
     (target) => target.windowId === windowId
@@ -64,9 +67,6 @@ export function projectStateToWindow(
   projected.focusHistory.cursor = Math.min(
     projected.focusHistory.cursor,
     Math.max(0, projected.focusHistory.entries.length - 1)
-  )
-  projected.recentlyClosed = projected.recentlyClosed.filter((item) =>
-    owned.has(item.priorWorkspaceId)
   )
   return projected
 }
