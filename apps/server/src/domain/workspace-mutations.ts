@@ -836,10 +836,22 @@ export function closeTab(
 
 function insertTab(
   state: DurableApplicationState,
-  { workspaceId, paneId }: { workspaceId: string; paneId: string },
-  index: number,
+  {
+    workspaceId,
+    paneId,
+    destinationIndex
+  }: { workspaceId: string; paneId: string; destinationIndex?: number | undefined },
+  originalTabCount: number,
   tab: Workspace['tabs'][string]
 ): DurableApplicationState {
+  const index = destinationIndex ?? originalTabCount
+  if (index > originalTabCount) {
+    throw new WorkspaceMutationError('index_out_of_bounds', 'Tab destination index is invalid')
+  }
+  const { createdAt } = tab
+  if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
+    throw new WorkspaceMutationError('invalid_timestamp', 'Tab creation timestamp is invalid')
+  }
   const previousFocus = focusTarget(state, state.selectedWorkspaceId)
   const next = structuredClone(state)
   const workspace = next.workspaces.find((item) => item.id === workspaceId)!
@@ -848,7 +860,7 @@ function insertTab(
   pane.tabs.splice(index, 0, tab.id)
   pane.selectedTabId = tab.id
   workspace.selectedPaneId = pane.id
-  workspace.updatedAt = tab.createdAt
+  workspace.updatedAt = createdAt
   reconcileTabFocus(next, previousFocus)
   return next
 }
@@ -869,14 +881,7 @@ export function openTerminalTab(
   if (state.workspaces.some((item) => item.tabs[tabId])) {
     throw new WorkspaceMutationError('duplicate_identity', 'Terminal tab ID is in use')
   }
-  const index = request.destinationIndex ?? originalPane.tabs.length
-  if (index > originalPane.tabs.length) {
-    throw new WorkspaceMutationError('index_out_of_bounds', 'Tab destination index is invalid')
-  }
-  if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
-    throw new WorkspaceMutationError('invalid_timestamp', 'Tab creation timestamp is invalid')
-  }
-  const next = insertTab(state, request, index, {
+  const next = insertTab(state, request, originalPane.tabs.length, {
     id: tabId,
     paneId: request.paneId,
     title: 'Terminal',
@@ -947,15 +952,7 @@ export function openBrowserTab(
   ) {
     throw new WorkspaceMutationError('duplicate_identity', 'Browser session ID is in use')
   }
-  const index = request.destinationIndex ?? originalPane.tabs.length
-  if (index > originalPane.tabs.length) {
-    throw new WorkspaceMutationError('index_out_of_bounds', 'Tab destination index is invalid')
-  }
-  if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
-    throw new WorkspaceMutationError('invalid_timestamp', 'Tab creation timestamp is invalid')
-  }
-
-  const next = insertTab(state, request, index, {
+  const next = insertTab(state, request, originalPane.tabs.length, {
     id: tabId,
     paneId: originalPane.id,
     title: 'Browser',

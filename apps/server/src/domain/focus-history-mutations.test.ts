@@ -5,6 +5,7 @@ import { expect, it } from 'vitest'
 import { navigateFocusHistory } from './focus-history-mutations'
 import { WindowMutationError } from './window-mutations'
 import {
+  WorkspaceMutationError,
   closeWorkspace,
   openBrowserTab,
   openTerminalTab,
@@ -175,6 +176,50 @@ it.each(['terminal', 'browser'])('inserts a %s tab at index zero after going bac
   })
   expect(next.revision).toBe(6)
   expect(source).toEqual(snapshot)
+})
+
+it.each(['terminal', 'browser'])('preserves %s tab insertion validation order', (kind) => {
+  const { state, targets } = createTwoWorkspaceState()
+  const { workspaceId, paneId, tabId: existingTabId } = targets[1]!
+  const snapshot = structuredClone(state)
+  const newTabId = randomUUID()
+  const browserSessionId = randomUUID()
+  const launch = { cwd: '/tmp', rows: 24, cols: 80 }
+  const open = (destinationIndex: number, tabId: string) => {
+    const request = { workspaceId, paneId, destinationIndex }
+    return kind === 'terminal'
+      ? openTerminalTab(state, { ...request, launch }, tabId, -1)
+      : openBrowserTab(
+          state,
+          { ...request, metadata: { url: 'https://example.com/' } },
+          tabId,
+          browserSessionId,
+          -1
+        )
+  }
+
+  expect(() => open(2, newTabId)).toThrow(
+    expect.objectContaining({
+      constructor: WorkspaceMutationError,
+      code: 'index_out_of_bounds',
+      message: 'Tab destination index is invalid'
+    })
+  )
+  expect(() => open(1, newTabId)).toThrow(
+    expect.objectContaining({
+      constructor: WorkspaceMutationError,
+      code: 'invalid_timestamp',
+      message: 'Tab creation timestamp is invalid'
+    })
+  )
+  expect(() => open(2, existingTabId)).toThrow(
+    expect.objectContaining({
+      constructor: WorkspaceMutationError,
+      code: 'duplicate_identity',
+      message: `${kind === 'terminal' ? 'Terminal' : 'Browser'} tab ID is in use`
+    })
+  )
+  expect(state).toEqual(snapshot)
 })
 
 it('drops intervening forward history when selecting the former last tab', () => {
