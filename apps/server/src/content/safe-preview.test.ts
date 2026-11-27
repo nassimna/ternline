@@ -19,6 +19,13 @@ describe('preview lines', () => {
 })
 
 describe('safe Markdown previews', () => {
+  it('ignores a leading BOM and preserves U+FEFF inside paragraph text', () => {
+    expect(parseSafeMarkdown('\uFEFF# Release notes\n\nReady to\uFEFF review.\n')).toStrictEqual([
+      { kind: 'heading', level: 1, children: [{ kind: 'text', text: 'Release notes' }] },
+      { kind: 'paragraph', children: [{ kind: 'text', text: 'Ready to\uFEFF review.' }] }
+    ])
+  })
+
   it.each([
     ['A ', ' and tail.'],
     ['A ', ''],
