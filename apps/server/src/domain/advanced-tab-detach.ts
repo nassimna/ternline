@@ -6,7 +6,7 @@ import { tabDetachParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { recordFocus, WindowMutationError } from './window-mutations'
-import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
+import { removeTransferSourceTab } from './workspace-mutations'
 
 type Request = z.infer<typeof tabDetachParamsSchema>
 type Ids = { windowId: string; workspaceId: string; paneId: string; replacementTabId: string }
@@ -82,14 +82,7 @@ export function detachExactTab(
     sourcePane.tabs = [replacementId]
     sourcePane.selectedTabId = replacementId
   } else {
-    sourcePane.tabs.splice(index, 1)
-    if (sourcePane.tabs.length === 0) {
-      from.layout = collapsePane(from.layout as Layout, sourcePane.id)
-      delete from.panes[sourcePane.id]
-      if (from.selectedPaneId === sourcePane.id) from.selectedPaneId = Object.keys(from.panes)[0]!
-    } else if (sourcePane.selectedTabId === moving.id) {
-      sourcePane.selectedTabId = sourcePane.tabs[Math.min(index, sourcePane.tabs.length - 1)]!
-    }
+    removeTransferSourceTab(from, sourcePane, moving.id, index)
   }
   from.updatedAt = now
   moving.paneId = ids.paneId

@@ -210,4 +210,36 @@ it('atomically detaches a final browser tab and replaces its source with a termi
     kind: 'terminal',
     launch: { cwd: '/tmp', rows: 30, cols: 100 }
   })
+
+  const source = terminalState.workspaces[0]!
+  const sourcePane = source.panes[ids.sourcePane]!
+  const firstTab = randomUUID()
+  const previousTab = randomUUID()
+  for (const id of [firstTab, previousTab]) {
+    source.tabs[id] = { ...source.tabs[ids.tabId]!, id }
+  }
+  sourcePane.tabs = [firstTab, previousTab, ids.tabId]
+
+  const selectedLast = detachExactTab(
+    durableApplicationStateSchema.parse(terminalState),
+    request,
+    ids,
+    5
+  )
+  expect(selectedLast.workspaces[0]?.panes[ids.sourcePane]).toMatchObject({
+    tabs: [firstTab, previousTab],
+    selectedTabId: previousTab
+  })
+
+  sourcePane.selectedTabId = firstTab
+  const unselectedLast = detachExactTab(
+    durableApplicationStateSchema.parse(terminalState),
+    request,
+    ids,
+    5
+  )
+  expect(unselectedLast.workspaces[0]?.panes[ids.sourcePane]).toMatchObject({
+    tabs: [firstTab, previousTab],
+    selectedTabId: firstTab
+  })
 })

@@ -143,6 +143,7 @@ it('moves a live tab identity across windows while keeping a valid source worksp
   const originalHistory = structuredClone(state.focusHistory)
   const moved = moveExactTab(state, request, 5)
   expect(moved.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([remainingTab])
+  expect(moved.workspaces[0]?.panes[sourcePane]?.selectedTabId).toBe(remainingTab)
   expect(moved.workspaces[1]?.panes[targetPane]?.tabs).toEqual([targetTab, movedTab])
   expect(moved.workspaces[1]?.tabs[movedTab]?.paneId).toBe(targetPane)
   expect(moved.workspaces[0]?.tabs[movedTab]).toBeUndefined()
