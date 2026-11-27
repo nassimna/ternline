@@ -15,9 +15,9 @@ import {
 } from '@agent-workspace/contracts'
 
 import {
+  focusTarget,
   initialBrowserMetadata,
-  isValidTabFocus,
-  pruneTabFocusHistory,
+  reconcileTabFocus,
   WorkspaceMutationError
 } from './workspace-mutations'
 
@@ -344,20 +344,6 @@ export function importLayout(
   return commit(next)
 }
 
-type FocusTarget = DurableApplicationState['focusHistory']['entries'][number]
-
-function focusTarget(state: DurableApplicationState): FocusTarget {
-  const workspace = state.workspaces.find((item) => item.id === state.selectedWorkspaceId)!
-  const pane = workspace.panes[workspace.selectedPaneId]!
-  const placement = state.windowPlacements.find((item) => item.workspaceIds.includes(workspace.id))!
-  return {
-    windowId: placement.id,
-    workspaceId: workspace.id,
-    paneId: pane.id,
-    tabId: pane.selectedTabId
-  }
-}
-
 function reconcileLayoutTopology(
   before: DurableApplicationState,
   next: DurableApplicationState,
@@ -419,21 +405,7 @@ function reconcileLayoutTopology(
   next.focusedWindowId = selectedPlacement.id
   selectedPlacement.focusedWorkspaceId = next.selectedWorkspaceId
 
-  const history = next.focusHistory
-  pruneTabFocusHistory(next)
-  const previousFocus = focusTarget(before)
-  const currentFocus = focusTarget(next)
-  if (!isDeepStrictEqual(previousFocus, currentFocus)) {
-    if (history.entries.length === 0 && isValidTabFocus(next, previousFocus)) {
-      history.entries.push(previousFocus)
-    }
-    if (!isDeepStrictEqual(history.entries.at(-1), currentFocus)) {
-      if (history.entries.length > 0) history.entries = history.entries.slice(0, history.cursor + 1)
-      history.entries.push(currentFocus)
-    }
-    if (history.entries.length > 128) history.entries.shift()
-    history.cursor = history.entries.length - 1
-  }
+  reconcileTabFocus(next, focusTarget(before, before.selectedWorkspaceId))
 
   for (const placement of next.windowPlacements) {
     const old = before.windowPlacements.find((item) => item.id === placement.id)
