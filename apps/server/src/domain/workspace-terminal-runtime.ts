@@ -32,7 +32,7 @@ import {
   WorkspaceMutationError
 } from './workspace-mutations'
 import type { ApplicationStateStore } from '../persistence/application-state-store'
-import { serviceLogger } from '../logging/service-logger'
+import { serviceLogger, type ServiceLogEvent } from '../logging/service-logger'
 import type { TerminalReopenAdapter } from '../persistence/recently-closed-service'
 import { RecentlyClosedError } from './recently-closed-mutations'
 import { testSshConnection } from '../remote/ssh-workspace-connection'
@@ -661,14 +661,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (replacementSessionId) this.sessions.set(replacementTabId, replacementSessionId)
       for (const tabId of closingTabIds) {
-        const sessionId = this.sessions.get(tabId)
-        this.sessions.delete(tabId)
-        if (!sessionId) continue
-        try {
-          this.terminals.close(sessionId)
-        } catch {
-          serviceLogger.emit('warn', 'paneTerminalCleanupFailed')
-        }
+        this.retireTerminalForTab(tabId, 'paneTerminalCleanupFailed')
       }
       return { ...result, replacementTerminalId: replacementSessionId ?? null }
     })
@@ -750,14 +743,18 @@ export class WorkspaceTerminalRuntime {
   ): void {
     for (const tab of tabs) {
       if (tab.content.kind !== 'terminal') continue
-      const sessionId = this.sessions.get(tab.id)
-      this.sessions.delete(tab.id)
-      if (!sessionId) continue
-      try {
-        this.terminals.close(sessionId)
-      } catch {
-        serviceLogger.emit('warn', 'workspaceTerminalCleanupFailed')
-      }
+      this.retireTerminalForTab(tab.id, 'workspaceTerminalCleanupFailed')
+    }
+  }
+
+  private retireTerminalForTab(tabId: string, failureEvent: ServiceLogEvent): void {
+    const sessionId = this.sessions.get(tabId)
+    this.sessions.delete(tabId)
+    if (!sessionId) return
+    try {
+      this.terminals.close(sessionId)
+    } catch {
+      serviceLogger.emit('warn', failureEvent)
     }
   }
 
@@ -807,14 +804,7 @@ export class WorkspaceTerminalRuntime {
       for (const workspace of before.workspaces) {
         if (!closing.has(workspace.id)) continue
         for (const tab of Object.values(workspace.tabs)) {
-          const sessionId = this.sessions.get(tab.id)
-          this.sessions.delete(tab.id)
-          if (!sessionId) continue
-          try {
-            this.terminals.close(sessionId)
-          } catch {
-            serviceLogger.emit('warn', 'batchTerminalCleanupFailed')
-          }
+          this.retireTerminalForTab(tab.id, 'batchTerminalCleanupFailed')
         }
       }
       return { ...result, replacementTerminalId: replacementSessionId ?? null }
@@ -871,15 +861,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (replacementSessionId) this.sessions.set(replacementTabId, replacementSessionId)
       if (closingTab.content.kind === 'terminal') {
-        const oldSessionId = this.sessions.get(request.tabId)
-        this.sessions.delete(request.tabId)
-        if (oldSessionId) {
-          try {
-            this.terminals.close(oldSessionId)
-          } catch {
-            serviceLogger.emit('warn', 'tabTerminalCleanupFailed')
-          }
-        }
+        this.retireTerminalForTab(request.tabId, 'tabTerminalCleanupFailed')
       }
       return { ...result, replacementTerminalId: replacementSessionId ?? null }
     })
