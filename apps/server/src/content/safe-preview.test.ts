@@ -73,6 +73,27 @@ describe('safe Markdown previews', () => {
     ])
   })
 
+  it.each([
+    ['no suffix', ''],
+    ['two spaces', '  '],
+    ['a tab', '\t']
+  ])('closes a code block when its closing fence has %s', (_name, suffix) => {
+    const source = ['```sh', 'echo hello', '```' + suffix, '', 'Outside the fence.'].join('\n')
+
+    expect(parseSafeMarkdown(source)).toStrictEqual([
+      { kind: 'codeBlock', language: 'sh', text: 'echo hello' },
+      { kind: 'paragraph', children: [{ kind: 'text', text: 'Outside the fence.' }] }
+    ])
+  })
+
+  it('keeps a fence followed by text inside the code block', () => {
+    const source = ['```sh', 'echo hello', '``` still code', '```'].join('\n')
+
+    expect(parseSafeMarkdown(source)).toStrictEqual([
+      { kind: 'codeBlock', language: 'sh', text: 'echo hello\n``` still code' }
+    ])
+  })
+
   it('bounds fenced code language and text at their UTF-16 limits', () => {
     const languagePrefix = 'a'.repeat(31)
     const rows = `${'a'.repeat(16_384)}\n`.repeat(3)
