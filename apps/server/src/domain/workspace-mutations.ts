@@ -478,17 +478,13 @@ export function createWorkspace(
     throw new WorkspaceMutationError('revision_overflow', 'Window revision cannot advance')
   }
   placement.revision += 1
-  const nextFocus = {
+  if (next.focusHistory.entries.length === 0) next.focusHistory.entries.push(previousFocus)
+  recordFocus(next, {
     windowId: targetId,
     workspaceId: ids.workspaceId,
     paneId: ids.paneId,
     tabId: ids.tabId
-  }
-  if (next.focusHistory.entries.length === 0) next.focusHistory.entries.push(previousFocus)
-  next.focusHistory.entries = next.focusHistory.entries.slice(0, next.focusHistory.cursor + 1)
-  next.focusHistory.entries.push(nextFocus)
-  if (next.focusHistory.entries.length > 128) next.focusHistory.entries.shift()
-  next.focusHistory.cursor = next.focusHistory.entries.length - 1
+  })
   reconcileLegacyLimit(state, next)
   return commitChangedState(next)
 }
@@ -515,6 +511,15 @@ function sameTarget(first: FocusTarget, second: FocusTarget): boolean {
     first.paneId === second.paneId &&
     first.tabId === second.tabId
   )
+}
+
+export function recordFocus(state: DurableApplicationState, target: FocusTarget): void {
+  const history = state.focusHistory
+  history.entries = history.entries.slice(0, history.cursor + 1)
+  const last = history.entries.at(-1)
+  if (!last || !sameTarget(last, target)) history.entries.push(target)
+  if (history.entries.length > 128) history.entries.shift()
+  history.cursor = history.entries.length - 1
 }
 
 function commitChangedState(next: DurableApplicationState): DurableApplicationState {
@@ -1412,12 +1417,7 @@ export function selectTab(
   if (!sameTarget(previousFocus, nextFocus)) {
     const history = next.focusHistory
     if (history.entries.length === 0) history.entries.push(previousFocus)
-    history.entries = history.entries.slice(0, history.cursor + 1)
-    if (!sameTarget(history.entries.at(-1)!, nextFocus)) {
-      history.entries.push(nextFocus)
-    }
-    if (history.entries.length > 128) history.entries.shift()
-    history.cursor = history.entries.length - 1
+    recordFocus(next, nextFocus)
   }
   return commitChangedState(next)
 }

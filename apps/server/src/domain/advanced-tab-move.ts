@@ -5,13 +5,8 @@ import {
 import { tabMoveExactParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
-import {
-  pruneHistory,
-  recordFocus,
-  requireExactTabWindows,
-  WindowMutationError
-} from './window-mutations'
-import { removeTransferSourceTab } from './workspace-mutations'
+import { pruneHistory, requireExactTabWindows, WindowMutationError } from './window-mutations'
+import { recordFocus, removeTransferSourceTab } from './workspace-mutations'
 
 type Request = z.infer<typeof tabMoveExactParamsSchema>
 

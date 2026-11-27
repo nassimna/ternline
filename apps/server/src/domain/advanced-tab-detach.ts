@@ -5,8 +5,8 @@ import {
 import { tabDetachParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
-import { recordFocus, WindowMutationError } from './window-mutations'
-import { removeTransferSourceTab } from './workspace-mutations'
+import { WindowMutationError } from './window-mutations'
+import { recordFocus, removeTransferSourceTab } from './workspace-mutations'
 
 type Request = z.infer<typeof tabDetachParamsSchema>
 type Ids = { windowId: string; workspaceId: string; paneId: string; replacementTabId: string }
