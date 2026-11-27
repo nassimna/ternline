@@ -7,7 +7,11 @@ import {
 
 type Notification = DurableApplicationState['notifications'][number]
 type AttentionSummary = ApplicationSnapshot['attention']
-type AttentionExcerpt = NonNullable<AttentionSummary['latestUnread']>
+type AttentionAggregate = {
+  unreadCount: number
+  highestLevel: AttentionSummary['highestLevel']
+  latestUnread: Notification | null
+}
 type PaneTree = ApplicationSnapshot['workspaces'][number]['layout']
 
 const DEFAULT_SHORTCUT_COMMAND_IDS = [
@@ -27,11 +31,11 @@ const DEFAULT_SHORTCUT_COMMAND_IDS = [
 
 const severity = { info: 0, warning: 1, error: 2 } as const
 
-function emptyAttention(): AttentionSummary {
+function emptyAttention(): AttentionAggregate {
   return { unreadCount: 0, highestLevel: null, latestUnread: null }
 }
 
-function include(summary: AttentionSummary, notification: Notification): void {
+function include(summary: AttentionAggregate, notification: Notification): void {
   summary.unreadCount += 1
   if (
     summary.highestLevel === null ||
@@ -43,22 +47,14 @@ function include(summary: AttentionSummary, notification: Notification): void {
   if (
     latest === null ||
     notification.createdAt > latest.createdAt ||
-    (notification.createdAt === latest.createdAt && notification.id > latest.notificationId)
+    (notification.createdAt === latest.createdAt && notification.id > latest.id)
   ) {
-    const excerpt: AttentionExcerpt = {
-      notificationId: notification.id,
-      title: notification.title,
-      bodyExcerpt:
-        notification.body === null ? null : /^.{0,160}/su.exec(notification.body)![0].trimEnd(),
-      source: notification.source,
-      createdAt: notification.createdAt
-    }
-    summary.latestUnread = excerpt
+    summary.latestUnread = notification
   }
 }
 
 function includeFor(
-  summaries: Map<string, AttentionSummary>,
+  summaries: Map<string, AttentionAggregate>,
   id: string,
   notification: Notification
 ): void {
@@ -68,6 +64,23 @@ function includeFor(
     summaries.set(id, summary)
   }
   include(summary, notification)
+}
+
+function projectAttention(summary: AttentionAggregate | undefined): AttentionSummary {
+  const latest = summary?.latestUnread
+  return {
+    unreadCount: summary?.unreadCount ?? 0,
+    highestLevel: summary?.highestLevel ?? null,
+    latestUnread: latest
+      ? {
+          notificationId: latest.id,
+          title: latest.title,
+          bodyExcerpt: latest.body === null ? null : /^.{0,160}/su.exec(latest.body)![0].trimEnd(),
+          source: latest.source,
+          createdAt: latest.createdAt
+        }
+      : null
+  }
 }
 
 function paneOrder(layout: PaneTree): string[] {
@@ -101,9 +114,9 @@ export function projectApplicationSnapshot(
   sessionForTab?: (tabId: string) => string | undefined
 ): ApplicationSnapshot {
   const applicationAttention = emptyAttention()
-  const workspaceAttention = new Map<string, AttentionSummary>()
-  const paneAttention = new Map<string, AttentionSummary>()
-  const tabAttention = new Map<string, AttentionSummary>()
+  const workspaceAttention = new Map<string, AttentionAggregate>()
+  const paneAttention = new Map<string, AttentionAggregate>()
+  const tabAttention = new Map<string, AttentionAggregate>()
   const tabOwners = new Map<string, { workspaceId: string; paneId: string }>()
   for (const workspace of state.workspaces) {
     for (const tab of Object.values(workspace.tabs)) {
@@ -140,7 +153,7 @@ export function projectApplicationSnapshot(
         tabIds: pane.tabs,
         selectedTabId: pane.selectedTabId,
         title: pane.title,
-        attention: paneAttention.get(pane.id) ?? emptyAttention()
+        attention: projectAttention(paneAttention.get(pane.id))
       }
     })
     const tabs = orderedPanes.flatMap((paneId) =>
@@ -165,7 +178,7 @@ export function projectApplicationSnapshot(
           title: tab.title,
           customTitle: tab.customTitle,
           content,
-          attention: tabAttention.get(tab.id) ?? emptyAttention(),
+          attention: projectAttention(tabAttention.get(tab.id)),
           createdAt: tab.createdAt
         }
       })
@@ -182,7 +195,7 @@ export function projectApplicationSnapshot(
       selectedPaneId: workspace.selectedPaneId,
       panes,
       tabs,
-      attention: workspaceAttention.get(workspace.id) ?? emptyAttention(),
+      attention: projectAttention(workspaceAttention.get(workspace.id)),
       createdAt: workspace.createdAt,
       updatedAt: workspace.updatedAt
     }
@@ -196,6 +209,6 @@ export function projectApplicationSnapshot(
     workspaces,
     selectedWorkspaceId: state.selectedWorkspaceId,
     shortcutOverrides,
-    attention: applicationAttention
+    attention: projectAttention(applicationAttention)
   })
 }
