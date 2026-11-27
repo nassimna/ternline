@@ -90,11 +90,13 @@ export class BrowserAutomationDevtools {
   readonly #console: DiagnosticBuffer = { entries: [], bytes: 2, dropped: 0 }
   readonly #errors: DiagnosticBuffer = { entries: [], bytes: 2, dropped: 0 }
   readonly #requests = new Map<string, NetworkRequest>()
+  readonly #requestSizes = new Map<string, number>()
   readonly #requestTimes = new Map<string, number>()
   readonly #pendingHeaders = new Map<string, Record<string, string>>()
   #consoleSequence = 0
   #errorsSequence = 0
   #networkSequence = 0
+  #networkBytes = 2 // Array brackets.
   #networkDropped = 0
   #owned = false
   #available = false
@@ -461,6 +463,7 @@ export class BrowserAutomationDevtools {
     )
       return
     let request = this.#requests.get(event.requestId)
+    let shouldPrune = true
     if (
       (method === 'Network.requestWillBeSentExtraInfo' ||
         method === 'Network.responseReceivedExtraInfo') &&
@@ -528,15 +531,22 @@ export class BrowserAutomationDevtools {
           request.encodedDataLength = event.encodedDataLength
         if (event.errorText) request.failure = event.errorText.slice(0, 2048)
         this.#requestTimes.delete(event.requestId)
-      } else return
+      } else shouldPrune = false
     } else return
-    while (
-      this.#requests.size > MAX_ITEMS ||
-      Buffer.byteLength(JSON.stringify(Array.from(this.#requests.values()))) > MAX_BUFFER_BYTES
-    ) {
+
+    const previousBytes = this.#requestSizes.get(event.requestId)
+    const bytes = Buffer.byteLength(JSON.stringify(request))
+    this.#requestSizes.set(event.requestId, bytes)
+    this.#networkBytes += bytes - (previousBytes ?? 0)
+    if (previousBytes === undefined && this.#requests.size > 1) this.#networkBytes++
+
+    if (!shouldPrune) return
+    while (this.#requests.size > MAX_ITEMS || this.#networkBytes > MAX_BUFFER_BYTES) {
       const oldest = this.#requests.keys().next().value
       if (!oldest) break
       this.#requests.delete(oldest)
+      this.#networkBytes -= this.#requestSizes.get(oldest)! + (this.#requests.size ? 1 : 0)
+      this.#requestSizes.delete(oldest)
       this.#requestTimes.delete(oldest)
       this.#networkDropped++
     }
