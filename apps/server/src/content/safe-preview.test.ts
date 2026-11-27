@@ -23,7 +23,8 @@ describe('safe Markdown previews', () => {
     ['A ', ' and tail.'],
     ['A ', ''],
     ['', ' and tail.'],
-    ['', '']
+    ['', ''],
+    ['The marker ]( appears before ', '.']
   ])('preserves text around a link (%j, %j)', (prefix, suffix) => {
     expect(parseSafeMarkdown(`${prefix}[link](https://example.com)${suffix}`)).toEqual([
       {
