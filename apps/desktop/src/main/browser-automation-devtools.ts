@@ -241,13 +241,22 @@ export class BrowserAutomationDevtools {
           'Network.getResponseBody',
           { requestId: operation.requestId }
         )
-        const bytes = Buffer.from(result.body, result.base64Encoded ? 'base64' : 'utf8')
+        // Each UTF-16 code unit contributes at least one UTF-8 byte. Keep one extra
+        // unit to complete a surrogate pair that starts at the last retained byte.
+        const prefixLength = MAX_BODY_BYTES + 1
+        // Scan for the full byte length only when this saves encoding at least half the string.
+        const usePrefix = !result.base64Encoded && result.body.length > 2 * prefixLength
+        const bytes = Buffer.from(
+          usePrefix ? result.body.slice(0, prefixLength) : result.body,
+          result.base64Encoded ? 'base64' : 'utf8'
+        )
+        const byteLength = usePrefix ? Buffer.byteLength(result.body) : bytes.length
         const retained = bytes.subarray(0, MAX_BODY_BYTES)
         return {
           body: retained.toString('base64'),
           base64Encoded: true,
-          truncated: bytes.length > MAX_BODY_BYTES,
-          byteLength: bytes.length
+          truncated: byteLength > MAX_BODY_BYTES,
+          byteLength
         }
       }
       case 'recordingStart':

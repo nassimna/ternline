@@ -176,6 +176,47 @@ describe('BrowserAutomationDevtools', () => {
     expect(debuggerApi.detach).toHaveBeenCalledOnce()
   })
 
+  const bodyLimit = 45 * 1024
+  const asciiBody = 'a'.repeat(bodyLimit)
+  const unicodeBody = asciiBody.slice(1) + '🧪' + '界🧪'.repeat(bodyLimit) + '\uD800'
+  const binaryBody = Buffer.alloc(bodyLimit + 1, 0xff)
+
+  it.each([
+    {
+      name: 'ASCII at the exact byte limit',
+      body: asciiBody,
+      base64Encoded: false,
+      decoded: Buffer.from(asciiBody)
+    },
+    {
+      name: 'an emoji split by the byte limit and a long Unicode suffix',
+      body: unicodeBody,
+      base64Encoded: false,
+      decoded: Buffer.from(unicodeBody)
+    },
+    {
+      name: 'a large Base64 body with whitespace and padding',
+      body: ' \n' + binaryBody.toString('base64') + '\t',
+      base64Encoded: true,
+      decoded: binaryBody
+    }
+  ])('preserves the response body bytes for $name', async ({ body, base64Encoded, decoded }) => {
+    const { devtools, debuggerApi, event, startRequest } = fixture()
+    await devtools.initialize()
+    await devtools.run({ kind: 'networkStart' })
+    startRequest('r1')
+    event('Network.loadingFinished', { requestId: 'r1', timestamp: 2 })
+    debuggerApi.sendCommand.mockResolvedValueOnce({ body, base64Encoded })
+
+    expect(await devtools.run({ kind: 'networkBody', requestId: 'r1' })).toEqual({
+      body: decoded.subarray(0, bodyLimit).toString('base64'),
+      base64Encoded: true,
+      truncated: decoded.length > bodyLimit,
+      byteLength: decoded.length
+    })
+    devtools.dispose()
+  })
+
   it('evicts the oldest request when a retained update exceeds the JSON byte cap', async () => {
     const { devtools, event } = fixture()
     await devtools.initialize()
