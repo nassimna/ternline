@@ -1,10 +1,9 @@
 import {
-  durableApplicationStateSchema,
   workspaceOrganizationGetResultSchema,
   type DurableApplicationState
 } from '@agent-workspace/contracts'
 
-import { WorkspaceMutationError } from './workspace-mutations'
+import { commitParsedState, WorkspaceMutationError } from './workspace-mutations'
 
 /** Produces the protocol organization view without exposing unrelated durable data. */
 export function projectOrganization(state: DurableApplicationState) {
@@ -36,14 +35,6 @@ export function projectOrganization(state: DurableApplicationState) {
   return workspaceOrganizationGetResultSchema.parse({ organization })
 }
 
-function commit(next: DurableApplicationState): DurableApplicationState {
-  if (next.revision >= Number.MAX_SAFE_INTEGER) {
-    throw new WorkspaceMutationError('revision_overflow', 'Application revision cannot advance')
-  }
-  next.revision += 1
-  return durableApplicationStateSchema.parse(next)
-}
-
 function groupIndex(state: DurableApplicationState, groupId: string): number {
   const index = state.workspaceGroups.findIndex((group) => group.id === groupId)
   if (index < 0)
@@ -68,7 +59,7 @@ export function setWorkspacePinned(
   const next = structuredClone(state)
   if (pinned) next.workspacePins.push(workspaceId)
   else next.workspacePins = next.workspacePins.filter((id) => id !== workspaceId)
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function createGroup(
@@ -89,7 +80,7 @@ export function createGroup(
     collapsed: false,
     order: next.workspaceGroups.length
   })
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function renameGroup(
@@ -101,7 +92,7 @@ export function renameGroup(
   if (state.workspaceGroups[index]!.name === name) return state
   const next = structuredClone(state)
   next.workspaceGroups[index]!.name = name
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function deleteGroup(
@@ -117,7 +108,7 @@ export function deleteGroup(
   next.workspaceGroupAssignments = Object.fromEntries(
     Object.entries(next.workspaceGroupAssignments).filter(([, assigned]) => assigned !== groupId)
   )
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function moveGroup(
@@ -136,7 +127,7 @@ export function moveGroup(
   next.workspaceGroups.forEach((item, order) => {
     item.order = order
   })
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function assignGroup(
@@ -159,7 +150,7 @@ export function assignGroup(
   const next = structuredClone(state)
   if (groupId === undefined) delete next.workspaceGroupAssignments[workspaceId]
   else next.workspaceGroupAssignments[workspaceId] = groupId
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function collapseGroup(
@@ -171,5 +162,5 @@ export function collapseGroup(
   if (state.workspaceGroups[index]!.collapsed === collapsed) return state
   const next = structuredClone(state)
   next.workspaceGroups[index]!.collapsed = collapsed
-  return commit(next)
+  return commitParsedState(next)
 }

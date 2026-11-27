@@ -4,7 +4,6 @@ import { isAbsolute, sep } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
 import {
-  durableApplicationStateSchema,
   layoutExportEnvelopeSchema,
   layoutExportResultSchema,
   layoutGetResultSchema,
@@ -15,6 +14,7 @@ import {
 } from '@agent-workspace/contracts'
 
 import {
+  commitParsedState,
   focusTarget,
   initialBrowserMetadata,
   reconcileTabFocus,
@@ -58,14 +58,6 @@ function requireLayout(state: DurableApplicationState, layoutId: string): Layout
   const layout = state.savedLayouts.find((item) => item.id === layoutId)
   if (!layout) throw new WorkspaceMutationError('layout_not_found', 'Saved layout does not exist')
   return layout
-}
-
-function commit(next: DurableApplicationState): DurableApplicationState {
-  if (next.revision >= Number.MAX_SAFE_INTEGER) {
-    throw new WorkspaceMutationError('revision_overflow', 'Application revision cannot advance')
-  }
-  next.revision += 1
-  return durableApplicationStateSchema.parse(next)
 }
 
 /** Rust's portable browser URL removes credentials, query, and fragment. */
@@ -248,7 +240,7 @@ export function saveLayout(
   if (previous)
     next.savedLayouts[next.savedLayouts.findIndex((item) => item.id === layoutId)] = layout
   else next.savedLayouts.push(layout)
-  return commit(next)
+  return commitParsedState(next)
 }
 
 export function deleteLayout(
@@ -259,7 +251,7 @@ export function deleteLayout(
   if (index < 0) throw new WorkspaceMutationError('layout_not_found', 'Saved layout does not exist')
   const next = structuredClone(state)
   next.savedLayouts.splice(index, 1)
-  return commit(next)
+  return commitParsedState(next)
 }
 
 function remapTree(node: LayoutTree, panes: Map<string, string>, newId: () => string): LayoutTree {
@@ -341,7 +333,7 @@ export function importLayout(
   }
   if (existingIndex < 0) next.savedLayouts.push(layout)
   else next.savedLayouts[existingIndex] = layout
-  return commit(next)
+  return commitParsedState(next)
 }
 
 function reconcileLayoutTopology(
@@ -515,5 +507,5 @@ export function planLayoutApplication(
     throw new WorkspaceMutationError('policy_denied', 'Saved layout would remove another window')
   }
   if (isDeepStrictEqual(state, next)) return state
-  return commit(next)
+  return commitParsedState(next)
 }
