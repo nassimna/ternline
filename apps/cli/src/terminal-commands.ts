@@ -52,9 +52,14 @@ export async function readTerminalText(
   lines?: number
 ) {
   const attached = await client.attach(terminalId)
-  const replay = Buffer.concat(
-    attached.output.map((chunk) => Buffer.from(chunk.data, 'base64'))
-  ).toString('utf8')
+  const replayBytes = Buffer.allocUnsafe(
+    attached.output.reduce((size, chunk) => size + Buffer.byteLength(chunk.data, 'base64'), 0)
+  )
+  let offset = 0
+  for (const chunk of attached.output) {
+    offset += replayBytes.write(chunk.data, offset, 'base64')
+  }
+  const replay = replayBytes.toString('utf8', 0, offset)
   const text = stripVTControlCharacters((attached.checkpoint?.data ?? '') + replay).replace(
     /\r\n?/gu,
     '\n'
