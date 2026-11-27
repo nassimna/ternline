@@ -171,8 +171,8 @@ it('atomically detaches a final browser tab and replaces its source with a termi
       tabId: ids.tabId
     }
     splitState.focusHistory = {
-      entries: [movingFocus, siblingFocus, movingFocus, otherFocus, movingFocus],
-      cursor: 2
+      entries: [movingFocus, siblingFocus, otherFocus, movingFocus, siblingFocus, movingFocus],
+      cursor: 3
     }
     const input = durableApplicationStateSchema.parse(splitState)
     const original = structuredClone(input)
@@ -182,7 +182,10 @@ it('atomically detaches a final browser tab and replaces its source with a termi
     expect(result.workspaces[0]?.selectedPaneId).toBe(siblingPane)
     expect(result.workspaces[0]?.tabs[ids.replacementTabId]).toBeUndefined()
     expect(result.workspaces[1]?.tabs[ids.tabId]?.content).toEqual(source.tabs[ids.tabId]?.content)
-    expect(result.focusHistory).toEqual({ entries: [siblingFocus, detachedFocus], cursor: 1 })
+    expect(result.focusHistory).toEqual({
+      entries: [siblingFocus, otherFocus, detachedFocus],
+      cursor: 2
+    })
     expect(input).toEqual(original)
 
     splitState.focusHistory = { entries: [movingFocus, siblingFocus, otherFocus], cursor: 0 }

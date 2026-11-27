@@ -2,7 +2,7 @@ import type { DurableApplicationState } from '@agent-workspace/contracts'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import type { TabMoveExactParams } from '@agent-workspace/protocol-client'
 import { isAbsolute, relative } from 'node:path'
-import { recordFocus, retainRecentlyClosed } from './workspace-mutations'
+import { filterFocusHistory, recordFocus, retainRecentlyClosed } from './workspace-mutations'
 
 type State = DurableApplicationState
 type Placement = State['windowPlacements'][number]
@@ -85,12 +85,7 @@ function commit(state: State): State {
 }
 
 export function pruneHistory(state: State): void {
-  const history = state.focusHistory
-  const beforeCursor = history.entries
-    .slice(0, history.cursor + 1)
-    .filter((entry) => validFocus(state, entry)).length
-  history.entries = history.entries.filter((entry) => validFocus(state, entry))
-  history.cursor = Math.min(Math.max(0, beforeCursor - 1), Math.max(0, history.entries.length - 1))
+  filterFocusHistory(state.focusHistory, (entry) => validFocus(state, entry))
 }
 
 export function createWindowPlacement(
