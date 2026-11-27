@@ -447,6 +447,13 @@ export class WorkspaceTerminalRuntime {
     })
   }
 
+  private terminalReplayResult<T extends { revision: number; replayed: boolean }>(
+    result: T,
+    tabId: string
+  ) {
+    return { ...result, terminalId: this.sessionForTab(tabId) ?? null }
+  }
+
   /** Preflight, spawn, and commit are serialized; a failed commit tears down its new PTY. */
   public createWorkspace(
     store: ApplicationStateStore,
@@ -457,7 +464,7 @@ export class WorkspaceTerminalRuntime {
       const ids = { workspaceId: randomUUID(), paneId: randomUUID(), tabId: randomUUID() }
       const createdAt = this.now()
       const replay = store.preflightWorkspaceCreate(request, ids, createdAt)
-      if (replay) return { ...replay, terminalId: this.sessionForTab(replay.tabId) ?? null }
+      if (replay) return this.terminalReplayResult(replay, replay.tabId)
       if (request.ssh) await this.checkSshConnection(request.ssh)
 
       const launch = request.initialTerminal
@@ -474,7 +481,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         this.terminals.close(terminal.id)
-        return { ...result, terminalId: this.sessionForTab(result.tabId) ?? null }
+        return this.terminalReplayResult(result, result.tabId)
       }
       this.sessions.set(ids.tabId, terminal.id)
       return { ...result, terminalId: terminal.id }
@@ -491,7 +498,7 @@ export class WorkspaceTerminalRuntime {
       const tabId = randomUUID()
       const createdAt = this.now()
       const replay = store.preflightTabOpenTerminal(request, tabId, createdAt)
-      if (replay) return { ...replay, terminalId: this.sessionForTab(replay.tabId) ?? null }
+      if (replay) return this.terminalReplayResult(replay, replay.tabId)
 
       const { terminal } = await this.createWorkspaceTerminal(
         request.launch,
@@ -506,7 +513,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         this.terminals.close(terminal.id)
-        return { ...result, terminalId: this.sessionForTab(result.tabId) ?? null }
+        return this.terminalReplayResult(result, result.tabId)
       }
       this.sessions.set(tabId, terminal.id)
       return { ...result, terminalId: terminal.id }
@@ -573,7 +580,7 @@ export class WorkspaceTerminalRuntime {
       }
       const createdAt = this.now()
       const replay = store.preflightPaneSplit(request, ids, createdAt)
-      if (replay) return { ...replay, terminalId: this.sessionForTab(replay.tabId) ?? null }
+      if (replay) return this.terminalReplayResult(replay, replay.tabId)
 
       let terminalId: string | null = null
       if (request.content.kind === 'newTerminal') {
@@ -593,7 +600,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         if (terminalId) this.terminals.close(terminalId)
-        return { ...result, terminalId: this.sessionForTab(result.tabId) ?? null }
+        return this.terminalReplayResult(result, result.tabId)
       }
       if (terminalId) this.sessions.set(result.tabId, terminalId)
       return { ...result, terminalId: terminalId ?? this.sessionForTab(result.tabId) ?? null }
@@ -876,7 +883,7 @@ export class WorkspaceTerminalRuntime {
       if (!this.started) throw new Error('Workspace terminals have not been restored')
       const updatedAt = this.now()
       const replay = store.preflightTerminalRestart(request, updatedAt)
-      if (replay) return { ...replay, terminalId: this.sessionForTab(request.tabId) ?? null }
+      if (replay) return this.terminalReplayResult(replay, request.tabId)
       const oldSessionId = this.sessionForTab(request.tabId)
       if (!oldSessionId) {
         throw new WorkspaceMutationError('runtime_not_bound', 'Terminal runtime is not attached')
@@ -904,7 +911,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         this.terminals.close(terminal.id)
-        return { ...result, terminalId: this.sessionForTab(request.tabId) ?? null }
+        return this.terminalReplayResult(result, request.tabId)
       }
       this.sessions.set(request.tabId, terminal.id)
       try {
