@@ -535,7 +535,9 @@ describe('Rust schema-v15 read-only preflight', () => {
   it('refuses a backup directory visible to other users', async () => {
     const { path } = await fixture()
     const publicDirectory = join(dirname(path), 'public')
-    await mkdir(publicDirectory, { mode: 0o755 })
+    await mkdir(publicDirectory)
+    await chmod(publicDirectory, 0o755)
+    expect((await stat(publicDirectory)).mode & 0o077).not.toBe(0)
     await expect(
       backupLegacyDatabase(path, join(publicDirectory, 'state-backup.sqlite3'))
     ).rejects.toThrow('private, real directory')
