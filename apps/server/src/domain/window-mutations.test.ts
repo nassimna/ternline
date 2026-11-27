@@ -313,6 +313,57 @@ it('moves one workspace, fences revisions, focuses only hosted windows, and reho
   expect(durableApplicationStateSchema.safeParse(closed).success).toBe(true)
 })
 
+it('projects only owned workspaces and records and detaches retained data', () => {
+  const { state, windowId, workspaces } = fixture()
+  const secondWindow = randomUUID()
+  let twoWindows = createWindowPlacement(state, {
+    sourceWindowId: windowId,
+    sourceRevision: 1,
+    workspaceId: workspaces[1]!,
+    windowId: secondWindow,
+    label: 'Second'
+  })
+  for (const workspace of twoWindows.workspaces) {
+    const pane = workspace.panes[workspace.selectedPaneId]!
+    twoWindows = closeTab(
+      twoWindows,
+      workspace.id,
+      pane.selectedTabId,
+      randomUUID(),
+      randomUUID(),
+      2
+    )
+  }
+  twoWindows.notifications = twoWindows.workspaces.map((workspace) => ({
+    id: randomUUID(),
+    workspaceId: workspace.id,
+    paneId: workspace.selectedPaneId,
+    tabId: workspace.panes[workspace.selectedPaneId]!.selectedTabId,
+    source: 'internal',
+    level: 'info',
+    title: 'Terminal notification',
+    body: null,
+    createdAt: 3,
+    readAt: null
+  }))
+  const input = durableApplicationStateSchema.parse(twoWindows)
+  const before = structuredClone(input)
+  const projected = projectStateToWindow(input, secondWindow)!
+  const workspace = projected.workspaces[0]!
+  const ownedClosed = before.recentlyClosed.find((item) => item.priorWorkspaceId === workspaces[1])!
+
+  expect(projected.workspaces).toEqual([before.workspaces[1]])
+  expect(projected.windowPlacements).toEqual([before.windowPlacements[1]])
+  expect(projected.notifications).toEqual([before.notifications[1]])
+  expect(projected.recentlyClosed).toEqual([ownedClosed])
+
+  workspace.tabs[workspace.panes[workspace.selectedPaneId]!.selectedTabId]!.title = 'Changed tab'
+  projected.windowPlacements[0]!.workspaceIds.push(workspaces[0]!)
+  projected.notifications[0]!.title = 'Changed notification'
+  projected.recentlyClosed[0]!.title = 'Changed closed item'
+  expect(input).toEqual(before)
+})
+
 it('atomically closes a nonfinal window with Rust-parity records and survivor focus', () => {
   const { state, windowId, workspaces } = fixture()
   const secondId = randomUUID()
