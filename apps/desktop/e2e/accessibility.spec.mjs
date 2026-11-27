@@ -244,9 +244,13 @@ test('representative renderer states meet the accessibility baseline', async () 
     await page.keyboard.press('Enter')
     const separator = page.getByRole('separator').first()
     await expect(separator).toBeVisible()
+    await expect(separator).toHaveAttribute('aria-valuenow', '50')
     await separator.focus()
     await expect(separator).toBeFocused()
     await page.keyboard.press('ArrowRight')
+    await expect
+      .poll(async () => Number(await separator.getAttribute('aria-valuenow')))
+      .toBeGreaterThan(50)
     await audit(page, 'split workspace with tabs and separator')
 
     await page.keyboard.press(`${primaryModifier}+Shift+P`)
