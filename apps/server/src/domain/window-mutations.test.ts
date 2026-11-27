@@ -148,6 +148,81 @@ it('projects the latest unread body at each attention level with a 160-code-poin
   expect(() => projectApplicationSnapshot(state)).toThrow('text must be normalized')
 })
 
+it('selects the final unread excerpt independently at each attention scope', () => {
+  const { state } = fixture()
+  const workspace = state.workspaces[0]!
+  const pane = workspace.panes[workspace.selectedPaneId]!
+  const id = (suffix: number) => `00000000-0000-4000-8000-00000000000${suffix}`
+  const tabWinner = {
+    id: id(2),
+    workspaceId: workspace.id,
+    paneId: pane.id,
+    tabId: pane.selectedTabId,
+    source: 'osc',
+    level: 'info',
+    title: 'Tab notification',
+    body: 'Tab body',
+    createdAt: 2,
+    readAt: null
+  } as const
+  const paneWinner = {
+    ...tabWinner,
+    id: id(3),
+    tabId: null,
+    title: 'Pane notification',
+    body: null,
+    createdAt: 3
+  } as const
+  const workspaceWinner = {
+    ...paneWinner,
+    id: id(4),
+    paneId: null,
+    level: 'error',
+    title: 'Workspace notification',
+    body: 'Workspace body',
+    createdAt: 4
+  } as const
+  const applicationWinner = {
+    ...tabWinner,
+    id: id(5),
+    tabId: id(9),
+    title: 'Orphaned tab notification',
+    body: 'Application body',
+    createdAt: 5
+  } as const
+  state.notifications.push(
+    paneWinner,
+    { ...tabWinner, id: id(1), title: 'First lower ID at the same time' },
+    tabWinner,
+    applicationWinner,
+    { ...tabWinner, id: id(0), title: 'Last lower ID at the same time' },
+    { ...tabWinner, id: id(6), level: 'warning', createdAt: 1 },
+    { ...tabWinner, id: id(7), level: 'error', createdAt: 6, readAt: 7 },
+    workspaceWinner
+  )
+
+  const snapshot = projectApplicationSnapshot(durableApplicationStateSchema.parse(state))
+  const projectedWorkspace = snapshot.workspaces[0]!
+  for (const [attention, winner, unreadCount, highestLevel] of [
+    [snapshot.attention, applicationWinner, 7, 'error'],
+    [projectedWorkspace.attention, workspaceWinner, 6, 'error'],
+    [projectedWorkspace.panes[0]!.attention, paneWinner, 5, 'warning'],
+    [projectedWorkspace.tabs[0]!.attention, tabWinner, 4, 'warning']
+  ] as const) {
+    expect(attention).toEqual({
+      unreadCount,
+      highestLevel,
+      latestUnread: {
+        notificationId: winner.id,
+        title: winner.title,
+        bodyExcerpt: winner.body,
+        source: winner.source,
+        createdAt: winner.createdAt
+      }
+    })
+  }
+})
+
 it('checks every focus target membership without changing the state', () => {
   const { state, windowId } = fixture()
   const workspace = state.workspaces[0]!
