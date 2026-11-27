@@ -277,6 +277,39 @@ describe('bounded diffs', () => {
     expect(result.truncated).toBe(truncated)
   })
 
+  it.each([
+    ['\nold tail', '\r\nnew tail'],
+    ['', '\r\nnew tail'],
+    ['\nold tail', '']
+  ])('returns the shared visible prefix with hidden tails %j and %j', (beforeTail, afterTail) => {
+    const clipped = 'x'.repeat(16_383)
+    const rows = Array.from({ length: 2047 }, (_, index) => `row ${index % 2}`)
+    const lastRow = clipped + '😀'
+    const before = rows.map((row, index) => row + (index % 2 === 0 ? '\r\n' : '\n')).join('')
+
+    expect(
+      boundedDiff(before + lastRow + beforeTail, [...rows, lastRow].join('\n') + afterTail)
+    ).toStrictEqual({
+      lines: [...rows, clipped].map((text) => ({ kind: 'context', text })),
+      truncated: true
+    })
+  })
+
+  it('matches a differing visible row against rows beyond the opposite preview limit', () => {
+    const sharedRows = 'same\n'.repeat(2047)
+    const clipped = 'x'.repeat(16_384)
+    const oldRow = `${clipped}old`
+    const newRow = `${clipped}new`
+
+    expect(boundedDiff(sharedRows + oldRow, `${sharedRows}${newRow}\n${oldRow}`)).toStrictEqual({
+      lines: [
+        ...Array.from({ length: 2047 }, () => ({ kind: 'context', text: 'same' })),
+        { kind: 'added', text: clipped }
+      ],
+      truncated: true
+    })
+  })
+
   it('does not report truncation when all 4096 diff lines fit', () => {
     const result = boundedDiff('old\n'.repeat(2048), 'new\n'.repeat(2048))
     expect(result.lines).toEqual([
