@@ -23,7 +23,7 @@ import { expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { DESKTOP_IPC } from '@agent-workspace/contracts/desktop/desktop-bridge'
-import { ServerError } from '@agent-workspace/client-runtime'
+import { AgentWorkspaceClient, ServerError } from '@agent-workspace/client-runtime'
 import {
   browserSessionStateSchema,
   shortcutOverrideSchema,
@@ -477,6 +477,91 @@ it('keeps the Node child alive until an active terminal attach completes during 
   expect(close).toHaveBeenCalledOnce()
   expect(child.kill).toHaveBeenCalledWith('SIGTERM')
 })
+
+it.each([
+  { name: 'matching IDs', projectedId: targetId, byteLength: 1 },
+  { name: 'different IDs', projectedId: randomUUID(), byteLength: 1 },
+  {
+    name: 'malformed replay',
+    projectedId: targetId,
+    byteLength: 65_537,
+    issuePath: ['output', 1, 'byteLength']
+  },
+  {
+    name: 'invalid projected UUID',
+    projectedId: '00000000-0000-4000-7000-0000000000f3',
+    byteLength: 1,
+    issuePath: ['terminal', 'id']
+  },
+  {
+    name: 'no content',
+    projectedId: targetId,
+    byteLength: 1,
+    noContent: true,
+    issuePath: []
+  }
+])(
+  'validates terminal attach replay with $name',
+  async ({ projectedId, byteLength, noContent, issuePath }) => {
+    const actualId = targetId
+    const windowId = randomUUID()
+    const replay = {
+      terminal: { id: actualId, command: ['/bin/sh'], cwd: '/', rows: 24, cols: 80, exited: false },
+      checkpoint: {
+        sequence: 4,
+        rows: 24,
+        cols: 80,
+        activeBuffer: 'alternate',
+        data: 'checkpoint'
+      },
+      output: [
+        { sequence: 5, data: 'YQ==', byteLength: 1 },
+        { sequence: 6, data: 'Yg==', byteLength }
+      ],
+      lastSequence: 6,
+      reconstructionComplete: true
+    }
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(noContent ? new Response(null, { status: 204 }) : Response.json(replay))
+    const subscribeTerminal = vi.fn()
+    const emit = vi.fn()
+    const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+    Object.assign(sidecar, {
+      client: new AgentWorkspaceClient('http://localhost', 'test-token', fetcher),
+      remoteTerminals: new Map([[projectedId, { terminalId: actualId, windowId }]]),
+      subscribeTerminal
+    })
+
+    const attached = sidecar.invokeDesktopCore(
+      windowId,
+      DESKTOP_IPC.terminalAttach,
+      [projectedId],
+      emit
+    )
+    if (issuePath) {
+      await expect(attached).rejects.toMatchObject({
+        issues: [expect.objectContaining({ path: issuePath })]
+      })
+      expect(subscribeTerminal).not.toHaveBeenCalled()
+    } else {
+      await expect(attached).resolves.toEqual({
+        handled: true,
+        value: { ...replay, terminal: { ...replay.terminal, id: projectedId } }
+      })
+      expect(subscribeTerminal).toHaveBeenCalledExactlyOnceWith(
+        projectedId,
+        actualId,
+        windowId,
+        emit
+      )
+    }
+    expect(fetcher).toHaveBeenCalledExactlyOnceWith(
+      new URL(`http://localhost/v1/terminals/${actualId}`),
+      expect.objectContaining({ method: 'GET' })
+    )
+  }
+)
 
 it('fences a remote terminal during transfer and rebinds its projected identity', async () => {
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar

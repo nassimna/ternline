@@ -3563,11 +3563,16 @@ export class NodeSidecar {
             await this.assertTerminalOwner(windowId, id)
             this.closedTerminalCheckpoints?.delete(id)
             const actualId = this.remoteTerminalFor(windowId, id)
-            const attached = terminalAttachResultSchema.parse(await this.client.attach(actualId))
-            const result = terminalAttachResultSchema.parse({
-              ...attached,
-              terminal: { ...attached.terminal, id }
-            })
+            // The client skips its response schema for HTTP 204.
+            const attached =
+              (await this.client.attach(actualId)) ?? terminalAttachResultSchema.parse(undefined)
+            const result =
+              attached.terminal.id === id
+                ? attached
+                : terminalAttachResultSchema.parse({
+                    ...attached,
+                    terminal: { ...attached.terminal, id }
+                  })
             await this.subscribeTerminal(id, actualId, windowId, emitTerminalEvent)
             return { handled: true, value: result }
           })()
