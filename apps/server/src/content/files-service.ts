@@ -26,6 +26,7 @@ const MAX_SCAN = 4096
 const MAX_FILE = 8 * 1024 * 1024
 const MAX_SAVE = 256 * 1024
 const MAX_SCAN_MS = 500
+const DISALLOWED_TEXT_CONTROLS = new RegExp(String.raw`[\p{Cc}--[\t\n\r]]`, 'v')
 
 type Identity = string
 type Root = {
@@ -470,19 +471,12 @@ export class FilesService {
       const chunk = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
         bytes.subarray(params.offset, end)
       )
-      if (!allowControls) {
-        for (let index = 0; index < chunk.length; index++) {
-          const code = chunk.charCodeAt(index)
-          if (
-            (code < 32 && code !== 9 && code !== 10 && code !== 13) ||
-            (code >= 127 && code <= 159)
-          )
-            return {
-              kind: 'unavailable' as const,
-              document: params.document,
-              reason: 'binary' as const,
-              displayName: document.label
-            }
+      if (!allowControls && DISALLOWED_TEXT_CONTROLS.test(chunk)) {
+        return {
+          kind: 'unavailable' as const,
+          document: params.document,
+          reason: 'binary' as const,
+          displayName: document.label
         }
       }
       return {
