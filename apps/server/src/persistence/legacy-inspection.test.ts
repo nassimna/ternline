@@ -333,20 +333,51 @@ describe('Rust schema-v15 read-only preflight', () => {
     )
   })
 
-  it('rejects a snapshot changed after preflight', async () => {
-    const { path } = await fixture()
-    const reader = new LegacyStateReader(path)
-    try {
-      const database = new Database(path)
-      database.prepare('UPDATE application_snapshot SET revision = ? WHERE singleton = 1').run('5')
-      database.close()
-      expect(() => reader.readSnapshot()).toThrowError(
-        expect.objectContaining({ code: 'invalid_snapshot' })
-      )
-    } finally {
-      reader.close()
+  it.each([
+    ['a BLOB payload', '4', Buffer.from('{}'), 'State snapshot payload is invalid'],
+    ['malformed JSON', '4', '{', 'State snapshot is not JSON'],
+    [
+      'a mismatched revision',
+      '5',
+      null,
+      'State snapshot is invalid or its revision does not match its row'
+    ],
+    [
+      'an invalid row revision with malformed JSON',
+      '04',
+      '{',
+      'State snapshot revision is invalid'
+    ],
+    [
+      'an unsafe row revision with malformed JSON',
+      '9007199254740992',
+      '{',
+      'State snapshot revision exceeds the safe range'
+    ]
+  ])(
+    'rejects %s during preflight and after opening the reader',
+    async (_case, revision, payload, message) => {
+      const { path } = await fixture()
+      const reader = new LegacyStateReader(path)
+      try {
+        const database = new Database(path)
+        try {
+          database
+            .prepare(
+              'UPDATE application_snapshot SET revision = ?, json_payload = COALESCE(?, json_payload) WHERE singleton = 1'
+            )
+            .run(revision, payload)
+        } finally {
+          database.close()
+        }
+        const error: unknown = expect.objectContaining({ code: 'invalid_snapshot', message })
+        expect(() => inspectLegacyDatabase(path)).toThrowError(error)
+        expect(() => reader.readSnapshot()).toThrowError(error)
+      } finally {
+        reader.close()
+      }
     }
-  })
+  )
 
   it('rejects a compatibility change after preflight', async () => {
     const { path } = await fixture()
