@@ -22,6 +22,22 @@ describe('safe Markdown previews', () => {
     ])
   })
 
+  it.each(['https://example.com/docs', 'https://example.com/docs(v2(draft))'])(
+    'preserves trailing parentheses after a link to %s',
+    (href) => {
+      expect(parseSafeMarkdown(`Read [the guide](${href}) (updated).`)).toEqual([
+        {
+          kind: 'paragraph',
+          children: [
+            { kind: 'text', text: 'Read ' },
+            { kind: 'link', label: 'the guide', href },
+            { kind: 'text', text: ' (updated).' }
+          ]
+        }
+      ])
+    }
+  )
+
   it('parses a link after http in the surrounding text', () => {
     expect(parseSafeMarkdown('Use http or [the secure version](https://example.com).')).toEqual([
       {
