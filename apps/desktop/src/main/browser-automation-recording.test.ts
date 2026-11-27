@@ -1,8 +1,11 @@
+import { runInNewContext } from 'node:vm'
+
 import { describe, expect, it, vi } from 'vitest'
 
 import { BrowserAutomationRecording } from './browser-automation-recording'
 
 const recordingWindow = vi.hoisted(() => ({
+  loadURL: vi.fn(),
   webContents: {
     setAudioMuted: vi.fn(),
     setWindowOpenHandler: vi.fn(),
@@ -72,6 +75,56 @@ function uintField(id: string, value: number): Buffer {
 }
 
 describe('BrowserAutomationRecording', () => {
+  it('encodes all recording chunks as standard padded Base64', async () => {
+    const firstChunk = Uint8Array.from({ length: 32767 }, (_, index) => index % 256)
+    const secondChunk = Uint8Array.of(0xff, 0xfe, 0xfd, 0xfc)
+
+    class MediaRecorder {
+      static isTypeSupported = () => true
+      ondataavailable!: (event: { data: Blob }) => void
+      onstop!: () => Promise<void>
+
+      start() {}
+
+      stop() {
+        this.ondataavailable({ data: new Blob([firstChunk]) })
+        this.ondataavailable({ data: new Blob([secondChunk]) })
+        return this.onstop()
+      }
+    }
+
+    class RendererUint8Array extends Uint8Array {
+      toBase64() {
+        return Buffer.from(this).toString('base64')
+      }
+    }
+
+    const canvas = { getContext: () => ({}), captureStream: () => ({ getTracks: () => [] }) }
+    const window = {} as {
+      recording: { start: () => void; recorder: MediaRecorder; done: Promise<string> }
+    }
+    recordingWindow.webContents.executeJavaScript.mockImplementationOnce((script: string) => {
+      runInNewContext(script, {
+        Blob,
+        btoa,
+        document: { querySelector: () => canvas },
+        MediaRecorder,
+        performance,
+        Uint8Array: RendererUint8Array,
+        window
+      })
+    })
+
+    const recording = new BrowserAutomationRecording(100, 50)
+    await recording.initialize()
+    window.recording.start()
+    await window.recording.recorder.stop()
+
+    expect(await window.recording.done).toBe(
+      Buffer.concat([firstChunk, secondChunk]).toString('base64')
+    )
+  })
+
   it.each([
     {
       name: 'live unknown-size clusters with VP9 alpha block groups',
