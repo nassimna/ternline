@@ -22,11 +22,10 @@ export function previewLines(value: string): string[] {
 function inlineNodes(value: string): SafeMarkdownNode[] {
   const bounded = takeCharacters(value, 16_384)
   if (!bounded.includes('<') && !bounded.includes('>')) {
-    const a = bounded.indexOf('[')
-    if (a >= 0) {
-      let labelStart = a
-      let bracketDepth = 1
-      let b = a + 1
+    if (bounded.includes('[')) {
+      let labelStart = 0
+      let bracketDepth = 0
+      let b = 0
       for (; b < bounded.length; b++) {
         const character = bounded[b]
         if (character === '\\') {
@@ -34,9 +33,9 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
         } else if (character === '[') {
           if (bracketDepth === 0) labelStart = b
           bracketDepth++
-        } else if (character === ']') {
+        } else if (character === ']' && bracketDepth > 0) {
           if (bounded[b + 1] === '(') break
-          if (bracketDepth > 0) bracketDepth--
+          bracketDepth--
         }
       }
       if (b >= bounded.length) return [{ kind: 'text', text: bounded }]

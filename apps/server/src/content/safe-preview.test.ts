@@ -62,6 +62,36 @@ describe('safe Markdown previews', () => {
     }
   )
 
+  it('keeps a link with an escaped opening bracket as literal text', () => {
+    const source = String.raw`Literal \[preview](https://example.com/preview).`
+
+    expect(parseSafeMarkdown(source)).toEqual([
+      { kind: 'paragraph', children: [{ kind: 'text', text: source }] }
+    ])
+  })
+
+  it.each([
+    ['an escaped link', String.raw`Use \[preview](https://example.com/preview) or `],
+    [
+      'bracketed prose and an escaped link',
+      String.raw`Use [preview] then \[draft](https://example.com/draft) or `
+    ],
+    ['an even run of backslashes', String.raw`Use \\`]
+  ])('finds a link after %s', (_name, prefix) => {
+    const href = 'https://example.com/guide'
+
+    expect(parseSafeMarkdown(`${prefix}[the guide](${href}).`)).toEqual([
+      {
+        kind: 'paragraph',
+        children: [
+          { kind: 'text', text: prefix },
+          { kind: 'link', label: 'the guide', href },
+          { kind: 'text', text: '.' }
+        ]
+      }
+    ])
+  })
+
   it('preserves escaped brackets in a link label', () => {
     const label = String.raw`Use \] or \[ in substitutions`
     const href = 'https://example.com/guide'
