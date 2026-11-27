@@ -233,6 +233,23 @@ describe('safe Markdown previews', () => {
     ])
   })
 
+  it('keeps triple backtick fences inside a four backtick code block', () => {
+    const source = [
+      '````md',
+      '```sh',
+      'echo hello',
+      '```',
+      '````',
+      '',
+      'Outside the example.'
+    ].join('\n')
+
+    expect(parseSafeMarkdown(source)).toStrictEqual([
+      { kind: 'codeBlock', language: 'md', text: '```sh\necho hello\n```' },
+      { kind: 'paragraph', children: [{ kind: 'text', text: 'Outside the example.' }] }
+    ])
+  })
+
   it('bounds fenced code language and text at their UTF-16 limits', () => {
     const languagePrefix = 'a'.repeat(31)
     const rows = `${'a'.repeat(16_384)}\n`.repeat(3)
