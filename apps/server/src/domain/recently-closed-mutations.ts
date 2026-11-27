@@ -6,7 +6,7 @@ import {
 } from '@agent-workspace/contracts'
 
 import { pruneHistory, validFocus } from './window-mutations'
-import { initialBrowserMetadata } from './workspace-mutations'
+import { initialBrowserMetadata, recordFocusAfterPruning } from './workspace-mutations'
 
 export interface ExactReopenTarget {
   windowId: string
@@ -45,15 +45,6 @@ function currentFocus(state: DurableApplicationState): Focus {
     paneId: pane.id,
     tabId: pane.selectedTabId
   }
-}
-
-function sameFocus(a: Focus, b: Focus): boolean {
-  return (
-    a.windowId === b.windowId &&
-    a.workspaceId === b.workspaceId &&
-    a.paneId === b.paneId &&
-    a.tabId === b.tabId
-  )
 }
 
 /** Consumes one redacted tab record and creates fresh durable tab/browser identities. */
@@ -157,16 +148,7 @@ export function reopenClosedTab(
   pruneHistory(next)
   const history = next.focusHistory
   const focus = currentFocus(next)
-  if (!sameFocus(previousFocus, focus)) {
-    if (history.entries.length === 0 && validFocus(next, previousFocus))
-      history.entries.push(previousFocus)
-    if (history.entries.length === 0 || !sameFocus(history.entries.at(-1)!, focus)) {
-      history.entries = history.entries.slice(0, history.cursor + 1)
-      history.entries.push(focus)
-    }
-    if (history.entries.length > 128) history.entries.shift()
-    history.cursor = history.entries.length - 1
-  }
+  recordFocusAfterPruning(history, previousFocus, focus, (entry) => validFocus(next, entry))
   next.revision += 1
   if (!durableApplicationStateSchema.safeParse(next).success)
     throw new RecentlyClosedError('policy_denied')
