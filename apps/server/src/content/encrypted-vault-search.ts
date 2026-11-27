@@ -32,6 +32,9 @@ const fail = (code: VaultSearchError['code'], message: string): never => {
 
 type Root = ReturnType<FilesService['listRoots']>['roots'][number]
 
+const isAuditedAgent = (session: ReturnType<ApplicationStateStore['getAgentSession']>['session']) =>
+  session.adapterId === 'codex' && session.adapterVersion === '0.142.4'
+
 /** Search commands backed by Rust-compatible encrypted SQLite and consent. */
 export class EncryptedVaultSearch {
   private readonly operations = new Map<string, AbortController>()
@@ -60,8 +63,7 @@ export class EncryptedVaultSearch {
   private agent(id: string) {
     try {
       const session = this.state.getAgentSession(id).session
-      if (session.adapterId !== 'codex' || session.adapterVersion !== '0.142.4') return undefined
-      return session
+      return isAuditedAgent(session) ? session : undefined
     } catch {
       return undefined
     }
@@ -342,6 +344,7 @@ export class EncryptedVaultSearch {
         }
         await yieldToLoop()
         if (operation.signal.aborted) fail('cancelled', 'Search query was cancelled')
+        let agentRevisions: Map<string, number> | undefined
         for (const result of page.results) {
           if (operation.signal.aborted) fail('cancelled', 'Search query was cancelled')
           examined++
@@ -355,8 +358,22 @@ export class EncryptedVaultSearch {
               accessible = false
             }
           } else {
-            const session = this.agent(result.document.documentId)
-            accessible = Boolean(session && session.revision === result.document.identityVersion)
+            if (!agentRevisions) {
+              try {
+                const { sessions } = this.state.listAgentCatalog({ catalogVersion: 1 })
+                const revisions = new Map<string, number>()
+                for (const session of sessions) {
+                  if (isAuditedAgent(session))
+                    revisions.set(session.binding.agentSessionId, session.revision)
+                }
+                agentRevisions = revisions
+              } catch {
+                // A failed lookup only excludes this candidate.
+                continue
+              }
+            }
+            accessible =
+              agentRevisions.get(result.document.documentId) === result.document.identityVersion
           }
           if (accessible) valid.push(result)
           if (valid.length > params.limit)
