@@ -23,7 +23,7 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
   const bounded = takeCharacters(value, 16_384)
   if (!bounded.includes('<') && !bounded.includes('>')) {
     const a = bounded.indexOf('[')
-    const b = bounded.indexOf('](')
+    const b = bounded.indexOf('](', a + 1)
     if (a >= 0 && b > a) {
       let c = b + 2
       let depth = 0
