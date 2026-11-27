@@ -4,7 +4,12 @@ import { lstatSync } from 'node:fs'
 import Database from 'better-sqlite3'
 
 import { readLegacySnapshotConnection } from '../persistence/legacy-state-reader'
-import type { SidebarPlacement, TextBoxDocument } from './content-catalog'
+import {
+  documentFromRow,
+  type SidebarPlacement,
+  type TextBoxDocument,
+  type TextBoxRow
+} from './content-catalog'
 
 const EPOCH = '00000000-0000-0000-0000-000000000001'
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu
@@ -74,17 +79,6 @@ export interface ContentMutationOptions {
   authorize?: (binding: { windowId: string; workspaceId?: string }) => boolean
 }
 
-type DocumentRow = {
-  text_box_document_id: string
-  workspace_id: string
-  window_id: string
-  title: string
-  text_content: string
-  content_revision: number
-  created_at_ms: number
-  updated_at_ms: number
-}
-
 function fail(code: ContentMutationCode, message: string): never {
   throw new ContentMutationError(code, message)
 }
@@ -113,19 +107,6 @@ function textValid(title: string, value: string): void {
     Buffer.byteLength(value, 'utf8') > 262_144
   ) {
     fail('invalid_params', 'Invalid TextBox content')
-  }
-}
-
-function documentFromRow(row: DocumentRow): TextBoxDocument {
-  return {
-    textBoxDocumentId: row.text_box_document_id,
-    workspaceId: row.workspace_id,
-    windowId: row.window_id,
-    title: row.title,
-    text: row.text_content,
-    contentRevision: row.content_revision,
-    createdAtMs: row.created_at_ms,
-    updatedAtMs: row.updated_at_ms
   }
 }
 
@@ -229,12 +210,12 @@ export class ContentMutations {
       .run(namespace, EPOCH, mutation.idempotencyKey, mutation.requestHash, json, timestamp)
   }
 
-  private row(id: string): DocumentRow | undefined {
+  private row(id: string): TextBoxRow | undefined {
     return this.database
       .prepare(
         'SELECT text_box_document_id,workspace_id,window_id,title,text_content,content_revision,created_at_ms,updated_at_ms FROM text_box_documents WHERE text_box_document_id=?'
       )
-      .get(id) as DocumentRow | undefined
+      .get(id) as TextBoxRow | undefined
   }
 
   saveSidebarPlacement(params: {
