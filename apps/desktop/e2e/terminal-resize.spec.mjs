@@ -51,7 +51,14 @@ test('keeps exited output readable through resizes and restarts a working shell'
     const environment = { ...process.env, ZDOTDIR: profileDirectory }
     delete environment.ELECTRON_RUN_AS_NODE
     application = await electron.launch({
-      args: [mainEntry, `--user-data-dir=${profileDirectory}`, '--mute-audio', '--automation'],
+      args: [
+        mainEntry,
+        `--user-data-dir=${profileDirectory}`,
+        '--mute-audio',
+        '--automation',
+        '--disable-gpu',
+        '--disable-software-rasterizer'
+      ],
       cwd: desktopDirectory,
       env: environment
     })
