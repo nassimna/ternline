@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
+import { processDescendants } from './process-descendants'
+
 const execute = promisify(execFile)
 
 /** lsof's process selection is intersected with TCP listeners, including IPv6. */
@@ -10,25 +12,18 @@ export async function macosListeningPorts(rootPid: number): Promise<number[]> {
     timeout: 2_000,
     maxBuffer: 1024 * 1024
   }).catch(() => ({ stdout: '' }))
-  const relations = tree
-    .trim()
-    .split('\n')
-    .map((line) => line.trim().split(/\s+/).map(Number))
-  if (!relations.some(([pid]) => pid === rootPid)) return []
-  const descendants = new Set([rootPid])
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const [pid, parent] of relations) {
-      if (pid && parent && descendants.has(parent) && !descendants.has(pid)) {
-        descendants.add(pid)
-        changed = true
-      }
-    }
+  const relations: Array<readonly [number, number]> = []
+  let hasRoot = false
+  for (const line of tree.trim().split('\n')) {
+    const [pid, parent] = line.trim().split(/\s+/).map(Number)
+    if (pid === rootPid) hasRoot = true
+    if (pid && parent) relations.push([pid, parent])
   }
+  if (!hasRoot) return []
+  const descendants = processDescendants(rootPid, relations)
   const { stdout } = await execute(
     '/usr/sbin/lsof',
-    ['-nP', '-a', '-p', [...descendants].join(','), '-iTCP', '-sTCP:LISTEN', '-Fn'],
+    ['-nP', '-a', '-p', descendants.join(','), '-iTCP', '-sTCP:LISTEN', '-Fn'],
     { timeout: 2_000, maxBuffer: 1024 * 1024 }
   ).catch(() => ({ stdout: '' }))
   const ports = new Set<number>()

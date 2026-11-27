@@ -1,5 +1,7 @@
 import { readFile, readdir, readlink } from 'node:fs/promises'
 
+import { processDescendants } from './process-descendants'
+
 const MAX_LISTENING_PORTS = 16
 const PID_BATCH_SIZE = 8
 
@@ -60,18 +62,7 @@ async function processTree(rootPid: number): Promise<number[]> {
     )
   }
   if (!relations.has(rootPid)) return []
-  const descendants = new Set([rootPid])
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const [pid, parent] of relations) {
-      if (descendants.has(parent) && !descendants.has(pid)) {
-        descendants.add(pid)
-        changed = true
-      }
-    }
-  }
-  return [...descendants]
+  return processDescendants(rootPid, relations)
 }
 
 function parseTcpListeners(table: string): Array<[string, number]> {
