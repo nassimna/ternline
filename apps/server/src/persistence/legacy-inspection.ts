@@ -154,27 +154,15 @@ export function inspectLegacyConnection(database: Database.Database): LegacyData
     let workspaceCount = 0
     if (stored) {
       const revision = parseLegacyRevision(stored.revision)
-      if (typeof stored.json_payload !== 'string') {
-        throw new LegacyDatabaseError('invalid_snapshot', 'State snapshot payload is invalid')
-      }
-      let payload: unknown
-      try {
-        payload = JSON.parse(stored.json_payload)
-      } catch {
-        throw new LegacyDatabaseError('invalid_snapshot', 'State snapshot is not JSON')
-      }
-      const snapshot =
+      const snapshot = parseLegacySnapshotPayload<{ revision: number; workspaces: unknown[] }>(
+        stored.json_payload,
+        revision,
         migration.legacy_snapshot_compatibility === 1
-          ? legacySnapshotEnvelope.safeParse(payload)
-          : durableApplicationStateSchema.safeParse(payload)
-      if (!snapshot.success || snapshot.data.revision !== revision) {
-        throw new LegacyDatabaseError(
-          'invalid_snapshot',
-          'State snapshot is invalid or its revision does not match its row'
-        )
-      }
+          ? legacySnapshotEnvelope
+          : durableApplicationStateSchema
+      )
       snapshotRevision = revision
-      workspaceCount = snapshot.data.workspaces.length
+      workspaceCount = snapshot.workspaces.length
     }
 
     const windowStateCount = (
@@ -217,4 +205,28 @@ export function parseLegacyRevision(value: unknown): number {
     )
   }
   return revision
+}
+
+export function parseLegacySnapshotPayload<T extends { revision: number }>(
+  value: unknown,
+  revision: number,
+  schema: z.ZodType<T>
+): T {
+  if (typeof value !== 'string') {
+    throw new LegacyDatabaseError('invalid_snapshot', 'State snapshot payload is invalid')
+  }
+  let payload: unknown
+  try {
+    payload = JSON.parse(value)
+  } catch {
+    throw new LegacyDatabaseError('invalid_snapshot', 'State snapshot is not JSON')
+  }
+  const result = schema.safeParse(payload)
+  if (!result.success || result.data.revision !== revision) {
+    throw new LegacyDatabaseError(
+      'invalid_snapshot',
+      'State snapshot is invalid or its revision does not match its row'
+    )
+  }
+  return result.data
 }

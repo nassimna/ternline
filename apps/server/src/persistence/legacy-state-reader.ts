@@ -10,7 +10,8 @@ import {
 import {
   inspectLegacyConnection,
   LegacyDatabaseError,
-  parseLegacyRevision
+  parseLegacyRevision,
+  parseLegacySnapshotPayload
 } from './legacy-inspection'
 
 /** A read-only adapter for a schema-v15 Rust database, including its full snapshot payload. */
@@ -91,23 +92,7 @@ export function readLegacySnapshotConnection(database: Database.Database): Durab
       )
     }
     const revision = parseLegacyRevision(stored.revision)
-    if (typeof stored.json_payload !== 'string') {
-      throw new LegacyDatabaseError('invalid_snapshot', 'State snapshot payload is invalid')
-    }
-    let payload: unknown
-    try {
-      payload = JSON.parse(stored.json_payload)
-    } catch {
-      throw new LegacyDatabaseError('invalid_snapshot', 'State snapshot is not JSON')
-    }
-    const result = durableApplicationStateSchema.safeParse(payload)
-    if (!result.success || result.data.revision !== revision) {
-      throw new LegacyDatabaseError(
-        'invalid_snapshot',
-        'State snapshot is invalid or its revision does not match its row'
-      )
-    }
-    return result.data
+    return parseLegacySnapshotPayload(stored.json_payload, revision, durableApplicationStateSchema)
   } catch (error) {
     if (error instanceof LegacyDatabaseError) throw error
     if (error instanceof Database.SqliteError) {
