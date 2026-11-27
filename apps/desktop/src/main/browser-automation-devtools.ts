@@ -589,23 +589,20 @@ function boundedArgument(argument: RemoteArgument): RemoteArgument {
     ...(argument.unserializableValue
       ? { unserializableValue: argument.unserializableValue.slice(0, 2048) }
       : {}),
-    ...(argument.preview !== undefined
-      ? {
-          preview:
-            Buffer.byteLength(JSON.stringify(argument.preview)) <= 2048
-              ? argument.preview
-              : JSON.stringify(argument.preview).slice(0, 2048)
-        }
-      : {}),
-    ...(argument.value !== undefined
-      ? {
-          value:
-            Buffer.byteLength(JSON.stringify(argument.value)) <= 2048
-              ? argument.value
-              : JSON.stringify(argument.value).slice(0, 2048)
-        }
-      : {})
+    ...(argument.preview !== undefined ? { preview: boundedArgumentJson(argument.preview) } : {}),
+    ...(argument.value !== undefined ? { value: boundedArgumentJson(argument.value) } : {})
   }
+}
+
+function boundedArgumentJson(value: unknown): unknown {
+  const limit = 2048
+  if (typeof value === 'string' && value.length > limit) {
+    // The opening quote and at least one JSON code unit per input code unit
+    // keep any surrogate escape introduced by the input slice beyond the retained prefix.
+    return JSON.stringify(value.slice(0, limit)).slice(0, limit)
+  }
+  const json = JSON.stringify(value)
+  return Buffer.byteLength(json) <= limit ? value : json.slice(0, limit)
 }
 
 function boundedStack(stack: StackTrace): string {
