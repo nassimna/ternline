@@ -13,7 +13,7 @@ import { projectStateToWindow } from './window-projection'
 import { projectApplicationSnapshot } from './application-projection'
 import { projectOrganization } from './organization-mutations'
 import { reopenClosedTab } from './recently-closed-mutations'
-import { closeTab, openBrowserTab, splitPane } from './workspace-mutations'
+import { closeTab, focusPane, moveTab, openBrowserTab, splitPane } from './workspace-mutations'
 import { navigateBrowser, BrowserMutationError } from './browser-mutations'
 
 function fixture() {
@@ -499,6 +499,79 @@ it.each([
 
   expect(opened.workspaces[0]!.tabs[tabId]!.content).toStrictEqual(expected)
   expect(split.workspaces[0]!.tabs[tabId]!.content).toStrictEqual(expected)
+})
+
+it('selects the adjacent source tab and collapses the split when moving the last source tab', () => {
+  const { state } = fixture()
+  const { id: workspaceId, selectedPaneId: sourcePaneId, panes } = state.workspaces[0]!
+  const terminalTabId = panes[sourcePaneId]!.selectedTabId
+  const destinationPaneId = randomUUID()
+  const destinationTabId = randomUUID()
+  const browserTabId = randomUUID()
+  const split = splitPane(
+    state,
+    {
+      workspaceId,
+      targetPaneId: sourcePaneId,
+      axis: 'horizontal',
+      ratio: 0.5,
+      placement: 'after',
+      content: { kind: 'newTerminal', launch: { cwd: '/tmp', rows: 24, cols: 80 } }
+    },
+    {
+      paneId: destinationPaneId,
+      splitId: randomUUID(),
+      tabId: destinationTabId,
+      browserSessionId: randomUUID()
+    },
+    2
+  )
+  const opened = openBrowserTab(
+    split,
+    {
+      workspaceId,
+      paneId: sourcePaneId,
+      destinationIndex: 0,
+      metadata: { url: 'https://example.com/' }
+    },
+    browserTabId,
+    randomUUID(),
+    3
+  )
+  const beforeMove = structuredClone(opened)
+  const moved = moveTab(
+    opened,
+    { workspaceId, tabId: browserTabId, destinationPaneId, destinationIndex: 0 },
+    4
+  )
+  const movedWorkspace = moved.workspaces[0]!
+  expect(movedWorkspace.layout).toEqual(beforeMove.workspaces[0]!.layout)
+  expect(movedWorkspace.panes[sourcePaneId]).toMatchObject({
+    tabs: [terminalTabId],
+    selectedTabId: terminalTabId
+  })
+  expect(movedWorkspace.panes[destinationPaneId]).toMatchObject({
+    tabs: [browserTabId, destinationTabId],
+    selectedTabId: browserTabId
+  })
+  expect(movedWorkspace.selectedPaneId).toBe(destinationPaneId)
+  expect(opened).toEqual(beforeMove)
+
+  const refocused = focusPane(moved, workspaceId, sourcePaneId, 5)
+  const beforeCollapse = structuredClone(refocused)
+  const collapsed = moveTab(
+    refocused,
+    { workspaceId, tabId: terminalTabId, destinationPaneId, destinationIndex: 1 },
+    6
+  ).workspaces[0]!
+  expect(collapsed.layout).toEqual({ kind: 'leaf', paneId: destinationPaneId })
+  expect(collapsed.panes[sourcePaneId]).toBeUndefined()
+  expect(collapsed.panes[destinationPaneId]).toMatchObject({
+    tabs: [browserTabId, terminalTabId, destinationTabId],
+    selectedTabId: terminalTabId
+  })
+  expect(collapsed.selectedPaneId).toBe(destinationPaneId)
+  expect(refocused).toEqual(beforeCollapse)
 })
 
 it('reopens a browser tab with a fresh session in the default partition', () => {
