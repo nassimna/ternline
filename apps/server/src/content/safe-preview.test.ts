@@ -351,6 +351,32 @@ describe('bounded diffs', () => {
     })
   })
 
+  it('uses hidden matches in both long inputs before marking excess visible duplicates', () => {
+    const sharedRows = Array.from({ length: 2043 }, () => 'shared')
+    const hiddenRows = Array.from({ length: 2048 }, (_, index) => `hidden ${index}`)
+    const before = ['moved out', 'moved out', 'old', 'moved out', '', ...sharedRows, ...hiddenRows]
+    const after = ['moved in', 'moved in', 'new', 'moved in', '', ...sharedRows, ...hiddenRows]
+
+    expect(
+      boundedDiff(
+        [...before, 'moved in', 'moved in'].join('\r\n'),
+        [...after, 'moved out', 'moved out'].join('\n')
+      )
+    ).toStrictEqual({
+      lines: [
+        { kind: 'removed', text: 'old' },
+        { kind: 'removed', text: 'moved out' },
+        { kind: 'context', text: 'moved in' },
+        { kind: 'context', text: 'moved in' },
+        { kind: 'added', text: 'new' },
+        { kind: 'added', text: 'moved in' },
+        { kind: 'context', text: '' },
+        ...sharedRows.map((text) => ({ kind: 'context', text }))
+      ],
+      truncated: true
+    })
+  })
+
   it('does not report truncation when all 4096 diff lines fit', () => {
     const result = boundedDiff('old\n'.repeat(2048), 'new\n'.repeat(2048))
     expect(result.lines).toEqual([

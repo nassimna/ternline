@@ -120,8 +120,21 @@ export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
   return nodes
 }
 
-function countLines(lines: string[]): Map<string, number> {
+function countLines(
+  lines: string[],
+  oppositePreview: string[],
+  rowLimit: number
+): Map<string, number> {
   const counts = new Map<string, number>()
+  // Use the hidden tail length to estimate whether filtering can save map writes.
+  if (lines.length - rowLimit > oppositePreview.length) {
+    for (const line of oppositePreview) counts.set(line, 0)
+    for (const line of lines) {
+      const count = counts.get(line)
+      if (count !== undefined) counts.set(line, count + 1)
+    }
+    return counts
+  }
   for (const line of lines) counts.set(line, (counts.get(line) ?? 0) + 1)
   return counts
 }
@@ -148,10 +161,11 @@ export function boundedDiff(before: string, after: string) {
     }
   }
 
-  const beforeCounts = countLines(beforeLines)
-  const afterCounts = countLines(afterLines)
+  const beforePreview = beforeLines.slice(0, rowLimit)
+  const beforeCounts = countLines(beforeLines, afterPreview, rowLimit)
+  const afterCounts = countLines(afterLines, beforePreview, rowLimit)
   const lines: Array<{ kind: 'removed' | 'context' | 'added'; text: string }> = []
-  for (const line of beforeLines.slice(0, rowLimit)) {
+  for (const line of beforePreview) {
     const remaining = afterCounts.get(line) ?? 0
     if (remaining > 0) {
       afterCounts.set(line, remaining - 1)
