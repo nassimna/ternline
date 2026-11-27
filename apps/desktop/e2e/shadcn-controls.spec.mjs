@@ -127,7 +127,9 @@ test('shared surfaces, palette, and alpha settings work through the real desktop
           path: join(evidenceDirectory, `sidebar-a-${theme}-${viewport.width}.png`)
         })
       }
-      await page.getByRole('button', { name: 'Open update settings' }).click()
+      const updateSettings = page.getByRole('button', { name: 'Open update settings' })
+      await expect(updateSettings).toBeVisible()
+      await updateSettings.click()
       const settings = page.getByRole('dialog', { name: 'Settings', exact: true })
       const channel = settings.getByRole('combobox', { name: 'Update channel' })
       await expect(channel).toHaveText('Alpha')
