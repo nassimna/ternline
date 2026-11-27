@@ -24,8 +24,18 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
   if (!bounded.includes('<') && !bounded.includes('>')) {
     const a = bounded.indexOf('[')
     const b = bounded.indexOf('](')
-    const c = bounded.lastIndexOf(')')
-    if (a >= 0 && b > a && c > b) {
+    if (a >= 0 && b > a) {
+      let c = b + 2
+      let depth = 0
+      for (; c < bounded.length; c++) {
+        if (bounded[c] === '(') depth++
+        if (bounded[c] === ')') {
+          if (depth === 0) break
+          depth--
+        }
+      }
+      if (c === bounded.length) return [{ kind: 'text', text: bounded }]
+
       const href = bounded.slice(b + 2, c)
       const label = bounded.slice(a + 1, b)
       try {
