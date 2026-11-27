@@ -210,13 +210,19 @@ function encodeUnsigned(value: number): Buffer {
   return bytes
 }
 
-function encodeElement(id: number, data: Buffer): Buffer {
+function encodeElementHeader(id: number, dataLength: number): Buffer {
   let length = 1
-  while (data.length >= 2 ** (7 * length) - 1) length += 1
-  const size = Buffer.alloc(length)
-  size.writeUIntBE(data.length, 0, length)
-  size[0] = size[0]! | (1 << (8 - length))
-  return Buffer.concat([Buffer.from(id.toString(16), 'hex'), size, data])
+  while (dataLength >= 2 ** (7 * length) - 1) length += 1
+  const idBytes = Buffer.from(id.toString(16), 'hex')
+  const header = Buffer.alloc(idBytes.length + length)
+  idBytes.copy(header)
+  header.writeUIntBE(dataLength, idBytes.length, length)
+  header[idBytes.length] = header[idBytes.length]! | (1 << (8 - length))
+  return header
+}
+
+function encodeElement(id: number, data: Buffer): Buffer {
+  return Buffer.concat([encodeElementHeader(id, data.length), data])
 }
 
 /** MediaRecorder writes live WebM without the metadata needed by saved-file players. */
@@ -256,12 +262,15 @@ function finalizeWebmRecording(bytes: Buffer, durationMs: number): Buffer {
     .map((child) => ({
       source: child,
       position: 0,
-      bytes:
+      fragments:
         child.id === INFO_ID
-          ? updatedInfo
+          ? [updatedInfo]
           : child.id === CLUSTER_ID
-            ? encodeElement(CLUSTER_ID, bytes.subarray(child.dataStart, child.end))
-            : bytes.subarray(child.start, child.end)
+            ? [
+                encodeElementHeader(CLUSTER_ID, child.end - child.dataStart),
+                bytes.subarray(child.dataStart, child.end)
+              ]
+            : [bytes.subarray(child.start, child.end)]
     }))
   const seekHead = (positions: { id: number; position: number }[]) =>
     encodeElement(
@@ -288,7 +297,7 @@ function finalizeWebmRecording(bytes: Buffer, durationMs: number): Buffer {
   const cuePoints: Buffer[] = []
   for (const chunk of chunks) {
     chunk.position = offset
-    offset += chunk.bytes.length
+    for (const fragment of chunk.fragments) offset += fragment.length
     if (chunk.source.id !== CLUSTER_ID) continue
     const blocks = readElements(bytes, chunk.source.dataStart, chunk.source.end)
     const timestamp = blocks.find((block) => block.id === 0xe7)
@@ -330,10 +339,12 @@ function finalizeWebmRecording(bytes: Buffer, durationMs: number): Buffer {
     if (chunk.source.id > 0xffffff) positions[index++]!.position = chunk.position
   }
   cuesPosition.position = offset
-  const data = Buffer.concat([
+  const cues = encodeElement(CUES_ID, Buffer.concat(cuePoints))
+  return Buffer.concat([
+    bytes.subarray(0, segment.start),
+    encodeElementHeader(SEGMENT_ID, offset + cues.length),
     seekHead(positions),
-    ...chunks.map((chunk) => chunk.bytes),
-    encodeElement(CUES_ID, Buffer.concat(cuePoints))
+    ...chunks.flatMap((chunk) => chunk.fragments),
+    cues
   ])
-  return Buffer.concat([bytes.subarray(0, segment.start), encodeElement(SEGMENT_ID, data)])
 }
