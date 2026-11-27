@@ -157,7 +157,9 @@ test('native browser panes navigate securely and release WebContentsView instanc
       .locator('.pane-tab-select[data-selected="true"]')
       .getAttribute('data-tab-id')
     if (!browserTabId) throw new Error('Selected browser tab has no tab ID')
-    await selectedPane.getByRole('button', { name: 'Add tab' }).click()
+    const addTab = selectedPane.getByRole('button', { name: 'Add tab' })
+    await expect(addTab).toBeVisible()
+    await addTab.click()
     await renderer.getByRole('menuitem', { name: 'Terminal', exact: true }).click()
     await expect(selectedPane.locator('.pane-tab-select')).toHaveCount(2)
     const terminalTabId = await selectedPane
