@@ -3,13 +3,16 @@ import { realpathSync } from 'node:fs'
 
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { expect, it, vi } from 'vitest'
+import { ZodError } from 'zod'
 
 import {
   assertLayoutBindingsPreserved,
+  deleteLayout,
   planLayoutApplication,
   saveLayout
 } from './layout-mutations'
-import { initialBrowserMetadata } from './workspace-mutations'
+import { setWorkspacePinned } from './organization-mutations'
+import { initialBrowserMetadata, WorkspaceMutationError } from './workspace-mutations'
 
 function fixture() {
   const windowId = randomUUID()
@@ -72,6 +75,54 @@ function fixture() {
   saved.savedLayouts[0]!.template.workspaces[0]!.id = freshWorkspaceId
   return { state: saved, windowId, layoutId, freshWorkspaceId }
 }
+
+it('advances the revision once when deleting a layout or pinning a workspace', () => {
+  const { state, layoutId } = fixture()
+  state.revision = Number.MAX_SAFE_INTEGER - 1
+  const before = structuredClone(state)
+
+  expect(deleteLayout(state, layoutId)).toStrictEqual({
+    ...before,
+    revision: Number.MAX_SAFE_INTEGER,
+    savedLayouts: []
+  })
+  expect(setWorkspacePinned(state, state.selectedWorkspaceId, true)).toStrictEqual({
+    ...before,
+    revision: Number.MAX_SAFE_INTEGER,
+    workspacePins: [state.selectedWorkspaceId]
+  })
+  expect(state).toStrictEqual(before)
+})
+
+it('rejects layout deletion and workspace pinning at the revision ceiling', () => {
+  const { state, layoutId } = fixture()
+  state.revision = Number.MAX_SAFE_INTEGER
+  const before = structuredClone(state)
+  const overflow: unknown = expect.objectContaining({
+    constructor: WorkspaceMutationError,
+    name: 'WorkspaceMutationError',
+    code: 'revision_overflow',
+    message: 'Application revision cannot advance'
+  })
+
+  expect(() => deleteLayout(state, layoutId)).toThrow(overflow)
+  expect(() => setWorkspacePinned(state, state.selectedWorkspaceId, true)).toThrow(overflow)
+  expect(state).toStrictEqual(before)
+})
+
+it('returns the original state for an unchanged pin at the revision ceiling', () => {
+  const { state } = fixture()
+  state.revision = Number.MAX_SAFE_INTEGER
+
+  expect(setWorkspacePinned(state, state.selectedWorkspaceId, false)).toBe(state)
+})
+
+it('throws a ZodError when a revision can advance but the resulting state is invalid', () => {
+  const { state, layoutId } = fixture()
+  state.workspaceSelection = []
+
+  expect(() => deleteLayout(state, layoutId)).toThrow(ZodError)
+})
 
 it('refuses an imported layout that would remove a workspace needed by copy resume', () => {
   const { state, windowId, layoutId, freshWorkspaceId } = fixture()

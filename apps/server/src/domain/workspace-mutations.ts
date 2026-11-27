@@ -534,6 +534,14 @@ export function filterFocusHistory(
   )
 }
 
+export function commitParsedState(next: DurableApplicationState): DurableApplicationState {
+  if (next.revision >= Number.MAX_SAFE_INTEGER) {
+    throw new WorkspaceMutationError('revision_overflow', 'Application revision cannot advance')
+  }
+  next.revision += 1
+  return durableApplicationStateSchema.parse(next)
+}
+
 function commitChangedState(next: DurableApplicationState): DurableApplicationState {
   if (next.revision >= Number.MAX_SAFE_INTEGER) {
     throw new WorkspaceMutationError('revision_overflow', 'Application revision cannot advance')
