@@ -37,6 +37,7 @@ const AGENT_ATTENTION = {
 
 type V1Replace = Parameters<typeof workspaceCardSlotsReplaceParamsSchema.parse>[0]
 type V2Replace = Parameters<typeof workspaceCardSlotV2ReplaceParamsSchema.parse>[0]
+type Workspace = DurableApplicationState['workspaces'][number]
 type AttentionEvent = {
   event: 'workspace.attentionChanged'
   data: {
@@ -94,11 +95,9 @@ function same<T>(left: T, right: T): boolean {
 }
 
 function targetExists(
-  state: DurableApplicationState,
+  workspace: Workspace,
   notification: DurableApplicationState['notifications'][number]
 ): boolean {
-  const workspace = state.workspaces.find((item) => item.id === notification.workspaceId)
-  if (!workspace) return false
   if (notification.tabId !== null) {
     const tab = workspace.tabs[notification.tabId]
     return !!tab && (notification.paneId === null || notification.paneId === tab.paneId)
@@ -107,10 +106,10 @@ function targetExists(
 }
 
 function fold(
-  state: DurableApplicationState,
   workspaceId: string,
+  workspace: Workspace | undefined,
   slots: WorkspaceCardSlotsSnapshot | undefined,
-  notifications = state.notifications
+  notifications: DurableApplicationState['notifications']
 ): WorkspaceAttentionSnapshot {
   let unreadCount = 0
   let winner: DurableApplicationState['notifications'][number] | undefined
@@ -118,7 +117,8 @@ function fold(
     if (
       notification.workspaceId !== workspaceId ||
       notification.readAt !== null ||
-      !targetExists(state, notification)
+      !workspace ||
+      !targetExists(workspace, notification)
     )
       continue
     unreadCount += 1
@@ -134,8 +134,7 @@ function fold(
       winner = notification
   }
   const agent = AGENT_ATTENTION[slots?.agentStatus?.status ?? 'idle']
-  if (winner && (winner.level === 'error' ? 4 : 1) >= agent.priority) {
-    const workspace = state.workspaces.find((item) => item.id === workspaceId)!
+  if (workspace && winner && (winner.level === 'error' ? 4 : 1) >= agent.priority) {
     const paneId =
       winner.paneId ??
       (winner.tabId === null ? null : (workspace.tabs[winner.tabId]?.paneId ?? null))
@@ -372,7 +371,7 @@ export class CardSlotAttentionService {
       const notifications = notificationsByWorkspace
         ? (notificationsByWorkspace.get(id) ?? [])
         : state.notifications
-      const projected = fold(state, id, this.v1.get(id), notifications)
+      const projected = fold(id, workspace, this.v1.get(id), notifications)
       const previous = this.attention.get(id)
       const next = { ...projected, revision: previous?.revision ?? 0 }
       if (previous && !same({ ...previous, revision: 0 }, projected)) {
@@ -428,13 +427,13 @@ export class CardSlotAttentionService {
       fail('revision_conflict', 'The workspace attention revision changed before acknowledgement')
     if (notification.readAt !== null)
       fail('attention_already_acknowledged', 'The notification was already acknowledged')
-    if (!targetExists(state, notification))
+    const workspace = state.workspaces.find((item) => item.id === notification.workspaceId)
+    if (!workspace || !targetExists(workspace, notification))
       fail(
         'attention_target_unavailable',
         'The exact acknowledgement target is no longer available'
       )
     if (input.data.mode === 'focused') {
-      const workspace = state.workspaces.find((item) => item.id === notification.workspaceId)!
       const paneId =
         notification.paneId ??
         (notification.tabId === null ? null : (workspace.tabs[notification.tabId]?.paneId ?? null))
@@ -468,7 +467,8 @@ export class CardSlotAttentionService {
     workspaceId: string
   ): AttentionAcknowledgementResult {
     const previous = this.getAttention({ workspaceId })
-    const projected = fold(state, workspaceId, this.v1.get(workspaceId))
+    const workspace = state.workspaces.find((item) => item.id === workspaceId)
+    const projected = fold(workspaceId, workspace, this.v1.get(workspaceId), state.notifications)
     const changed = !same({ ...previous, revision: 0 }, projected)
     if (changed && previous.revision >= Number.MAX_SAFE_INTEGER)
       fail('revision_out_of_range', 'The workspace attention revision cannot be incremented safely')
