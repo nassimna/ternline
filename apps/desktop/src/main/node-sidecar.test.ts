@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { EventEmitter } from 'node:events'
+import { EventEmitter, once } from 'node:events'
 import { constants } from 'node:fs'
 import {
   copyFile,
@@ -20,6 +20,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { expect, it, vi } from 'vitest'
+import { type WebSocket, WebSocketServer } from 'ws'
 import { z } from 'zod'
 
 import { DESKTOP_IPC } from '@agent-workspace/contracts/desktop/desktop-bridge'
@@ -562,6 +563,63 @@ it.each([
     )
   }
 )
+
+it.each([
+  { name: 'matching IDs', projectedId: targetId },
+  { name: 'different IDs', projectedId: randomUUID() }
+])('forwards terminal socket events with $name', async ({ projectedId }) => {
+  const actualId = targetId
+  const windowId = randomUUID()
+  const replay = {
+    terminal: { id: actualId, command: ['/bin/sh'], cwd: '/', rows: 24, cols: 80, exited: false },
+    output: [],
+    lastSequence: 0,
+    reconstructionComplete: true
+  }
+  const terminalSockets = new Map()
+  const emit = vi.fn()
+  const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  try {
+    await once(server, 'listening')
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Expected a loopback port')
+    Object.assign(sidecar, {
+      client: new AgentWorkspaceClient(
+        `http://127.0.0.1:${address.port}`,
+        'test-token',
+        vi.fn<typeof fetch>().mockResolvedValue(Response.json(replay))
+      ),
+      remoteTerminals: new Map([[projectedId, { terminalId: actualId, windowId }]]),
+      terminalSockets
+    })
+    const [socket] = await Promise.all([
+      new Promise<WebSocket>((resolve) => server.once('connection', resolve)),
+      sidecar.invokeDesktopCore(windowId, DESKTOP_IPC.terminalAttach, [projectedId], emit)
+    ])
+    const chunk = { sequence: 1, data: 'YQ==', byteLength: 1 }
+    socket.send(JSON.stringify({ event: 'terminal.attached', data: replay }))
+    socket.send(JSON.stringify({ event: 'terminal.output', data: { terminalId: actualId, chunk } }))
+    socket.send(JSON.stringify({ event: 'terminal.resyncRequired', data: {} }))
+
+    await vi.waitFor(() => expect(emit).toHaveBeenCalledTimes(2))
+    expect(emit.mock.calls).toEqual([
+      [{ event: 'terminal.output', data: { terminalId: projectedId, chunk } }],
+      [{ event: 'terminal.resyncRequired', data: { terminalId: projectedId } }]
+    ])
+
+    socket.send(JSON.stringify({ event: 'terminal.output', data: { terminalId: actualId } }))
+    await vi.waitFor(() => expect(terminalSockets.size).toBe(0))
+    expect(emit).toHaveBeenCalledTimes(3)
+    expect(emit).toHaveBeenLastCalledWith({
+      event: 'terminal.resyncRequired',
+      data: { terminalId: projectedId }
+    })
+  } finally {
+    for (const socket of server.clients) socket.terminate()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
 
 it('fences a remote terminal during transfer and rebinds its projected identity', async () => {
   const sidecar = Object.create(NodeSidecar.prototype) as NodeSidecar

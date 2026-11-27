@@ -4146,12 +4146,10 @@ export class NodeSidecar {
           if (this.terminalSockets.get(id) !== attachment || attachment.suspended) return
           const event = parseTerminalEvent(socketText(data))
           if (event.event !== 'terminal.attached') {
-            const parsed = terminalEventSchema.parse(event)
             emit(
-              terminalEventSchema.parse({
-                ...parsed,
-                data: { ...parsed.data, terminalId: id }
-              })
+              event.data.terminalId === id
+                ? event
+                : terminalEventSchema.parse({ ...event, data: { ...event.data, terminalId: id } })
             )
           }
         } catch {
