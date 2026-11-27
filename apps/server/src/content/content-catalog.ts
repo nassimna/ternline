@@ -63,7 +63,7 @@ type PlacementRow = {
   order_json: string
   selected: string
 }
-type TextBoxRow = {
+export type TextBoxRow = {
   text_box_document_id: string
   workspace_id: string
   window_id: string
@@ -129,6 +129,10 @@ function textBoxFromRow(row: TextBoxRow): TextBoxDocument {
     row.updated_at_ms < row.created_at_ms
   )
     return corrupt()
+  return documentFromRow(row)
+}
+
+export function documentFromRow(row: TextBoxRow): TextBoxDocument {
   return {
     textBoxDocumentId: row.text_box_document_id,
     workspaceId: row.workspace_id,
