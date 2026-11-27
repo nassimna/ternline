@@ -191,7 +191,12 @@ describe('Files service capabilities', () => {
   it('classifies controls only in the requested text page unless allowed', () => {
     const root = mkdtempSync(join(tmpdir(), 'node-files-controls-'))
     const allowed = '\t\n\r 🌍~\u00a0'
-    const controls = ['\u0000', '\u001f', '\u007f', '\u009f']
+    const controls = [
+      ...Array.from({ length: 0x20 }, (_, code) => code).filter(
+        (code) => code !== 9 && code !== 10 && code !== 13
+      ),
+      ...Array.from({ length: 0xa0 - 0x7f }, (_, index) => 0x7f + index)
+    ].map((code) => String.fromCharCode(code))
     const text = allowed + controls.join('')
     writeFileSync(join(root, 'controls.txt'), text)
     const workspace = { id: randomUUID(), name: 'Fixture', workingDirectory: root }
