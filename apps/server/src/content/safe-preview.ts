@@ -38,15 +38,16 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
 
       const href = bounded.slice(b + 2, c)
       const label = bounded.slice(a + 1, b)
+      if (
+        !(href.startsWith('http://') || href.startsWith('https://')) ||
+        href.length > 2048 ||
+        label.length > 2048
+      ) {
+        return [{ kind: 'text', text: bounded }]
+      }
       try {
         const parsed = new URL(href)
-        if (
-          (href.startsWith('http://') || href.startsWith('https://')) &&
-          !parsed.username &&
-          !parsed.password &&
-          href.length <= 2048 &&
-          label.length <= 2048
-        ) {
+        if (!parsed.username && !parsed.password) {
           const nodes: SafeMarkdownNode[] = [{ kind: 'link', label, href }]
           if (a > 0) nodes.unshift({ kind: 'text', text: bounded.slice(0, a) })
           if (c + 1 < bounded.length) nodes.push({ kind: 'text', text: bounded.slice(c + 1) })
