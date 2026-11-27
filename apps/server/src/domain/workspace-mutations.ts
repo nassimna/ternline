@@ -649,10 +649,20 @@ function splitLeaf(
 
 export function reconcileTabFocus(next: DurableApplicationState, previousFocus: FocusTarget): void {
   const history = next.focusHistory
-  filterFocusHistory(history, (entry) => isValidTabFocus(next, entry))
+  const isValidFocus = (entry: FocusTarget) => isValidTabFocus(next, entry)
+  filterFocusHistory(history, isValidFocus)
   const nextFocus = focusTarget(next, next.selectedWorkspaceId)
+  recordFocusAfterPruning(history, previousFocus, nextFocus, isValidFocus)
+}
+
+export function recordFocusAfterPruning(
+  history: DurableApplicationState['focusHistory'],
+  previousFocus: FocusTarget,
+  nextFocus: FocusTarget,
+  isValidFocus: (entry: FocusTarget) => boolean
+): void {
   if (sameTarget(previousFocus, nextFocus)) return
-  if (history.entries.length === 0 && isValidTabFocus(next, previousFocus)) {
+  if (history.entries.length === 0 && isValidFocus(previousFocus)) {
     history.entries.push(previousFocus)
   }
   if (history.entries.length === 0 || !sameTarget(history.entries.at(-1)!, nextFocus)) {
