@@ -7,6 +7,7 @@ import { WindowMutationError } from './window-mutations'
 import {
   WorkspaceMutationError,
   closeWorkspace,
+  createWorkspace,
   openBrowserTab,
   openTerminalTab,
   selectTab,
@@ -239,10 +240,68 @@ it('drops intervening forward history when selecting the former last tab', () =>
   expect(backToBravo.target.tabId).toBe(bravoId)
   const backToAlpha = navigateFocusHistory(backToBravo.state, 'back')
   expect(backToAlpha.target).toEqual(alpha)
+  const snapshot = structuredClone(backToAlpha.state)
 
   const selected = selectTab(backToAlpha.state, alpha.workspaceId, charlieId, 4)
 
+  expect(selected.focusHistory).toEqual({
+    entries: [...targets, { ...alpha, tabId: charlieId }],
+    cursor: 2
+  })
   expect(navigateFocusHistory(selected, 'back').target.tabId).toBe(alpha.tabId)
+  expect(backToAlpha.state).toEqual(snapshot)
+})
+
+it('drops forward history without duplicating the retained target when selecting a tab', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const first = targets[0]!
+  const alpha = targets[1]!
+  const { workspaceId, paneId } = alpha
+  const tabId = randomUUID()
+  const withTab = openTerminalTab(
+    state,
+    { workspaceId, paneId, launch: { cwd: '/tmp', rows: 24, cols: 80 } },
+    tabId,
+    2
+  )
+  const beta = { ...alpha, tabId }
+  const source = durableApplicationStateSchema.parse({
+    ...selectTab(withTab, workspaceId, alpha.tabId, 3),
+    focusHistory: { entries: [first, beta, alpha], cursor: 1 }
+  })
+  const snapshot = structuredClone(source)
+
+  const selected = selectTab(source, workspaceId, tabId, 4)
+
+  expect(selected.focusHistory).toEqual({ entries: [first, beta], cursor: 1 })
+  expect(source).toEqual(snapshot)
+})
+
+it.each(['empty', 'full'])('records a new workspace with %s focus history', (history) => {
+  const { state, targets } = createTwoWorkspaceState()
+  const entries =
+    history === 'empty' ? [] : Array.from({ length: 128 }, (_, index) => targets[index % 2]!)
+  state.focusHistory = { entries, cursor: history === 'empty' ? 0 : 127 }
+  const snapshot = structuredClone(state)
+  const ids = { workspaceId: randomUUID(), paneId: randomUUID(), tabId: randomUUID() }
+
+  const next = createWorkspace(
+    state,
+    {
+      name: 'New workspace',
+      workingDirectory: '/tmp',
+      initialTerminal: { cwd: '/tmp', rows: 24, cols: 80 }
+    },
+    ids,
+    2
+  )
+
+  const prior = history === 'empty' ? [targets[1]] : entries.slice(1)
+  expect(next.focusHistory).toEqual({
+    entries: [...prior, { windowId: state.focusedWindowId, ...ids }],
+    cursor: history === 'empty' ? 1 : 127
+  })
+  expect(state).toEqual(snapshot)
 })
 
 it('prunes a closed unfocused workspace from both sides of the focus history cursor', () => {
