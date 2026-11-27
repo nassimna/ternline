@@ -59,12 +59,18 @@ export async function readTerminalText(
     /\r\n?/gu,
     '\n'
   )
-  const retained = text.endsWith('\n') ? text.slice(0, -1) : text
+  let start = 0
+  if (lines !== undefined) {
+    let delimiter = text.endsWith('\n') ? text.length - 1 : text.length
+    let remaining = lines
+    while (remaining > 0 && delimiter > 0) {
+      delimiter = text.lastIndexOf('\n', delimiter - 1)
+      remaining--
+    }
+    if (remaining === 0) start = delimiter + 1
+  }
   return {
-    text:
-      lines === undefined
-        ? text
-        : retained.split('\n').slice(-lines).join('\n') + (text.endsWith('\n') ? '\n' : ''),
+    text: text.slice(start),
     reconstructionComplete: attached.reconstructionComplete
   }
 }

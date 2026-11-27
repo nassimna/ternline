@@ -53,6 +53,33 @@ void test('terminal read joins decoded chunks before decoding UTF8, strips contr
   )
 })
 
+void test('terminal read preserves empty rows and final newlines when tailing', async () => {
+  const cases = [
+    ['', 1, ''],
+    ['\n', 1, '\n'],
+    ['\n\n', 1, '\n'],
+    ['\n\n', 2, '\n\n'],
+    ['first\n\nlast\n', 2, '\nlast\n'],
+    ['\nlast', 1, 'last'],
+    ['\nlast', Number.MAX_SAFE_INTEGER, '\nlast'],
+    ['line\n'.repeat(10_000) + 'last', 2, 'line\nlast']
+  ] as const
+  const terminalId = randomUUID()
+  for (const [replay, lines, expected] of cases) {
+    const client = {
+      attach: () =>
+        Promise.resolve({
+          output: replay ? [{ data: Buffer.from(replay).toString('base64') }] : [],
+          reconstructionComplete: false
+        })
+    } as unknown as AgentWorkspaceClient
+    assert.deepEqual(await readTerminalText(client, terminalId, lines), {
+      text: expected,
+      reconstructionComplete: false
+    })
+  }
+})
+
 void test('tab rename resolves its owning workspace and persists a custom title', async () => {
   const tabId = randomUUID()
   const workspaceId = randomUUID()
