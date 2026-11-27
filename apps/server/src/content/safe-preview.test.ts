@@ -227,16 +227,28 @@ describe('bounded diffs', () => {
   })
 
   it.each([
-    ['keeps a pair that fits exactly', 16_382, '😀x', '😀'],
-    ['omits a pair that crosses the limit', 16_383, '😀', ''],
-    ['truncates a BMP suffix at the limit', 16_383, 'éx', 'é'],
-    ['keeps an isolated high surrogate at the limit', 16_383, '\uD83Dx', '\uD83D']
-  ])('%s', (_name, prefixLength, suffix, retainedSuffix) => {
+    ['keeps an exact-fit row ending in a pair', 16_382, '😀', '😀', false],
+    ['keeps a pair at the end of the clipped text', 16_382, '😀x', '😀', true],
+    ['omits a pair that crosses the limit', 16_383, '😀', '', true],
+    ['truncates a BMP suffix at the limit', 16_383, 'éx', 'é', true],
+    ['keeps an isolated high surrogate at the limit', 16_383, '\uD83Dx', '\uD83D', true]
+  ])('%s', (_name, prefixLength, suffix, retainedSuffix, truncated) => {
     const prefix = 'a'.repeat(prefixLength)
-    expect(boundedDiff('', prefix + suffix)).toStrictEqual({
-      lines: [{ kind: 'added', text: prefix + retainedSuffix }],
-      truncated: false
-    })
+    const result = boundedDiff('', prefix + suffix)
+    expect(result.lines).toStrictEqual([{ kind: 'added', text: prefix + retainedSuffix }])
+    expect(result.truncated).toBe(truncated)
+  })
+
+  it.each([
+    ['removed', 'old', '', ['removed']],
+    ['context', 'old', 'old', ['context']],
+    ['replacement', 'old', 'new', ['removed', 'added']]
+  ])('reports clipped %s text', (_name, before, after, kinds) => {
+    const prefix = 'x'.repeat(16_384)
+    const result = boundedDiff(prefix + before, after ? prefix + after : '')
+
+    expect(result.lines).toStrictEqual(kinds.map((kind) => ({ kind, text: prefix })))
+    expect(result.truncated).toBe(true)
   })
 
   it.each([
