@@ -183,6 +183,40 @@ it('prunes removed tab focus before the cursor and preserves forward history', (
   expect(state).toEqual(original)
 })
 
+it.each([
+  { scenario: 'seeds empty history with the previous focus', hasForwardHistory: false },
+  { scenario: 'discards valid forward history', hasForwardHistory: true }
+])('$scenario when a layout selects a different tab', ({ hasForwardHistory }) => {
+  const { state, windowId, layoutId } = fixture()
+  const workspace = state.workspaces[0]!
+  const pane = workspace.panes[workspace.selectedPaneId]!
+  const current = {
+    windowId,
+    workspaceId: workspace.id,
+    paneId: pane.id,
+    tabId: pane.selectedTabId
+  }
+  const selected = { ...current, tabId: randomUUID() }
+  const forward = { ...current, tabId: randomUUID() }
+  const template = state.savedLayouts[0]!.template.workspaces[0]!
+  const templatePane = template.panes[pane.id]!
+  template.id = workspace.id
+  for (const { tabId } of [selected, forward]) {
+    pane.tabs.push(tabId)
+    workspace.tabs[tabId] = { ...workspace.tabs[current.tabId]!, id: tabId }
+    templatePane.tabs.push(tabId)
+    template.tabs[tabId] = { ...template.tabs[current.tabId]!, id: tabId }
+  }
+  templatePane.selectedTabId = selected.tabId
+  if (hasForwardHistory) state.focusHistory = { entries: [current, forward], cursor: 0 }
+  const original = durableApplicationStateSchema.parse(state)
+
+  const applied = planLayoutApplication(state, layoutId, randomUUID, windowId)
+
+  expect(applied.focusHistory).toStrictEqual({ entries: [current, selected], cursor: 1 })
+  expect(state).toStrictEqual(original)
+})
+
 it.each(['hosted', 'unhosted'] as const)(
   'refuses layout apply when another %s window would disappear',
   (hostingState) => {
