@@ -1,17 +1,21 @@
 import { randomUUID } from 'node:crypto'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { navigateFocusHistory } from './focus-history-mutations'
 import { WindowMutationError } from './window-mutations'
 import {
   WorkspaceMutationError,
+  closeTab,
   closeWorkspace,
   createWorkspace,
   openBrowserTab,
   openTerminalTab,
+  restartTerminal,
   selectTab,
-  splitPane
+  splitPane,
+  updateTab
 } from './workspace-mutations'
 
 function createTwoWorkspaceState() {
@@ -82,6 +86,74 @@ function createTwoWorkspaceState() {
   })
   return { state, targets, workspaceIds }
 }
+
+describe.each<{ name: string; mutate: typeof restartTerminal }>([
+  {
+    name: 'closeTab',
+    mutate: (state, workspaceId, tabId, now) =>
+      closeTab(state, workspaceId, tabId, randomUUID(), null, now)
+  },
+  { name: 'restartTerminal', mutate: restartTerminal },
+  { name: 'selectTab', mutate: selectTab },
+  {
+    name: 'updateTab',
+    mutate: (state, workspaceId, tabId, now) =>
+      updateTab(state, { workspaceId, tabId, title: 'Renamed' }, now)
+  }
+])('$name', ({ mutate }) => {
+  it.each([
+    ['workspace_not_found', 'Workspace does not exist'],
+    ['tab_not_found', 'Tab does not exist']
+  ])('throws %s before checking the timestamp', (code, message) => {
+    const { state, targets } = createTwoWorkspaceState()
+    const [first, second] = targets
+    const snapshot = structuredClone(state)
+    const workspaceId = code === 'workspace_not_found' ? randomUUID() : first!.workspaceId
+
+    expect(() => mutate(state, workspaceId, second!.tabId, -1)).toThrow(
+      expect.objectContaining({ constructor: WorkspaceMutationError, code, message })
+    )
+    expect(state).toEqual(snapshot)
+  })
+})
+
+it('validates the tab update before looking up its workspace', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const input = { workspaceId: randomUUID(), tabId: targets[1]!.tabId, title: '' }
+  const snapshot = structuredClone({ state, input })
+
+  expect(() => updateTab(state, input, -1)).toThrow(ZodError)
+  expect({ state, input }).toEqual(snapshot)
+})
+
+it('restarts a terminal without changing its durable tab or focus', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const { workspaceId, tabId } = targets[0]!
+  const snapshot = structuredClone(state)
+  const expected = structuredClone(state)
+  expected.revision += 1
+  expected.workspaces[0]!.updatedAt = 2
+
+  expect(restartTerminal(state, workspaceId, tabId, 2)).toEqual(expected)
+  expect(state).toEqual(snapshot)
+})
+
+it('updates tab titles and workspace time while preserving tab content and focus', () => {
+  const { state, targets } = createTwoWorkspaceState()
+  const { workspaceId, tabId } = targets[1]!
+  const snapshot = structuredClone(state)
+  const expected = structuredClone(state)
+  const workspace = expected.workspaces[1]!
+  workspace.tabs[tabId]!.title = 'Shell'
+  workspace.tabs[tabId]!.customTitle = 'Dev'
+  workspace.updatedAt = 2
+  expected.revision += 1
+
+  expect(
+    updateTab(state, { workspaceId, tabId, title: 'Shell', customTitle: { value: 'Dev' } }, 2)
+  ).toEqual(expected)
+  expect(state).toEqual(snapshot)
+})
 
 it('moves backward and forward through durable focus without adding entries', () => {
   const { state, targets, workspaceIds } = createTwoWorkspaceState()

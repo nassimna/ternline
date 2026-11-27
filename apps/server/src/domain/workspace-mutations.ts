@@ -721,6 +721,16 @@ export function retainRecentlyClosed(
     .slice(-100)
 }
 
+function requireWorkspaceTab(state: DurableApplicationState, workspaceId: string, tabId: string) {
+  const workspace = state.workspaces.find((item) => item.id === workspaceId)
+  if (!workspace) {
+    throw new WorkspaceMutationError('workspace_not_found', 'Workspace does not exist')
+  }
+  const tab = workspace.tabs[tabId]
+  if (!tab) throw new WorkspaceMutationError('tab_not_found', 'Tab does not exist')
+  return { workspace, tab }
+}
+
 /** Produces the redacted restore record and closes a tab in one durable revision. */
 export function closeTab(
   state: DurableApplicationState,
@@ -730,10 +740,7 @@ export function closeTab(
   replacementTabId: string | null,
   now: number
 ): DurableApplicationState {
-  const original = state.workspaces.find((item) => item.id === workspaceId)
-  if (!original) throw new WorkspaceMutationError('workspace_not_found', 'Workspace does not exist')
-  const originalTab = original.tabs[tabId]
-  if (!originalTab) throw new WorkspaceMutationError('tab_not_found', 'Tab does not exist')
+  const { workspace: original, tab: originalTab } = requireWorkspaceTab(state, workspaceId, tabId)
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new WorkspaceMutationError('invalid_timestamp', 'Tab close timestamp is invalid')
   }
@@ -1370,12 +1377,7 @@ export function restartTerminal(
   tabId: string,
   updatedAt: number
 ): DurableApplicationState {
-  const workspace = state.workspaces.find((item) => item.id === workspaceId)
-  if (!workspace) {
-    throw new WorkspaceMutationError('workspace_not_found', 'Workspace does not exist')
-  }
-  const tab = workspace.tabs[tabId]
-  if (!tab) throw new WorkspaceMutationError('tab_not_found', 'Tab does not exist')
+  const { tab } = requireWorkspaceTab(state, workspaceId, tabId)
   if (tab.content.kind !== 'terminal') {
     throw new WorkspaceMutationError('tab_not_terminal', 'Tab is not a terminal')
   }
@@ -1394,12 +1396,7 @@ export function selectTab(
   tabId: string,
   updatedAt: number
 ): DurableApplicationState {
-  const workspace = state.workspaces.find((item) => item.id === workspaceId)
-  if (!workspace) {
-    throw new WorkspaceMutationError('workspace_not_found', 'Workspace does not exist')
-  }
-  const tab = workspace.tabs[tabId]
-  if (!tab) throw new WorkspaceMutationError('tab_not_found', 'Tab does not exist')
+  const { workspace, tab } = requireWorkspaceTab(state, workspaceId, tabId)
   const pane = workspace.panes[tab.paneId]!
   if (workspace.selectedPaneId === tab.paneId && pane.selectedTabId === tabId) {
     throw new WorkspaceMutationError('tab_already_selected', 'Tab is already selected')
@@ -1429,12 +1426,7 @@ export function updateTab(
   updatedAt: number
 ): DurableApplicationState {
   const request = tabUpdateParamsSchema.parse(input)
-  const workspace = state.workspaces.find((item) => item.id === request.workspaceId)
-  if (!workspace) {
-    throw new WorkspaceMutationError('workspace_not_found', 'Workspace does not exist')
-  }
-  const tab = workspace.tabs[request.tabId]
-  if (!tab) throw new WorkspaceMutationError('tab_not_found', 'Tab does not exist')
+  const { tab } = requireWorkspaceTab(state, request.workspaceId, request.tabId)
   if (!Number.isSafeInteger(updatedAt) || updatedAt < 0) {
     throw new WorkspaceMutationError('invalid_timestamp', 'Workspace timestamp is invalid')
   }
