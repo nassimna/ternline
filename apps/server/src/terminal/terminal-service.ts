@@ -212,10 +212,12 @@ export class TerminalService {
     return { terminal: { ...descriptor } }
   }
 
+  public assertAttachable(id: string): void {
+    this.getAttachable(id)
+  }
+
   public attach(id: string): TerminalAttachResult {
-    const session = this.get(id)
-    if (session.terminating)
-      throw new TerminalServiceError('termination_pending', 'Terminal is being terminated')
+    const session = this.getAttachable(id)
     const { journal, journalHead } = session
     const output = new Array<TerminalAttachResult['output'][number]>(journal.length - journalHead)
     for (let index = 0; index < output.length; index += 1) {
@@ -360,6 +362,13 @@ export class TerminalService {
   private get(id: string): TerminalSession {
     const session = this.sessions.get(id)
     if (!session) throw new TerminalServiceError('terminal_not_found', 'Terminal does not exist')
+    return session
+  }
+
+  private getAttachable(id: string): TerminalSession {
+    const session = this.get(id)
+    if (session.terminating)
+      throw new TerminalServiceError('termination_pending', 'Terminal is being terminated')
     return session
   }
 
