@@ -772,8 +772,18 @@ export function closeTab(
     url.hash = ''
     restore = { kind: 'browser', url: url.href }
   }
-  const title = originalTab.customTitle ?? originalTab.title
-  if (Array.from(title).length > 160 || Buffer.byteLength(JSON.stringify(restore)) > 8 * 1024) {
+  let title = originalTab.customTitle ?? originalTab.title
+  const titleCharacters = Array.from(title)
+  if (titleCharacters.length > 160) {
+    title = ''
+    // The Recently Closed sidebar measures its label limit in UTF-16 code units.
+    for (const character of titleCharacters.slice(0, 160)) {
+      if (title.length + character.length > 256) break
+      title += character
+    }
+    title = title.trimEnd()
+  }
+  if (Buffer.byteLength(JSON.stringify(restore)) > 8 * 1024) {
     throw new WorkspaceMutationError('policy_denied', 'Tab restore metadata is unsafe')
   }
   const record: DurableApplicationState['recentlyClosed'][number] = {
