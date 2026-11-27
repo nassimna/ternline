@@ -2,11 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
-import {
-  organizationRequest,
-  parseOrganizationCommand,
-  runOrganizationCommand
-} from './organization-commands'
+import { parseOrganizationCommand, runOrganizationCommand } from './organization-commands'
 
 const epoch = 'b31ab001-5435-4c98-9e7a-18442259e901'
 const first = 'a9e87f23-84fd-412c-ab32-6ec11bacaa31'
@@ -35,22 +31,25 @@ await test('multiselection keeps order and uses exact revision and retry key', a
     '--idempotency-key',
     key
   ])
-  assert.deepEqual(organizationRequest(parsed, epoch), {
+  const expected = {
     selection: [second, first],
     focusedWorkspaceId: first,
     expectedRevision: 12,
     idempotencyEpoch: epoch,
     idempotencyKey: key
-  })
+  }
   const seen: unknown[] = []
+  const response = Promise.resolve({ revision: 13 })
   const client = {
     selectWorkspaces: (request: unknown) => {
       seen.push(request)
-      return Promise.resolve({ revision: 13 })
+      return response
     }
   } as unknown as AgentWorkspaceClient
-  assert.deepEqual(await runOrganizationCommand(client, parsed, epoch), { revision: 13 })
-  assert.deepEqual(seen, [organizationRequest(parsed, epoch)])
+  const result = runOrganizationCommand(client, parsed, epoch)
+  assert.equal(result, response)
+  assert.deepEqual(await result, { revision: 13 })
+  assert.deepEqual(seen, [expected])
 })
 
 await test('group assignment omits group ID to unassign and dispatches to Node client', async () => {
@@ -84,26 +83,44 @@ await test('group assignment omits group ID to unassign and dispatches to Node c
 
 await test('all group verbs dispatch through their matching client operation', async () => {
   const cases = [
-    { verb: 'create', options: ['--group-id', group, '--name', 'Build'], method: 'createGroup' },
-    { verb: 'rename', options: ['--group-id', group, '--name', 'Review'], method: 'renameGroup' },
-    { verb: 'delete', options: ['--group-id', group], method: 'deleteGroup' },
+    {
+      verb: 'create',
+      options: ['--group-id', group, '--name', 'Build'],
+      method: 'createGroup',
+      expected: { groupId: group, name: 'Build' }
+    },
+    {
+      verb: 'rename',
+      options: ['--group-id', group, '--name', 'Review'],
+      method: 'renameGroup',
+      expected: { groupId: group, name: 'Review' }
+    },
+    {
+      verb: 'delete',
+      options: ['--group-id', group],
+      method: 'deleteGroup',
+      expected: { groupId: group }
+    },
     {
       verb: 'move',
       options: ['--group-id', group, '--destination-index', '0'],
-      method: 'moveGroup'
+      method: 'moveGroup',
+      expected: { groupId: group, destinationIndex: 0 }
     },
     {
       verb: 'assign',
       options: ['--workspace-id', first, '--group-id', group],
-      method: 'assignGroup'
+      method: 'assignGroup',
+      expected: { workspaceId: first, groupId: group }
     },
     {
       verb: 'collapse',
       options: ['--group-id', group, '--collapsed', 'false'],
-      method: 'collapseGroup'
+      method: 'collapseGroup',
+      expected: { groupId: group, collapsed: false }
     }
   ]
-  for (const { verb, options, method } of cases) {
+  for (const { verb, options, method, expected } of cases) {
     const parsed = parse([
       'group',
       verb,
@@ -122,11 +139,18 @@ await test('all group verbs dispatch through their matching client operation', a
     } as unknown as AgentWorkspaceClient
     assert.deepEqual(await runOrganizationCommand(client, parsed, epoch), { revision: 5 })
     assert.equal(seen.length, 1)
-    assert.deepEqual(seen[0], organizationRequest(parsed, epoch))
+    assert.deepEqual(seen[0], {
+      ...expected,
+      expectedRevision: 4,
+      idempotencyEpoch: epoch,
+      idempotencyKey: key
+    })
   }
 })
 
-await test('group flags reject invalid booleans and revisions before sending', () => {
+await test('group flags reject invalid booleans and revisions before sending', (context) => {
+  const selectWorkspaces = context.mock.fn()
+  const client = { selectWorkspaces } as unknown as AgentWorkspaceClient
   assert.throws(
     () => parse(['group', 'create', '--group-id', group, '--expected-revision', '1']),
     /--name is required/
@@ -145,7 +169,8 @@ await test('group flags reject invalid booleans and revisions before sending', (
   )
   assert.throws(
     () =>
-      organizationRequest(
+      runOrganizationCommand(
+        client,
         parse([
           'group',
           'collapse',
@@ -162,7 +187,8 @@ await test('group flags reject invalid booleans and revisions before sending', (
   )
   assert.throws(
     () =>
-      organizationRequest(
+      runOrganizationCommand(
+        client,
         parse([
           'group',
           'move',
@@ -179,7 +205,8 @@ await test('group flags reject invalid booleans and revisions before sending', (
   )
   assert.throws(
     () =>
-      organizationRequest(
+      runOrganizationCommand(
+        client,
         parse([
           'workspace',
           'select-many',
@@ -194,14 +221,57 @@ await test('group flags reject invalid booleans and revisions before sending', (
         ]),
         epoch
       ),
-    /workspace selection must be unique/
+    {
+      name: 'ZodError',
+      issues: [
+        {
+          code: 'custom',
+          path: [],
+          message: 'workspace selection must be unique and include the focused workspace'
+        }
+      ]
+    }
   )
+  assert.equal(selectWorkspaces.mock.callCount(), 0)
   assert.throws(
     () =>
-      organizationRequest(
+      runOrganizationCommand(
+        client,
         parse(['group', 'delete', '--group-id', group, '--expected-revision', '-1']),
         epoch
       ),
     /--expected-revision must be a nonnegative safe integer/
   )
+})
+
+await test('group creation and rename reject unnormalized names before dispatch', (context) => {
+  const createGroup = context.mock.fn()
+  const renameGroup = context.mock.fn()
+  const client = { createGroup, renameGroup } as unknown as AgentWorkspaceClient
+  for (const verb of ['create', 'rename']) {
+    const parsed = parse([
+      'group',
+      verb,
+      '--group-id',
+      group,
+      '--name',
+      ' Build ',
+      '--expected-revision',
+      '4',
+      '--idempotency-key',
+      key
+    ])
+    assert.throws(() => runOrganizationCommand(client, parsed, epoch), {
+      name: 'ZodError',
+      issues: [
+        {
+          code: 'custom',
+          path: ['name'],
+          message: 'text must be normalized and within its bound'
+        }
+      ]
+    })
+  }
+  assert.equal(createGroup.mock.callCount(), 0)
+  assert.equal(renameGroup.mock.callCount(), 0)
 })
