@@ -157,7 +157,9 @@ test('native browser panes navigate securely and release WebContentsView instanc
       .locator('.pane-tab-select[data-selected="true"]')
       .getAttribute('data-tab-id')
     if (!browserTabId) throw new Error('Selected browser tab has no tab ID')
-    const addTab = selectedPane.getByRole('button', { name: 'Add tab' })
+    const addTab = renderer
+      .locator('.workspace-toolbar-actions')
+      .getByRole('button', { name: 'Add tab', exact: true })
     await expect(addTab).toBeVisible()
     await addTab.click()
     await renderer.getByRole('menuitem', { name: 'Terminal', exact: true }).click()
