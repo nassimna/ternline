@@ -14,7 +14,7 @@ function takeCharacters(value: string, count: number): string {
 
 // Rust str::lines removes the final empty row and the CR in CRLF.
 export function previewLines(value: string): string[] {
-  const lines = value.split(/\r?\n/u)
+  const lines = value.includes('\r\n') ? value.split(/\r?\n/u) : value.split('\n')
   if (lines.at(-1) === '') lines.pop()
   return lines
 }

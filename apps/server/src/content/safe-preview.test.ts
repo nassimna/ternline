@@ -1,7 +1,22 @@
 import { safeMarkdownDocumentSchema } from '@agent-workspace/protocol-client'
 import { describe, expect, it } from 'vitest'
 
-import { boundedDiff, parseSafeMarkdown } from './safe-preview'
+import { boundedDiff, parseSafeMarkdown, previewLines } from './safe-preview'
+
+describe('preview lines', () => {
+  it.each([
+    ['LF', 'first\nsecond', ['first', 'second']],
+    ['CRLF', 'first\r\nsecond\r\n', ['first', 'second']],
+    ['mixed line endings', 'first\r\n\nlast\n', ['first', '', 'last']],
+    ['empty input', '', []],
+    ['blank input', '\n', ['']],
+    ['trailing blank rows', 'first\n\n\n', ['first', '', '']],
+    ['standalone carriage returns', 'first\rsecond\nlast\r', ['first\rsecond', 'last\r']],
+    ['a carriage return before CRLF', 'first\r\r\nlast', ['first\r', 'last']]
+  ])('splits %s into the expected rows', (_name, source, rows) => {
+    expect(previewLines(source)).toStrictEqual(rows)
+  })
+})
 
 describe('safe Markdown previews', () => {
   it.each([
