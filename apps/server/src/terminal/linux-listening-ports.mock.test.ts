@@ -49,3 +49,49 @@ it.skipIf(process.platform !== 'linux')(
     expect(active).toBe(0)
   }
 )
+
+it.skipIf(process.platform !== 'linux')(
+  'overlaps metadata reads for up to eight PIDs and matches each PID against its own tables',
+  async () => {
+    const pids = Array.from({ length: 10 }, (_, index) => String(42 + index))
+    const pending = new Set<string>()
+    let peakPids = 0
+    let peakReads = 0
+    async function readMetadata(path: string) {
+      pending.add(path)
+      peakPids = Math.max(peakPids, new Set([...pending].map((entry) => entry.split('/')[2])).size)
+      peakReads = Math.max(peakReads, pending.size)
+      await setImmediate()
+      pending.delete(path)
+    }
+
+    fs.readdir.mockImplementation(async (path: string) => {
+      if (path === '/proc') return pids
+      await readMetadata(path)
+      return ['0']
+    })
+    fs.readFile.mockImplementation(async (path: string) => {
+      const pid = Number(path.split('/')[2])
+      if (path.endsWith('/stat')) return `${pid} (shell) S ${pid === 42 ? 1 : 42}`
+      await readMetadata(path)
+      const ipv6 = path.endsWith('/tcp6')
+      if (pid === 45 && !ipv6) throw new Error('Process TCP table unavailable')
+      if (ipv6 !== (pid === 45)) return 'header'
+      return `header\n0: 00000000:${(4000 + pid).toString(16)} 00000000:0000 0A 0 0 0 0 0 100`
+    })
+    let activeDescriptors = 0
+    let peakDescriptors = 0
+    fs.readlink.mockImplementation(async () => {
+      activeDescriptors++
+      peakDescriptors = Math.max(peakDescriptors, activeDescriptors)
+      await setImmediate()
+      activeDescriptors--
+      return 'socket:[100]'
+    })
+
+    expect(await linuxListeningPorts(42)).toEqual(pids.map((pid) => 4000 + Number(pid)))
+    expect(peakPids).toBe(8)
+    expect(peakReads).toBe(24)
+    expect(peakDescriptors).toBe(1)
+  }
+)
