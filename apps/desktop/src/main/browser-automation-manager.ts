@@ -1276,6 +1276,9 @@ export function createElectronAutomationPage(options: {
     sendKey: async (key, modifiers = []) => {
       const code = KEY_CODES[key] ?? key
       options.contents.sendInputEvent({ type: 'keyDown', keyCode: code, modifiers })
+      if (modifiers.length === 0 && /^(?:[ -~]|Space|Plus)$/i.test(code)) {
+        options.contents.sendInputEvent({ type: 'char', keyCode: code, modifiers })
+      }
       options.contents.sendInputEvent({ type: 'keyUp', keyCode: code, modifiers })
       await new Promise((resolve) => setTimeout(resolve, 50))
     },
