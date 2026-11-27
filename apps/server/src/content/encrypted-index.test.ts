@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { decryptIndexValue, encryptIndexValue, keyedIndexHash } from './encrypted-index-crypto'
 import { EncryptedIndex } from './encrypted-index'
 import {
@@ -105,6 +105,75 @@ it('pages all-term matches in descending row order when timestamps tie', () => {
       index.close()
     }
   } finally {
+    rmSync(path, { recursive: true, force: true })
+  }
+})
+
+it('prunes expired unpinned documents across sources during a scoped search', () => {
+  const path = profile()
+  const day = 86_400_000
+  const searchAt = Date.UTC(2026, 0, 10)
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(searchAt - 1)
+  const shortRetention = randomUUID()
+  const longRetention = randomUUID()
+  const recent = randomUUID()
+  const atCutoff = randomUUID()
+  const expired = randomUUID()
+  const older = randomUUID()
+  const pinnedDocument = randomUUID()
+  try {
+    const index = EncryptedIndex.open(path, key)
+    try {
+      index.authorizeSource(shortRetention)
+      index.authorizeSource(longRetention)
+      index.setSourcePolicy(shortRetention, 1, [])
+      index.setSourcePolicy(longRetention, 3, [])
+      const documents = [
+        {
+          source: shortRetention,
+          documentId: pinnedDocument,
+          indexedAtMs: searchAt - 4 * day,
+          pinned: true
+        },
+        { source: longRetention, documentId: older, indexedAtMs: searchAt - 2 * day },
+        { source: shortRetention, documentId: expired, indexedAtMs: searchAt - day - 1 },
+        { source: shortRetention, documentId: atCutoff, indexedAtMs: searchAt - day },
+        { source: longRetention, documentId: recent, indexedAtMs: searchAt - 1 }
+      ]
+      for (const { source, documentId, indexedAtMs, pinned = false } of documents) {
+        index.indexText(source, { documentId, identityVersion: 1 }, 'workspaceFile', 'needle', {
+          maxBytes: 1024,
+          deadlineMs: searchAt + 2000,
+          indexedAtMs,
+          pinned
+        })
+      }
+
+      const db = new Database(join(path, 'index/v1/search.sqlite3'), { readonly: true })
+      try {
+        const findExpired = db.prepare('SELECT id FROM documents WHERE identity_hash=?')
+        const expiredHash = keyedIndexHash(key, expired)
+        expect(findExpired.get(expiredHash)).toBeDefined()
+
+        clock.mockReturnValue(searchAt)
+        expect(
+          index.search('needle', 10, [longRetention]).map(({ document }) => document.documentId)
+        ).toEqual([recent, older])
+        expect(findExpired.get(expiredHash)).toBeUndefined()
+        expect(index.search('needle', 10).map(({ document }) => document.documentId)).toEqual([
+          recent,
+          atCutoff,
+          older,
+          pinnedDocument
+        ])
+      } finally {
+        db.close()
+      }
+    } finally {
+      index.close()
+    }
+  } finally {
+    clock.mockRestore()
     rmSync(path, { recursive: true, force: true })
   }
 })
