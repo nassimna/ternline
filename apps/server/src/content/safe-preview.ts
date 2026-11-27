@@ -84,10 +84,13 @@ export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
   for (let index = 0; index < lines.length && remainingNodes > 0; index++) {
     const line = lines[index]!
     if (line.startsWith('```')) {
-      const language = line.slice(3).trim()
+      const fence = /^`+/u.exec(line)![0]
+      const language = line.slice(fence.length).trim()
       const rows: string[] = []
-      while (++index < lines.length && !/^```[ \t]*$/u.test(lines[index]!)) {
-        rows.push(takeCharacters(lines[index]!, 16_384))
+      while (++index < lines.length) {
+        const row = lines[index]!
+        if (row.startsWith(fence) && /^[ \t]*$/u.test(row.slice(fence.length))) break
+        rows.push(takeCharacters(row, 16_384))
       }
       nodes.push({
         kind: 'codeBlock',
