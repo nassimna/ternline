@@ -13,7 +13,14 @@ import { projectStateToWindow } from './window-projection'
 import { projectApplicationSnapshot } from './application-projection'
 import { projectOrganization } from './organization-mutations'
 import { reopenClosedTab } from './recently-closed-mutations'
-import { closeTab, focusPane, moveTab, openBrowserTab, splitPane } from './workspace-mutations'
+import {
+  closePane,
+  closeTab,
+  focusPane,
+  moveTab,
+  openBrowserTab,
+  splitPane
+} from './workspace-mutations'
 import { navigateBrowser, BrowserMutationError } from './browser-mutations'
 
 function fixture() {
@@ -499,6 +506,66 @@ it.each([
 
   expect(opened.workspaces[0]!.tabs[tabId]!.content).toStrictEqual(expected)
   expect(split.workspaces[0]!.tabs[tabId]!.content).toStrictEqual(expected)
+})
+
+it.each([
+  { operation: 'closeTab', focus: 'selected' },
+  { operation: 'closePane', focus: 'selected' },
+  { operation: 'closeTab', focus: 'background' },
+  { operation: 'closePane', focus: 'background' }
+])('$operation collapses a $focus pane and reconciles focus', ({ operation, focus }) => {
+  const { state, windowId } = fixture()
+  const { id: workspaceId, selectedPaneId: paneA, panes } = state.workspaces[0]!
+  const paneB = {
+    paneId: randomUUID(),
+    splitId: randomUUID(),
+    tabId: randomUUID(),
+    browserSessionId: randomUUID()
+  }
+  const paneC = {
+    paneId: randomUUID(),
+    splitId: randomUUID(),
+    tabId: randomUUID(),
+    browserSessionId: randomUUID()
+  }
+  const split = {
+    workspaceId,
+    targetPaneId: paneA,
+    axis: 'horizontal',
+    ratio: 0.5,
+    content: { kind: 'newTerminal', launch: { cwd: '/tmp', rows: 24, cols: 80 } }
+  } as const
+  const withB = splitPane(state, { ...split, placement: 'before' }, paneB, 2)
+  const withC = splitPane(withB, { ...split, placement: 'after' }, paneC, 3)
+  expect(withC.workspaces[0]!.selectedPaneId).toBe(paneC.paneId)
+  const input = focus === 'selected' ? withC : focusPane(withC, workspaceId, paneA, 4)
+  const before = structuredClone(input)
+
+  const closed =
+    operation === 'closeTab'
+      ? closeTab(input, workspaceId, paneC.tabId, randomUUID(), null, 5)
+      : closePane(input, workspaceId, paneC.paneId, null, 5)
+
+  const workspace = closed.workspaces[0]!
+  expect(workspace.layout).toEqual({
+    kind: 'split',
+    splitId: paneB.splitId,
+    axis: 'horizontal',
+    ratio: 0.5,
+    first: { kind: 'leaf', paneId: paneB.paneId },
+    second: { kind: 'leaf', paneId: paneA }
+  })
+  expect(Object.keys(workspace.panes)).toEqual([paneA, paneB.paneId])
+  expect(workspace.tabs[paneC.tabId]).toBeUndefined()
+  const selectedPaneId = focus === 'selected' ? paneB.paneId : paneA
+  expect(workspace.selectedPaneId).toBe(selectedPaneId)
+  expect(closed.focusHistory.entries[closed.focusHistory.cursor]).toEqual({
+    windowId,
+    workspaceId,
+    paneId: selectedPaneId,
+    tabId: focus === 'selected' ? paneB.tabId : panes[paneA]!.selectedTabId
+  })
+  expect(input).toEqual(before)
 })
 
 it('selects the adjacent source tab and collapses the split when moving the last source tab', () => {
