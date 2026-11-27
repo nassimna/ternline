@@ -129,6 +129,11 @@ it('projects the latest unread body at each attention level with a 160-code-poin
     expect(attention).toEqual(expectedAttention)
   }
 
+  const boundaryPrefix = 'a'.repeat(159)
+  state.notifications[1] = { ...latest, body: `${boundaryPrefix} omitted` }
+  const boundarySnapshot = projectApplicationSnapshot(durableApplicationStateSchema.parse(state))
+  expect(boundarySnapshot.attention.latestUnread?.bodyExcerpt).toBe(boundaryPrefix)
+
   state.notifications[1] = { ...latest, body: '' }
   expect(() => projectApplicationSnapshot(state)).toThrow('text must be normalized')
 })

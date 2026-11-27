@@ -48,7 +48,8 @@ function include(summary: AttentionSummary, notification: Notification): void {
     const excerpt: AttentionExcerpt = {
       notificationId: notification.id,
       title: notification.title,
-      bodyExcerpt: notification.body === null ? null : /^.{0,160}/su.exec(notification.body)![0],
+      bodyExcerpt:
+        notification.body === null ? null : /^.{0,160}/su.exec(notification.body)![0].trimEnd(),
       source: notification.source,
       createdAt: notification.createdAt
     }
