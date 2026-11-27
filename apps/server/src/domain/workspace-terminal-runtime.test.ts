@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
@@ -396,6 +397,84 @@ describe('WorkspaceTerminalRuntime', () => {
       } finally {
         close.mockRestore()
         warn.mockRestore()
+        service.dispose()
+      }
+    }
+  )
+
+  it.each(['closed', 'close failed', 'absent'] as const)(
+    'preserves the pane split commit failure when the staged PTY is %s',
+    async (rollback) => {
+      const { state, workspaceId, paneId, terminalIds } = snapshot()
+      const pty = new FakePty()
+      const spawn = vi.fn(() => Promise.resolve(new FakePty()))
+      const service = new TerminalService({ spawn })
+      const runtime = new WorkspaceTerminalRuntime(service)
+      const commitError = new Error('commit failed')
+      const rollbackError = new Error('close failed')
+      const commit = vi.fn(() => {
+        throw commitError
+      })
+      const store = {
+        exclusive: (operation: () => Promise<unknown>) => operation(),
+        readSnapshot: () => state,
+        preflightPaneSplit: () => null,
+        commitPaneSplit: commit
+      } as unknown as ApplicationStateStore
+      const close = vi.spyOn(service, 'close')
+
+      try {
+        await runtime.restore(state)
+        const existingSessions = terminalIds.map((id) => runtime.sessionForTab(id))
+        spawn.mockClear().mockResolvedValueOnce(pty)
+        if (rollback === 'close failed') {
+          vi.spyOn(pty, 'kill').mockImplementationOnce(() => {
+            throw rollbackError
+          })
+        }
+
+        const result = await runtime
+          .splitPane(store, {
+            workspaceId,
+            targetPaneId: paneId,
+            axis: 'horizontal',
+            ratio: 0.5,
+            placement: 'after',
+            content:
+              rollback === 'absent'
+                ? { kind: 'newBrowser', url: 'https://example.com/' }
+                : { kind: 'newTerminal', launch: { cwd: '/tmp', rows: 24, cols: 80 } },
+            expectedRevision: state.revision,
+            idempotencyEpoch: randomUUID(),
+            idempotencyKey: randomUUID()
+          })
+          .catch((error: unknown) => error)
+
+        if (rollback === 'close failed') {
+          assert(result instanceof AggregateError)
+          expect(result.message).toBe('Pane split rollback failed')
+          expect(result.errors).toHaveLength(2)
+          expect(result.errors[0]).toBe(commitError)
+          expect(result.errors[1]).toBe(rollbackError)
+          expect(result.cause).toBe(rollbackError)
+        } else {
+          expect(result).toBe(commitError)
+        }
+
+        expect(commit).toHaveBeenCalledOnce()
+        if (rollback === 'absent') {
+          expect(spawn).not.toHaveBeenCalled()
+          expect(close).not.toHaveBeenCalled()
+        } else {
+          expect(spawn).toHaveBeenCalledOnce()
+          expect(close).toHaveBeenCalledOnce()
+          expect(commit).toHaveBeenCalledBefore(close)
+          expect(existingSessions).not.toContain(close.mock.calls[0]?.[0])
+          expect(pty.killed).toBe(rollback === 'closed')
+        }
+        expect(terminalIds.map((id) => runtime.sessionForTab(id))).toEqual(existingSessions)
+      } finally {
+        close.mockRestore()
         service.dispose()
       }
     }
