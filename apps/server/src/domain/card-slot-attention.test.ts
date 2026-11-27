@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { DurableApplicationState } from '@agent-workspace/contracts'
-import { CardSlotAttentionError, CardSlotAttentionService } from './card-slot-attention'
+import {
+  CardSlotAttentionError,
+  CardSlotAttentionService,
+  type CardSlotAttentionEvent
+} from './card-slot-attention'
 
 const workspaceId = '10000000-0000-4000-8000-000000000001'
 const paneId = '20000000-0000-4000-8000-000000000002'
@@ -164,6 +168,106 @@ describe('process-local card slots and attention', () => {
       reason: 'agentFailed',
       unreadCount: 1
     })
+  })
+
+  it('projects interleaved notifications and emits changes in workspace order', () => {
+    const state = fixture()
+    const otherWorkspaceId = '60000000-0000-4000-8000-000000000006'
+    const otherNotificationId = '70000000-0000-4000-8000-000000000007'
+    const missingTargetId = '80000000-0000-4000-8000-000000000008'
+    const otherPaneId = '90000000-0000-4000-8000-000000000009'
+    const otherTabId = 'a0000000-0000-4000-8000-00000000000a'
+    state.workspaces.push({
+      ...state.workspaces[0]!,
+      id: otherWorkspaceId,
+      selectedPaneId: otherPaneId,
+      panes: {
+        [otherPaneId]: {
+          ...state.workspaces[0]!.panes[paneId]!,
+          id: otherPaneId,
+          tabs: [otherTabId],
+          selectedTabId: otherTabId
+        }
+      },
+      tabs: {
+        [otherTabId]: { ...state.workspaces[0]!.tabs[tabId]!, id: otherTabId, paneId: otherPaneId }
+      }
+    })
+    const info = state.notifications[0]!
+    const error = state.notifications[1]!
+    const otherNotification = {
+      ...error,
+      id: otherNotificationId,
+      workspaceId: otherWorkspaceId,
+      paneId: otherPaneId,
+      tabId: otherTabId
+    }
+    state.notifications = [
+      otherNotification,
+      { ...info, level: 'error', createdAt: error.createdAt },
+      {
+        ...otherNotification,
+        id: 'b0000000-0000-4000-8000-00000000000b',
+        paneId: missingTargetId,
+        tabId: null,
+        createdAt: 3
+      },
+      error,
+      {
+        ...otherNotification,
+        id: 'c0000000-0000-4000-8000-00000000000c',
+        tabId: missingTargetId,
+        createdAt: 4
+      },
+      { ...error, id: 'd0000000-0000-4000-8000-00000000000d', createdAt: 5, readAt: 6 }
+    ]
+    const service = new CardSlotAttentionService(() => state)
+
+    expect(service.getAttention({ workspaceId })).toMatchObject({
+      revision: 0,
+      unreadCount: 2,
+      notificationId: errorId,
+      paneId,
+      tabId
+    })
+    expect(service.getAttention({ workspaceId: otherWorkspaceId })).toMatchObject({
+      revision: 0,
+      unreadCount: 1,
+      notificationId: otherNotificationId,
+      paneId: otherPaneId,
+      tabId: otherTabId
+    })
+
+    const events: CardSlotAttentionEvent[] = []
+    service.subscribe((event) => events.push(event))
+    error.readAt = 7
+    otherNotification.readAt = 7
+    state.revision += 1
+    service.refreshAttention()
+
+    expect(service.getAttention({ workspaceId })).toMatchObject({
+      revision: 1,
+      unreadCount: 1,
+      notificationId: infoId
+    })
+    expect(service.getAttention({ workspaceId: otherWorkspaceId })).toEqual({
+      workspaceId: otherWorkspaceId,
+      revision: 1,
+      state: 'none',
+      reason: 'none',
+      unreadCount: 0
+    })
+    expect(events).toEqual([
+      { event: 'workspace.projectionInvalidated', data: { revision: 2 } },
+      {
+        event: 'workspace.attentionChanged',
+        data: { workspaceId, attentionRevision: 1, reason: 'sourcesChanged' }
+      },
+      {
+        event: 'workspace.attentionChanged',
+        data: { workspaceId: otherWorkspaceId, attentionRevision: 1, reason: 'sourcesChanged' }
+      }
+    ])
   })
 
   it('accepts a complete v2 replacement through the strict GET lookup', () => {
