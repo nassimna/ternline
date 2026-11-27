@@ -61,6 +61,54 @@ it('applies source exclusion and source scope before the result limit', () => {
   }
 })
 
+it('pages all-term matches in descending row order when timestamps tie', () => {
+  const path = profile()
+  const source = randomUUID()
+  const otherSource = randomUUID()
+  const firstId = randomUUID()
+  const secondId = randomUUID()
+  const otherDocumentId = randomUUID()
+  const indexedAtMs = Date.now()
+  try {
+    const index = EncryptedIndex.open(path, key)
+    try {
+      index.authorizeSource(source, 0)
+      index.authorizeSource(otherSource, 0)
+      const candidates = [
+        { sourceId: source, documentId: secondId, text: 'alpha beta' },
+        { sourceId: source, documentId: firstId, text: 'alpha beta' },
+        { sourceId: source, documentId: randomUUID(), text: 'alpha' },
+        { sourceId: otherSource, documentId: otherDocumentId, text: 'alpha beta' }
+      ]
+      for (const { sourceId, documentId, text } of candidates) {
+        index.indexText(sourceId, { documentId, identityVersion: 1 }, 'workspaceFile', text, {
+          maxBytes: 1024,
+          deadlineMs: Date.now() + 2000,
+          indexedAtMs
+        })
+      }
+
+      const unscoped = index.searchPage('alpha beta alpha', 2)
+      expect(unscoped.results.map(({ document }) => document.documentId)).toEqual([
+        otherDocumentId,
+        firstId
+      ])
+
+      const first = index.searchPage('alpha beta alpha', 1, [source])
+      expect(first.results.map(({ document }) => document.documentId)).toEqual([firstId])
+      expect(first.nextCursor).toMatchObject({ indexedAtMs })
+
+      const second = index.searchPage('alpha beta alpha', 1, [source], first.nextCursor)
+      expect(second.results.map(({ document }) => document.documentId)).toEqual([secondId])
+      expect(second).not.toHaveProperty('nextCursor')
+    } finally {
+      index.close()
+    }
+  } finally {
+    rmSync(path, { recursive: true, force: true })
+  }
+})
+
 it('writes Rust schema-v1 encrypted data and reopens consent while clearing process-bound documents', () => {
   const path = profile()
   const source = randomUUID(),

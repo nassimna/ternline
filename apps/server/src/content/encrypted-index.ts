@@ -487,20 +487,37 @@ export class EncryptedIndex {
       return fail('resource_limit')
     if (sourceAuthorizationIds?.length === 0) return { results: [] }
     const hashes = tokens.map((token) => keyedIndexHash(this.key, token))
+    const groupTokenMatches =
+      hashes.length > 1 && (sourceAuthorizationIds !== undefined || cursor !== undefined)
+    // Distinct terms with the same hash cannot match as distinct token rows.
+    if (
+      !groupTokenMatches &&
+      hashes.length > 1 &&
+      new Set(hashes.map((hash) => hash.toString('hex'))).size !== hashes.length
+    )
+      return { results: [] }
+    const tokenTable = groupTokenMatches
+      ? 'tokens'
+      : `(${hashes.map(() => 'SELECT document_row FROM tokens WHERE token_hash=?').join(' INTERSECT ')})`
+    const tokenFilter = groupTokenMatches
+      ? ` AND t.token_hash IN (${hashes.map(() => '?').join(',')}) GROUP BY d.id HAVING count(DISTINCT t.token_hash)=${hashes.length}`
+      : ''
     const sourceFilter = sourceAuthorizationIds
       ? ` AND d.authorization_id IN (${sourceAuthorizationIds.map(() => '?').join(',')})`
       : ''
     const cursorFilter = cursor
       ? ' AND (d.indexed_at_ms < ? OR (d.indexed_at_ms = ? AND d.id < ?))'
       : ''
+    const filterParameters = [
+      ...(sourceAuthorizationIds ?? []),
+      ...(cursor ? [cursor.indexedAtMs, cursor.indexedAtMs, cursor.rowId] : [])
+    ]
     const rows = this.db
       .prepare(
-        `SELECT d.id,d.authorization_id,d.identity_version,d.document_nonce,d.document_ciphertext,d.snippet_nonce,d.snippet_ciphertext,d.source_kind,d.indexed_at_ms FROM documents d JOIN source_authorizations s ON s.authorization_id=d.authorization_id JOIN tokens t ON t.document_row=d.id WHERE s.excluded=0${sourceFilter}${cursorFilter} AND t.token_hash IN (${hashes.map(() => '?').join(',')}) GROUP BY d.id HAVING count(DISTINCT t.token_hash)=${hashes.length} ORDER BY d.indexed_at_ms DESC,d.id DESC LIMIT ${limit + 1}`
+        `SELECT d.id,d.authorization_id,d.identity_version,d.document_nonce,d.document_ciphertext,d.snippet_nonce,d.snippet_ciphertext,d.source_kind,d.indexed_at_ms FROM documents d JOIN source_authorizations s ON s.authorization_id=d.authorization_id JOIN ${tokenTable} t ON t.document_row=d.id WHERE s.excluded=0${sourceFilter}${cursorFilter}${tokenFilter} ORDER BY d.indexed_at_ms DESC,d.id DESC LIMIT ${limit + 1}`
       )
       .all(
-        ...(sourceAuthorizationIds ?? []),
-        ...(cursor ? [cursor.indexedAtMs, cursor.indexedAtMs, cursor.rowId] : []),
-        ...hashes
+        ...(groupTokenMatches ? [...filterParameters, ...hashes] : [...hashes, ...filterParameters])
       ) as Array<{
       id: number
       authorization_id: string
