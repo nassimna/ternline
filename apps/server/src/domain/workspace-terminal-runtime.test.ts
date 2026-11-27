@@ -327,6 +327,124 @@ describe('WorkspaceTerminalRuntime', () => {
     }
   })
 
+  it.each([
+    ['closePane', 'preflightPaneClose', 'commitPaneClose', 'live', true],
+    ['closeWorkspace', 'preflightWorkspaceClose', 'commitWorkspaceClose', 'missing', true],
+    [
+      'closeSelectedWorkspaces',
+      'preflightWorkspaceBatchClose',
+      'commitWorkspaceBatchClose',
+      'none',
+      false
+    ],
+    ['closeTab', 'preflightTabClose', 'commitTabClose', 'stale', false]
+  ] as const)(
+    '%s projects replay results through preflight and commit',
+    async (method, preflightMethod, commitMethod, replacement, stagesTerminal) => {
+      const { state, workspaceId, paneId, terminalIds } = snapshot()
+      if (method === 'closeSelectedWorkspaces') {
+        const remaining = snapshot().state.workspaces[0]!
+        state.workspaces.push(remaining)
+        state.windowPlacements[0]!.workspaceIds.push(remaining.id)
+      }
+      const tabId = terminalIds[0]!
+      const otherTabId = terminalIds[1]!
+      const spawn = vi.fn(() => Promise.resolve(new FakePty()))
+      const service = new TerminalService({ spawn })
+      const runtime = new WorkspaceTerminalRuntime(service)
+      const close = vi.spyOn(service, 'close')
+      const lookup = vi.spyOn(runtime, 'sessionForTab')
+      const request = {
+        expectedRevision: state.revision,
+        idempotencyEpoch: randomUUID(),
+        idempotencyKey: randomUUID()
+      }
+      const replacementTabId = {
+        live: otherTabId,
+        missing: randomUUID(),
+        none: null,
+        stale: otherTabId
+      }[replacement]
+      const replay = {
+        revision: 1,
+        replayed: true,
+        replacementTabId,
+        ...(method === 'closeTab' ? { closedItemId: randomUUID() } : {}),
+        ...(method === 'closeWorkspace' || method === 'closeSelectedWorkspaces'
+          ? {
+              replacementWorkspaceId: replacementTabId ? randomUUID() : null,
+              replacementPaneId: replacementTabId ? randomUUID() : null
+            }
+          : {})
+      }
+      const preflight = vi.fn().mockReturnValueOnce(replay).mockReturnValueOnce(null)
+      const commit = vi.fn().mockReturnValue(replay)
+      const readSnapshot = vi.fn(() => state)
+      const store = {
+        exclusive: (operation: () => Promise<unknown>) => operation(),
+        readSnapshot,
+        [preflightMethod]: preflight,
+        [commitMethod]: commit
+      } as unknown as ApplicationStateStore
+      const runClose = () => {
+        switch (method) {
+          case 'closePane':
+            return runtime.closePane(store, { ...request, workspaceId, paneId })
+          case 'closeWorkspace':
+            return runtime.closeWorkspace(store, { ...request, workspaceId })
+          case 'closeSelectedWorkspaces':
+            return runtime.closeSelectedWorkspaces(store, request)
+          case 'closeTab':
+            return runtime.closeTab(store, { ...request, workspaceId, tabId })
+        }
+      }
+
+      try {
+        await runtime.restore(state)
+        const sourceSessionId = runtime.sessionForTab(tabId)!
+        const otherSessionId = runtime.sessionForTab(otherTabId)!
+        expect(sourceSessionId).toBeDefined()
+        expect(otherSessionId).toBeDefined()
+        if (replacement === 'stale') service.close(otherSessionId)
+        close.mockClear()
+        lookup.mockClear()
+        spawn.mockClear()
+        const expected = {
+          ...replay,
+          replacementTerminalId: replacement === 'live' ? otherSessionId : null
+        }
+
+        expect(await runClose()).toStrictEqual(expected)
+        expect(readSnapshot).not.toHaveBeenCalled()
+        expect(commit).not.toHaveBeenCalled()
+        expect(spawn).not.toHaveBeenCalled()
+        expect(close).not.toHaveBeenCalled()
+        expect(lookup.mock.calls).toEqual(replacementTabId ? [[replacementTabId]] : [])
+        if (replacement === 'stale') expect(runtime.ownsTerminal(otherSessionId)).toBe(false)
+
+        lookup.mockClear()
+        const stagedPty = new FakePty()
+        spawn.mockResolvedValueOnce(stagedPty)
+        expect(await runClose()).toStrictEqual(expected)
+        expect(commit).toHaveBeenCalledOnce()
+        expect(spawn).toHaveBeenCalledTimes(stagesTerminal ? 1 : 0)
+        expect(close).toHaveBeenCalledTimes(stagesTerminal ? 1 : 0)
+        if (stagesTerminal) {
+          expect(commit).toHaveBeenCalledBefore(close)
+          expect(close).toHaveBeenCalledBefore(lookup)
+          expect(stagedPty.killed).toBe(true)
+        }
+        expect(lookup.mock.calls).toEqual(replacementTabId ? [[replacementTabId]] : [])
+        expect(runtime.sessionForTab(tabId)).toBe(sourceSessionId)
+        expect(runtime.sessionForTab(otherTabId)).toBe(
+          replacement === 'stale' ? undefined : otherSessionId
+        )
+      } finally {
+        service.dispose()
+      }
+    }
+  )
+
   it.each(['closeWorkspace', 'closeWindowWorkspaces'] as const)(
     '%s retires terminals in order after a fresh commit even if the first close fails',
     async (method) => {
