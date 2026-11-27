@@ -294,12 +294,32 @@ it.each([
   }
 )
 
-it('records restored tab focus after retaining earlier history', () => {
+it.each([
+  { history: 'a middle cursor', hasHistory: true },
+  { history: 'empty history', hasHistory: false }
+])('records restored tab focus with $history', ({ hasHistory }) => {
   const { state, windowId } = fixture()
   const workspace = state.workspaces[0]!
+  const other = state.workspaces[1]!
   const tabId = workspace.panes[workspace.selectedPaneId]!.selectedTabId
   const closedId = randomUUID()
-  const closed = closeTab(state, workspace.id, tabId, closedId, randomUUID(), 2)
+  const replacementId = randomUUID()
+  const closed = closeTab(state, workspace.id, tabId, closedId, replacementId, 2)
+  const previousFocus = {
+    windowId,
+    workspaceId: workspace.id,
+    paneId: workspace.selectedPaneId,
+    tabId: replacementId
+  }
+  const otherFocus = {
+    windowId,
+    workspaceId: other.id,
+    paneId: other.selectedPaneId,
+    tabId: other.panes[other.selectedPaneId]!.selectedTabId
+  }
+  closed.focusHistory = hasHistory
+    ? { entries: [otherFocus, previousFocus, otherFocus], cursor: 1 }
+    : { entries: [], cursor: 0 }
   const before = structuredClone(closed)
   const restoredId = randomUUID()
   const restored = reopenClosedTab(
@@ -316,14 +336,12 @@ it('records restored tab focus after retaining earlier history', () => {
     randomUUID(),
     3
   )
-  const focus = {
-    windowId,
-    workspaceId: workspace.id,
-    paneId: workspace.selectedPaneId,
-    tabId: restoredId
-  }
-  expect(restored.focusHistory.entries).toEqual([...closed.focusHistory.entries, focus])
-  expect(restored.focusHistory.cursor).toBe(restored.focusHistory.entries.length - 1)
+  const focus = { ...previousFocus, tabId: restoredId }
+  expect(restored.focusHistory).toEqual(
+    hasHistory
+      ? { entries: [otherFocus, previousFocus, focus], cursor: 2 }
+      : { entries: [previousFocus, focus], cursor: 1 }
+  )
   expect(restored.workspaces[0]!.tabs[restoredId]!.content).toEqual(workspace.tabs[tabId]!.content)
   expect(restored.recentlyClosed).toEqual([])
   expect(closed).toEqual(before)
