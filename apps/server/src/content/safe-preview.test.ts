@@ -143,6 +143,16 @@ describe('bounded diffs', () => {
       ]
     },
     {
+      name: 'preserves a final bare carriage return and treats LF and CRLF alike',
+      before: 'first\r\nlast',
+      after: 'first\nlast\r',
+      lines: [
+        { kind: 'removed', text: 'last' },
+        { kind: 'context', text: 'first' },
+        { kind: 'added', text: 'last\r' }
+      ]
+    },
+    {
       name: 'matches the first occurrences and preserves scan order',
       before: 'retry\nold\nanchor\nretry\nretry\n',
       after: 'retry\nanchor\nretry\nretry\nretry\nretry\n',
