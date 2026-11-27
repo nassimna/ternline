@@ -354,24 +354,35 @@ function integerOption(value: string, label: string, minimum: number): number {
   return parsed
 }
 
-function parseTerminalCreate(args: string[]): TerminalCreateOptions {
-  const { values, command } = flags(
-    args,
-    [
-      '--workspace-id',
-      '--pane-id',
-      '--cwd',
-      '--rows',
-      '--cols',
-      '--destination-index',
-      '--expected-revision',
-      '--idempotency-key'
-    ],
-    true
-  )
+function createFlags(args: string[], allowed: readonly string[]) {
+  const parsed = flags(args, [...allowed, '--expected-revision', '--idempotency-key'], true)
+  const { values } = parsed
   if (values.has('--idempotency-key') && !values.has('--expected-revision')) {
     throw new Error('--idempotency-key requires --expected-revision for safe retries')
   }
+  return parsed
+}
+
+function createRetryOptions(values: Map<string, string>) {
+  const revision = values.get('--expected-revision')
+  const idempotencyKey = values.get('--idempotency-key')
+  return {
+    ...(revision === undefined
+      ? {}
+      : { expectedRevision: integerOption(revision, '--expected-revision', 0) }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey })
+  }
+}
+
+function parseTerminalCreate(args: string[]): TerminalCreateOptions {
+  const { values, command } = createFlags(args, [
+    '--workspace-id',
+    '--pane-id',
+    '--cwd',
+    '--rows',
+    '--cols',
+    '--destination-index'
+  ])
   return {
     workspaceId: required(values, '--workspace-id'),
     paneId: required(values, '--pane-id'),
@@ -387,46 +398,26 @@ function parseTerminalCreate(args: string[]): TerminalCreateOptions {
           )
         }
       : {}),
-    ...(values.has('--expected-revision')
-      ? {
-          expectedRevision: integerOption(
-            values.get('--expected-revision')!,
-            '--expected-revision',
-            0
-          )
-        }
-      : {}),
-    ...(values.has('--idempotency-key')
-      ? { idempotencyKey: values.get('--idempotency-key')! }
-      : {}),
+    ...createRetryOptions(values),
     ...(command ? { command } : {})
   }
 }
 
 function parseWorkspaceCreate(args: string[]): WorkspaceCreateOptions {
   const env = workspaceEnvironment(args)
-  const { values, command } = flags(
-    env.args,
-    [
-      '--ssh-host',
-      '--ssh-user',
-      '--ssh-port',
-      '--ssh-key',
-      '--name',
-      '--working-directory',
-      '--terminal-cwd',
-      '--description',
-      '--color',
-      '--rows',
-      '--cols',
-      '--expected-revision',
-      '--idempotency-key'
-    ],
-    true
-  )
-  if (values.has('--idempotency-key') && !values.has('--expected-revision')) {
-    throw new Error('--idempotency-key requires --expected-revision for safe retries')
-  }
+  const { values, command } = createFlags(env.args, [
+    '--ssh-host',
+    '--ssh-user',
+    '--ssh-port',
+    '--ssh-key',
+    '--name',
+    '--working-directory',
+    '--terminal-cwd',
+    '--description',
+    '--color',
+    '--rows',
+    '--cols'
+  ])
   const sshHost = values.get('--ssh-host')
   if (!sshHost && ['--ssh-user', '--ssh-port', '--ssh-key'].some((flag) => values.has(flag))) {
     throw new Error('SSH options require --ssh-host')
@@ -451,18 +442,7 @@ function parseWorkspaceCreate(args: string[]): WorkspaceCreateOptions {
     ...(values.has('--terminal-cwd') ? { terminalCwd: values.get('--terminal-cwd')! } : {}),
     ...(values.has('--description') ? { description: values.get('--description')! } : {}),
     ...(values.has('--color') ? { color: values.get('--color')! } : {}),
-    ...(values.has('--expected-revision')
-      ? {
-          expectedRevision: integerOption(
-            values.get('--expected-revision')!,
-            '--expected-revision',
-            0
-          )
-        }
-      : {}),
-    ...(values.has('--idempotency-key')
-      ? { idempotencyKey: values.get('--idempotency-key')! }
-      : {}),
+    ...createRetryOptions(values),
     ...(command ? { command } : {})
   }
 }
