@@ -128,7 +128,7 @@ export class WorkspaceTerminalRuntime {
     const id = this.sessions.get(tabId)
     if (!id) return undefined
     try {
-      this.terminals.attach(id)
+      this.terminals.assertAttachable(id)
       return id
     } catch {
       this.sessions.delete(tabId)
