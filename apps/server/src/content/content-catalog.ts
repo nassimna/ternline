@@ -1,20 +1,24 @@
 import { assertWindowsPrivatePath } from '@agent-workspace/client-runtime'
+import { sidebarSurfaceSchema } from '@agent-workspace/protocol-client'
 import { lstatSync } from 'node:fs'
 
 import Database from 'better-sqlite3'
 import { readLegacySnapshotConnection } from '../persistence/legacy-state-reader'
 
-const SURFACES = [
-  'textBox',
-  'vault',
-  'taskManager',
-  'files',
-  'markdown',
-  'diff',
-  'search',
-  'recentlyClosed'
-] as const
+const SURFACES = sidebarSurfaceSchema.options
 type Surface = (typeof SURFACES)[number]
+
+export function isSidebarSurface(value: unknown): value is Surface {
+  return typeof value === 'string' && SURFACES.includes(value as Surface)
+}
+
+export function hasCompleteSidebarOrder(order: unknown): order is Surface[] {
+  return (
+    Array.isArray(order) &&
+    order.length === SURFACES.length &&
+    SURFACES.every((surface) => order.includes(surface))
+  )
+}
 
 export interface SidebarPlacement {
   windowId: string
@@ -83,8 +87,6 @@ function placementFromRow(row: PlacementRow): SidebarPlacement {
   } catch {
     return corrupt()
   }
-  const isSurface = (value: unknown): value is Surface =>
-    typeof value === 'string' && SURFACES.includes(value as Surface)
   if (
     !validId(row.window_id) ||
     !validPositive(row.revision) ||
@@ -93,14 +95,10 @@ function placementFromRow(row: PlacementRow): SidebarPlacement {
     row.width < 240 ||
     row.width > 720 ||
     !Array.isArray(enabled) ||
-    !Array.isArray(order) ||
-    !enabled.every(isSurface) ||
-    !order.every(isSurface) ||
-    order.length !== SURFACES.length ||
+    !enabled.every(isSidebarSurface) ||
+    !hasCompleteSidebarOrder(order) ||
     new Set(enabled).size !== enabled.length ||
-    new Set(order).size !== SURFACES.length ||
-    !SURFACES.every((surface) => order.includes(surface)) ||
-    !isSurface(row.selected) ||
+    !isSidebarSurface(row.selected) ||
     !enabled.includes(row.selected)
   )
     return corrupt()

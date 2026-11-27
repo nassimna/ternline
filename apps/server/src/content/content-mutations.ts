@@ -6,6 +6,8 @@ import Database from 'better-sqlite3'
 import { readLegacySnapshotConnection } from '../persistence/legacy-state-reader'
 import {
   documentFromRow,
+  hasCompleteSidebarOrder,
+  isSidebarSurface,
   type SidebarPlacement,
   type TextBoxDocument,
   type TextBoxRow
@@ -14,16 +16,6 @@ import {
 const EPOCH = '00000000-0000-0000-0000-000000000001'
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu
 const HASH = /^[0-9a-f]{64}$/u
-const SURFACES = [
-  'textBox',
-  'vault',
-  'taskManager',
-  'files',
-  'markdown',
-  'diff',
-  'search',
-  'recentlyClosed'
-] as const
 const MAX_SAFE = Number.MAX_SAFE_INTEGER
 
 export type ContentMutationCode =
@@ -234,13 +226,9 @@ export class ContentMutations {
       placement.width < 240 ||
       placement.width > 720 ||
       !Array.isArray(placement.enabled) ||
-      !Array.isArray(placement.order) ||
-      placement.order.length !== SURFACES.length ||
-      new Set(placement.order).size !== SURFACES.length ||
+      !hasCompleteSidebarOrder(placement.order) ||
       new Set(placement.enabled).size !== placement.enabled.length ||
-      !placement.order.every((value) => SURFACES.includes(value)) ||
-      !placement.enabled.every((value) => SURFACES.includes(value)) ||
-      !SURFACES.every((value) => placement.order.includes(value)) ||
+      !placement.enabled.every(isSidebarSurface) ||
       !placement.enabled.includes(placement.selected)
     )
       fail('invalid_params', 'Invalid sidebar placement')
