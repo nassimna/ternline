@@ -4,7 +4,13 @@ import { randomUUID } from 'node:crypto'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
-import { closePane, closeTab, closeWorkspace, createWorkspace } from './workspace-mutations'
+import {
+  closePane,
+  closeTab,
+  closeWorkspace,
+  createWorkspace,
+  splitPane
+} from './workspace-mutations'
 import { projectApplicationSnapshot } from './application-projection'
 import { saveLayout } from './layout-mutations'
 
@@ -445,24 +451,72 @@ describe('WorkspaceTerminalRuntime', () => {
     }
   )
 
-  it.each(['closeWorkspace', 'closeWindowWorkspaces'] as const)(
+  it.each([
+    ['closePane', 'commitPaneClose', 'paneTerminalCleanupFailed'],
+    ['closeWorkspace', 'commitWorkspaceClose', 'workspaceTerminalCleanupFailed'],
+    ['closeWindowWorkspaces', 'closeWindowWorkspaces', 'workspaceTerminalCleanupFailed'],
+    ['closeSelectedWorkspaces', 'commitWorkspaceBatchClose', 'batchTerminalCleanupFailed'],
+    ['closeTab', 'commitTabClose', 'tabTerminalCleanupFailed']
+  ] as const)(
     '%s retires terminals in order after a fresh commit even if the first close fails',
-    async (method) => {
-      const { state, workspaceId, terminalIds } = snapshot()
-      const other = snapshot().state
-      state.workspaces.push(other.workspaces[0]!)
-      state.windowPlacements.push(other.windowPlacements[0]!)
+    async (method, commitMethod, failureEvent) => {
+      const fixture = snapshot()
+      const { workspaceId, paneId, terminalIds } = fixture
+      const [tabId, otherTabId] = terminalIds
+      const splitIds = {
+        splitId: randomUUID(),
+        paneId: randomUUID(),
+        tabId: randomUUID(),
+        browserSessionId: randomUUID()
+      }
+      const state =
+        method === 'closePane'
+          ? splitPane(
+              fixture.state,
+              {
+                workspaceId,
+                targetPaneId: paneId,
+                axis: 'horizontal',
+                ratio: 0.5,
+                placement: 'after',
+                content: { kind: 'newTerminal', launch: { cwd: '/tmp', rows: 24, cols: 80 } }
+              },
+              splitIds,
+              2
+            )
+          : fixture.state
+      const other = snapshot()
+      state.workspaces.push(other.state.workspaces[0]!)
+      if (method === 'closeSelectedWorkspaces') {
+        state.windowPlacements[0]!.workspaceIds.push(other.workspaceId)
+      } else {
+        state.windowPlacements.push(other.state.windowPlacements[0]!)
+      }
+      const retiringTabs = method === 'closeTab' ? [tabId!] : [...terminalIds]
+      const retainedTabs = [...other.terminalIds]
+      if (method === 'closePane') {
+        state.workspaces[0]!.panes[paneId]!.tabs.reverse()
+        retiringTabs.reverse()
+        retainedTabs.push(splitIds.tabId)
+      }
+      if (method === 'closeTab') retainedTabs.push(otherTabId!)
       const service = new TerminalService({ spawn: () => Promise.resolve(new FakePty()) })
       const runtime = new WorkspaceTerminalRuntime(service)
       const idempotencyEpoch = randomUUID()
-      const result = {
-        revision: 1,
-        replacementWorkspaceId: null,
-        replacementPaneId: null,
-        replacementTabId: null,
-        idempotencyEpoch,
-        closedWindowId: workspaceId
-      }
+      const revision = state.revision + 1
+      const result =
+        method === 'closeWindowWorkspaces'
+          ? { revision, idempotencyEpoch, closedWindowId: workspaceId }
+          : {
+              revision,
+              replacementTabId: null,
+              ...(method === 'closeTab' ? { closedItemId: randomUUID() } : {}),
+              ...(method === 'closeWorkspace' || method === 'closeSelectedWorkspaces'
+                ? { replacementWorkspaceId: null, replacementPaneId: null }
+                : {})
+            }
+      const expected =
+        method === 'closeWindowWorkspaces' ? result : { ...result, replacementTerminalId: null }
       const commit = vi
         .fn()
         .mockReturnValueOnce({ ...result, replayed: true })
@@ -470,9 +524,11 @@ describe('WorkspaceTerminalRuntime', () => {
       const store = {
         exclusive: (operation: () => unknown) => operation(),
         readSnapshot: () => state,
+        preflightPaneClose: () => null,
         preflightWorkspaceClose: () => null,
-        commitWorkspaceClose: commit,
-        closeWindowWorkspaces: commit
+        preflightWorkspaceBatchClose: () => null,
+        preflightTabClose: () => null,
+        [commitMethod]: commit
       } as unknown as ApplicationStateStore
       const runClose = async () => {
         const mutation = {
@@ -480,38 +536,54 @@ describe('WorkspaceTerminalRuntime', () => {
           idempotencyEpoch,
           idempotencyKey: randomUUID()
         }
-        return method === 'closeWorkspace'
-          ? runtime.closeWorkspace(store, { ...mutation, workspaceId })
-          : runtime.closeWindowWorkspaces(store, {
+        switch (method) {
+          case 'closePane':
+            return runtime.closePane(store, { ...mutation, workspaceId, paneId })
+          case 'closeWorkspace':
+            return runtime.closeWorkspace(store, { ...mutation, workspaceId })
+          case 'closeWindowWorkspaces':
+            return runtime.closeWindowWorkspaces(store, {
               mutation,
               policy: 'closeWorkspaces',
               window: { windowId: workspaceId, expectedRevision: 0 }
             })
+          case 'closeSelectedWorkspaces':
+            return runtime.closeSelectedWorkspaces(store, mutation)
+          case 'closeTab':
+            return runtime.closeTab(store, { ...mutation, workspaceId, tabId: tabId! })
+        }
       }
+      const closeSession = service.close.bind(service)
       const close = vi.spyOn(service, 'close')
       const warn = vi.spyOn(serviceLogger, 'emit').mockImplementation(() => {})
       try {
         await runtime.restore(state)
-        const sessions = () => terminalIds.map((id) => runtime.sessionForTab(id))
-        const [first, second] = sessions()
-        expect(first).toBeDefined()
-        expect(second).toBeDefined()
+        const retiring = retiringTabs.map((id) => runtime.sessionForTab(id)!)
+        const retained = retainedTabs.map((id) => runtime.sessionForTab(id)!)
+        for (const id of [...retiring, ...retained]) expect(id).toBeDefined()
 
-        expect(await runClose()).toMatchObject({ replayed: true })
+        expect(await runClose()).toStrictEqual({ ...expected, replayed: true })
         expect(close).not.toHaveBeenCalled()
-        expect(sessions()).toEqual([first, second])
+        expect(warn).not.toHaveBeenCalled()
+        expect(retiringTabs.map((id) => runtime.sessionForTab(id))).toEqual(retiring)
+        expect(retainedTabs.map((id) => runtime.sessionForTab(id))).toEqual(retained)
 
         commit.mockClear()
-        close
-          .mockImplementationOnce(() => {
-            throw new Error('close failed')
-          })
-          .mockImplementationOnce(() => {})
-        expect(await runClose()).toMatchObject({ replayed: false })
+        const ownedDuringClose: boolean[] = []
+        close.mockImplementation((id) => {
+          ownedDuringClose.push(runtime.ownsTerminal(id))
+          if (id === retiring[0]) throw new Error('close failed')
+          closeSession(id)
+        })
+        expect(await runClose()).toStrictEqual({ ...expected, replayed: false })
         expect(commit).toHaveBeenCalledBefore(close)
-        expect(close.mock.calls).toEqual([[first], [second]])
-        expect(sessions()).toEqual([undefined, undefined])
-        expect(warn.mock.calls).toEqual([['warn', 'workspaceTerminalCleanupFailed']])
+        expect(close.mock.calls).toEqual(retiring.map((id) => [id]))
+        expect(ownedDuringClose).toEqual(retiring.map(() => false))
+        expect(retiringTabs.map((id) => runtime.sessionForTab(id))).toEqual(
+          retiring.map(() => undefined)
+        )
+        expect(retainedTabs.map((id) => runtime.sessionForTab(id))).toEqual(retained)
+        expect(warn.mock.calls).toEqual([['warn', failureEvent]])
       } finally {
         close.mockRestore()
         warn.mockRestore()
