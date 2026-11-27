@@ -543,7 +543,17 @@ function boundedHeaders(headers: Record<string, string>): Record<string, string>
   const entries: Array<[string, string]> = Object.entries(headers)
     .slice(0, 50)
     .map(([key, value]) => [key.slice(0, 128), String(value).slice(0, 1024)])
-  while (Buffer.byteLength(JSON.stringify(entries)) > 8192) entries.pop()
+  const maxBytes = 8192
+  if (Buffer.byteLength(JSON.stringify(entries)) > maxBytes) {
+    let bytes = 2 // Array brackets
+    let retained = 0
+    for (const entry of entries) {
+      bytes += Buffer.byteLength(JSON.stringify(entry)) + (retained === 0 ? 0 : 1)
+      if (bytes > maxBytes) break
+      retained++
+    }
+    entries.length = retained
+  }
   return Object.fromEntries(entries)
 }
 
