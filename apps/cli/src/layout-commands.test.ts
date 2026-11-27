@@ -60,6 +60,45 @@ function parse(args: string[]) {
   return parsed
 }
 
+await test('layout and group deletes preserve explicit keys and generate fresh missing keys', async () => {
+  const generatedKeys = new Set<string>()
+  for (const request of [
+    (...options: string[]) =>
+      layoutRequest(
+        parse([
+          'layout',
+          'delete',
+          '--layout-id',
+          layoutId,
+          '--expected-revision',
+          '4',
+          ...options
+        ]),
+        epoch
+      ),
+    (...options: string[]) =>
+      organizationRequest(
+        parseOrganizationCommand(
+          ['group', 'delete', '--group-id', first, '--expected-revision', '4', ...options],
+          '/private/session'
+        )!,
+        epoch
+      )
+  ]) {
+    assert.equal((await request('--idempotency-key', key)).idempotencyKey, key)
+    for (const result of [await request(), await request()]) {
+      assert.equal(result.expectedRevision, 4)
+      assert.equal(result.idempotencyEpoch, epoch)
+      assert.match(
+        result.idempotencyKey,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+      )
+      generatedKeys.add(result.idempotencyKey)
+    }
+  }
+  assert.equal(generatedKeys.size, 4)
+})
+
 await test('layout save and select-many preserve workspace ID errors and their order', () => {
   const cases: [string[], string][] = [
     [['--workspace-id'], '--workspace-id requires a value'],

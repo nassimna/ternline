@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 
@@ -11,7 +10,7 @@ import {
   layoutSaveRequestSchema
 } from '@agent-workspace/contracts'
 
-import { flags, nonnegativeInteger, required, workspaceIdFlags } from './options'
+import { flags, mutationIdentity, required, workspaceIdFlags } from './options'
 
 type LayoutMutation = 'layout.save' | 'layout.delete' | 'layout.apply' | 'layout.import'
 
@@ -82,14 +81,7 @@ async function readLayoutEnvelope(path: string) {
 
 export async function layoutRequest(parsed: LayoutCommand, idempotencyEpoch: string) {
   const { values } = parsed
-  const identity = {
-    expectedRevision: nonnegativeInteger(
-      required(values, '--expected-revision'),
-      '--expected-revision'
-    ),
-    idempotencyEpoch,
-    idempotencyKey: values.get('--idempotency-key') ?? randomUUID()
-  }
+  const identity = mutationIdentity(values, idempotencyEpoch)
   const layoutId = required(values, '--layout-id')
   switch (parsed.operation) {
     case 'layout.save':
