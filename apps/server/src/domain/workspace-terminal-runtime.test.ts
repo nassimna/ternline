@@ -16,19 +16,25 @@ import { duplicateTabExact } from './advanced-tab-duplicate'
 class FakePty implements PtyProcess {
   public readonly pid = 123
   public killed = false
+  private exitListener: ((event: { exitCode: number }) => void) | undefined
 
   public onData(): { dispose(): void } {
     return { dispose() {} }
   }
 
-  public onExit(): { dispose(): void } {
-    return { dispose() {} }
+  public onExit(listener: (event: { exitCode: number }) => void): { dispose(): void } {
+    this.exitListener = listener
+    return { dispose: () => (this.exitListener = undefined) }
   }
 
   public write(): void {}
   public resize(): void {}
   public kill(): void {
     this.killed = true
+  }
+
+  public exit(): void {
+    this.exitListener?.({ exitCode: 0 })
   }
 }
 
@@ -287,6 +293,39 @@ describe('initial workspace mutations', () => {
 })
 
 describe('WorkspaceTerminalRuntime', () => {
+  it('looks up live and retained exited sessions without attaching and removes stale bindings', async () => {
+    const { state, terminalIds } = snapshot()
+    const [exitingTabId, terminatingTabId] = terminalIds.toSorted((a, b) => a.localeCompare(b))
+    const exitingPty = new FakePty()
+    const spawn = vi.fn().mockResolvedValueOnce(exitingPty).mockResolvedValueOnce(new FakePty())
+    const service = new TerminalService({ spawn })
+    const attach = vi.spyOn(service, 'attach')
+    const runtime = new WorkspaceTerminalRuntime(service)
+    try {
+      await runtime.restore(state)
+      const exitingId = runtime.sessionForTab(exitingTabId!)!
+      const terminatingId = runtime.sessionForTab(terminatingTabId!)!
+      expect(exitingId).toBeDefined()
+      expect(terminatingId).toBeDefined()
+
+      exitingPty.exit()
+      expect(runtime.sessionForTab(exitingTabId!)).toBe(exitingId)
+
+      service.close(exitingId)
+      expect(runtime.sessionForTab(exitingTabId!)).toBeUndefined()
+      expect(runtime.ownsTerminal(exitingId)).toBe(false)
+
+      await expect(service.terminateObserved(terminatingId, 1)).rejects.toMatchObject({
+        code: 'termination_unverified'
+      })
+      expect(runtime.sessionForTab(terminatingTabId!)).toBeUndefined()
+      expect(runtime.ownsTerminal(terminatingId)).toBe(false)
+      expect(attach).not.toHaveBeenCalled()
+    } finally {
+      service.dispose()
+    }
+  })
+
   it.each(['closeWorkspace', 'closeWindowWorkspaces'] as const)(
     '%s retires terminals in order after a fresh commit even if the first close fails',
     async (method) => {
