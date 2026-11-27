@@ -685,13 +685,7 @@ export function moveTab(
     source.tabs.splice(normalized, 0, request.tabId)
     source.selectedTabId = request.tabId
   } else {
-    source.tabs.splice(sourceIndex, 1)
-    if (source.tabs.length === 0) {
-      delete workspace.panes[source.id]
-      workspace.layout = collapsePane(workspace.layout as PaneLayout, source.id)
-    } else if (source.selectedTabId === request.tabId) {
-      source.selectedTabId = source.tabs[Math.min(sourceIndex, source.tabs.length - 1)]!
-    }
+    removeTransferSourceTab(workspace, source, request.tabId, sourceIndex)
     workspace.tabs[request.tabId]!.paneId = destination.id
     destination.tabs.splice(request.destinationIndex, 0, request.tabId)
     destination.selectedTabId = request.tabId
