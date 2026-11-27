@@ -113,14 +113,31 @@ function countLines(lines: string[]): Map<string, number> {
 }
 
 export function boundedDiff(before: string, after: string) {
+  const rowLimit = 2048
   const lineTextLimit = 16_384
   const beforeLines = previewLines(before)
   const afterLines = previewLines(after)
+  const afterPreview = afterLines.slice(0, rowLimit)
+  let truncated = beforeLines.length > rowLimit || afterLines.length > rowLimit
+  if (
+    truncated &&
+    beforeLines.length >= rowLimit &&
+    afterPreview.length === rowLimit &&
+    afterPreview.every((line, index) => line === beforeLines[index])
+  ) {
+    return {
+      lines: afterPreview.map((line) => ({
+        kind: 'context' as const,
+        text: takeCharacters(line, lineTextLimit)
+      })),
+      truncated: true
+    }
+  }
+
   const beforeCounts = countLines(beforeLines)
   const afterCounts = countLines(afterLines)
   const lines: Array<{ kind: 'removed' | 'context' | 'added'; text: string }> = []
-  let truncated = beforeLines.length > 2048 || afterLines.length > 2048
-  for (const line of beforeLines.slice(0, 2048)) {
+  for (const line of beforeLines.slice(0, rowLimit)) {
     const remaining = afterCounts.get(line) ?? 0
     if (remaining > 0) {
       afterCounts.set(line, remaining - 1)
@@ -129,7 +146,7 @@ export function boundedDiff(before: string, after: string) {
       lines.push({ kind: 'removed', text: takeCharacters(line, lineTextLimit) })
     }
   }
-  for (const line of afterLines.slice(0, 2048)) {
+  for (const line of afterPreview) {
     const remaining = beforeCounts.get(line) ?? 0
     if (remaining > 0) beforeCounts.set(line, remaining - 1)
     truncated ||= line.length > lineTextLimit
