@@ -92,7 +92,8 @@ export class BrowserAutomationDevtools {
   readonly #requests = new Map<string, NetworkRequest>()
   readonly #requestSizes = new Map<string, number>()
   readonly #requestTimes = new Map<string, number>()
-  readonly #pendingHeaders = new Map<string, Record<string, string>>()
+  readonly #pendingHeaders = new Map<string, { headers: Record<string, string>; bytes: number }>()
+  #pendingHeaderBytes = 0 // Serialized header objects, excluding array brackets and commas.
   #consoleSequence = 0
   #errorsSequence = 0
   #networkSequence = 0
@@ -450,6 +451,13 @@ export class BrowserAutomationDevtools {
     }
   }
 
+  private deletePendingHeaders(key: string): void {
+    const pending = this.#pendingHeaders.get(key)
+    if (!pending) return
+    this.#pendingHeaders.delete(key)
+    this.#pendingHeaderBytes -= pending.bytes
+  }
+
   private networkEvent(method: string, event: NetworkEvent): void {
     if (
       ![
@@ -479,15 +487,18 @@ export class BrowserAutomationDevtools {
           if (event.statusCode !== undefined) request.status = event.statusCode
         }
       } else {
-        this.#pendingHeaders.set(`${event.requestId}:${side}`, headers)
+        const key = `${event.requestId}:${side}`
+        const bytes = Buffer.byteLength(JSON.stringify(headers))
+        this.#pendingHeaderBytes += bytes - (this.#pendingHeaders.get(key)?.bytes ?? 0)
+        this.#pendingHeaders.set(key, { headers, bytes })
         while (
           this.#pendingHeaders.size > MAX_ITEMS ||
-          Buffer.byteLength(JSON.stringify(Array.from(this.#pendingHeaders.values()))) >
+          this.#pendingHeaderBytes + 2 + Math.max(0, this.#pendingHeaders.size - 1) >
             MAX_BUFFER_BYTES
         ) {
           const oldest = this.#pendingHeaders.keys().next().value
           if (!oldest) break
-          this.#pendingHeaders.delete(oldest)
+          this.deletePendingHeaders(oldest)
         }
         return
       }
@@ -504,10 +515,10 @@ export class BrowserAutomationDevtools {
         url: event.request.url.slice(0, 4096),
         method: event.request.method,
         requestHeaders:
-          this.#pendingHeaders.get(`${event.requestId}:request`) ??
+          this.#pendingHeaders.get(`${event.requestId}:request`)?.headers ??
           boundedHeaders(event.request.headers),
         ...(this.#pendingHeaders.has(`${event.requestId}:response`)
-          ? { responseHeaders: this.#pendingHeaders.get(`${event.requestId}:response`)! }
+          ? { responseHeaders: this.#pendingHeaders.get(`${event.requestId}:response`)!.headers }
           : {}),
         timestampMs: (event.wallTime ?? event.timestamp) * 1000,
         redirects: redirects.slice(-10),
@@ -515,8 +526,8 @@ export class BrowserAutomationDevtools {
       }
       this.#requests.set(event.requestId, request)
       this.#requestTimes.set(event.requestId, event.timestamp)
-      this.#pendingHeaders.delete(`${event.requestId}:request`)
-      this.#pendingHeaders.delete(`${event.requestId}:response`)
+      this.deletePendingHeaders(`${event.requestId}:request`)
+      this.deletePendingHeaders(`${event.requestId}:response`)
     } else if (request) {
       request.sequence = ++this.#networkSequence
       if (method === 'Network.responseReceived' && event.response) {

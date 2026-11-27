@@ -48,8 +48,18 @@ function fixture(attached = false) {
   } as unknown as WebContents
   const devtools = new BrowserAutomationDevtools(contents)
   const event = (method: string, params: unknown) => debuggerApi.emit('message', {}, method, params)
-  return { debuggerApi, devtools, event }
+  const startRequest = (requestId: string) =>
+    event('Network.requestWillBeSent', {
+      requestId,
+      timestamp: 1,
+      request: { url: 'https://example.test/api', method: 'GET', headers: { fallback: 'yes' } }
+    })
+  return { debuggerApi, devtools, event, startRequest }
 }
+
+const bulkHeaders = Object.fromEntries(
+  Array.from({ length: 7 }, (_, index) => [`bulk-${index}`, '🧪"\\\n'.repeat(114)])
+)
 
 describe('BrowserAutomationDevtools', () => {
   it('stops screencasting after encoder failure and ignores stale frame failures after detach', async () => {
@@ -222,6 +232,84 @@ describe('BrowserAutomationDevtools', () => {
     await expect(devtools.run({ kind: 'networkGet', requestId: 'r1' })).rejects.toThrow(
       'Network request is not retained'
     )
+    devtools.dispose()
+  })
+
+  it.each([0, 1])('applies the pending header byte cap at 48 KiB plus %i bytes', async (over) => {
+    const { devtools, event, startRequest } = fixture()
+    await devtools.initialize()
+    await devtools.run({ kind: 'networkStart' })
+
+    const tail = { boundary: '🧪"\\\n' }
+    const entries = [...Array.from({ length: 6 }, () => bulkHeaders), tail]
+    tail.boundary += 'a'.repeat(48 * 1024 + over - Buffer.byteLength(JSON.stringify(entries)))
+    expect(Buffer.byteLength(JSON.stringify(entries))).toBe(48 * 1024 + over)
+
+    event('Network.requestWillBeSentExtraInfo', { requestId: 'r0', headers: { old: 'value' } })
+    for (const [index, headers] of entries.entries()) {
+      if (index > 0)
+        event('Network.requestWillBeSentExtraInfo', { requestId: `r${index}`, headers })
+    }
+    event('Network.requestWillBeSentExtraInfo', { requestId: 'r0', headers: bulkHeaders })
+
+    startRequest('r0')
+    startRequest('r1')
+    startRequest('r6')
+    expect(await devtools.run({ kind: 'networkGet', requestId: 'r0' })).toMatchObject({
+      requestHeaders: over ? { fallback: 'yes' } : bulkHeaders
+    })
+    expect(await devtools.run({ kind: 'networkGet', requestId: 'r1' })).toMatchObject({
+      requestHeaders: bulkHeaders
+    })
+    expect(await devtools.run({ kind: 'networkGet', requestId: 'r6' })).toMatchObject({
+      requestHeaders: tail
+    })
+    devtools.dispose()
+  })
+
+  it('releases the pending bytes for both sides when a request starts', async () => {
+    const { devtools, event, startRequest } = fixture()
+    await devtools.initialize()
+    await devtools.run({ kind: 'networkStart' })
+
+    for (let index = 0; index < 4; index++) {
+      event('Network.requestWillBeSentExtraInfo', { requestId: `r${index}`, headers: bulkHeaders })
+    }
+    event('Network.requestWillBeSentExtraInfo', { requestId: 'both', headers: bulkHeaders })
+    const responseHeaders = { ...bulkHeaders, side: 'response' }
+    event('Network.responseReceivedExtraInfo', { requestId: 'both', headers: responseHeaders })
+    startRequest('both')
+    expect(await devtools.run({ kind: 'networkGet', requestId: 'both' })).toMatchObject({
+      requestHeaders: bulkHeaders,
+      responseHeaders
+    })
+
+    for (const requestId of ['r4', 'r5']) {
+      event('Network.requestWillBeSentExtraInfo', { requestId, headers: bulkHeaders })
+    }
+    startRequest('r0')
+    expect(await devtools.run({ kind: 'networkGet', requestId: 'r0' })).toMatchObject({
+      requestHeaders: bulkHeaders
+    })
+    devtools.dispose()
+  })
+
+  it('limits pending request and response headers to 100 entries combined', async () => {
+    const { devtools, event, startRequest } = fixture()
+    await devtools.initialize()
+    await devtools.run({ kind: 'networkStart' })
+
+    const headers = { pending: 'yes' }
+    event('Network.requestWillBeSentExtraInfo', { requestId: 'both', headers })
+    event('Network.responseReceivedExtraInfo', { requestId: 'both', headers })
+    for (let index = 0; index < 99; index++) {
+      event('Network.requestWillBeSentExtraInfo', { requestId: `r${index}`, headers })
+    }
+    startRequest('both')
+    expect(await devtools.run({ kind: 'networkGet', requestId: 'both' })).toMatchObject({
+      requestHeaders: { fallback: 'yes' },
+      responseHeaders: headers
+    })
     devtools.dispose()
   })
 
