@@ -81,11 +81,31 @@ describe('safe Markdown previews', () => {
   it.each([
     'A [link](javascript:alert(1)) and tail.',
     'A [link](https://user:password@example.com) and tail.',
+    'A [link](../guide.md) and tail.',
+    'A [link](#section) and tail.',
+    'A [link](https://) and tail.',
+    'A [link](HTTPS://example.com) and tail.',
     '<b>A</b> [link](https://example.com) and tail.'
-  ])('keeps unsafe or HTML-containing input literal (%s)', (source) => {
+  ])('keeps unsupported links or HTML-containing input literal (%s)', (source) => {
     expect(parseSafeMarkdown(source)).toEqual([
       { kind: 'paragraph', children: [{ kind: 'text', text: source }] }
     ])
+  })
+
+  it('accepts link labels and hrefs up to 2048 UTF-16 code units each', () => {
+    const label = '😀'.repeat(1024)
+    const hrefPrefix = 'https://example.com/'
+    const href = `${hrefPrefix}${'a'.repeat(2046 - hrefPrefix.length)}😀`
+
+    expect(parseSafeMarkdown(`[${label}](${href})`)).toEqual([
+      { kind: 'paragraph', children: [{ kind: 'link', label, href }] }
+    ])
+
+    for (const source of [`[${label}a](${href})`, `[${label}](${href}a)`]) {
+      expect(parseSafeMarkdown(source)).toEqual([
+        { kind: 'paragraph', children: [{ kind: 'text', text: source }] }
+      ])
+    }
   })
 
   it.each([
