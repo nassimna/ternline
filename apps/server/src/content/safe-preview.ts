@@ -23,8 +23,24 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
   const bounded = takeCharacters(value, 16_384)
   if (!bounded.includes('<') && !bounded.includes('>')) {
     const a = bounded.indexOf('[')
-    const b = bounded.indexOf('](', a + 1)
-    if (a >= 0 && b > a) {
+    if (a >= 0) {
+      let labelStart = a
+      let bracketDepth = 1
+      let b = a + 1
+      for (; b < bounded.length; b++) {
+        const character = bounded[b]
+        if (character === '\\') {
+          b++
+        } else if (character === '[') {
+          if (bracketDepth === 0) labelStart = b
+          bracketDepth++
+        } else if (character === ']') {
+          if (bounded[b + 1] === '(') break
+          if (bracketDepth > 0) bracketDepth--
+        }
+      }
+      if (b >= bounded.length) return [{ kind: 'text', text: bounded }]
+
       let c = b + 2
       let depth = 0
       for (; c < bounded.length; c++) {
@@ -35,20 +51,6 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
         }
       }
       if (c === bounded.length) return [{ kind: 'text', text: bounded }]
-
-      let labelStart = a
-      let bracketDepth = 1
-      for (let index = a + 1; index < b; index++) {
-        const character = bounded[index]
-        if (character === '\\') {
-          index++
-        } else if (character === '[') {
-          if (bracketDepth === 0) labelStart = index
-          bracketDepth++
-        } else if (character === ']' && bracketDepth > 0) {
-          bracketDepth--
-        }
-      }
 
       const href = bounded.slice(b + 2, c)
       const label = bounded.slice(labelStart + 1, b)

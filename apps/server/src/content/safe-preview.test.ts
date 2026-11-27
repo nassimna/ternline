@@ -78,6 +78,39 @@ describe('safe Markdown previews', () => {
     ])
   })
 
+  it('preserves an escaped link delimiter inside a link label', () => {
+    const label = String.raw`Array\](draft) reference`
+    const href = 'https://example.com/reference'
+
+    expect(parseSafeMarkdown(`Check [${label}](${href}).`)).toEqual([
+      {
+        kind: 'paragraph',
+        children: [
+          { kind: 'text', text: 'Check ' },
+          { kind: 'link', label, href },
+          { kind: 'text', text: '.' }
+        ]
+      }
+    ])
+  })
+
+  it('keeps an escaped link delimiter as literal text', () => {
+    const source = String.raw`Keep [literal\](https://example.com/reference).`
+
+    expect(parseSafeMarkdown(source)).toEqual([
+      { kind: 'paragraph', children: [{ kind: 'text', text: source }] }
+    ])
+  })
+
+  it('parses a link delimiter after an even run of backslashes', () => {
+    const label = String.raw`reference\\`
+    const href = 'https://example.com/reference'
+
+    expect(parseSafeMarkdown(`[${label}](${href})`)).toEqual([
+      { kind: 'paragraph', children: [{ kind: 'link', label, href }] }
+    ])
+  })
+
   it.each(['https://example.com/docs', 'https://example.com/docs(v2(draft))'])(
     'preserves trailing parentheses after a link to %s',
     (href) => {
