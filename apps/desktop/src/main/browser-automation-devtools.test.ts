@@ -166,6 +166,65 @@ describe('BrowserAutomationDevtools', () => {
     expect(debuggerApi.detach).toHaveBeenCalledOnce()
   })
 
+  it('evicts the oldest request when a retained update exceeds the JSON byte cap', async () => {
+    const { devtools, event } = fixture()
+    await devtools.initialize()
+    await devtools.run({ kind: 'networkStart' })
+
+    const url = 'https://example.test/api'
+    const requestIds = Array.from({ length: 8 }, (_, index) => `r${index + 1}`)
+    for (const requestId of requestIds) {
+      event('Network.requestWillBeSent', {
+        requestId,
+        timestamp: 1,
+        request: { url, method: 'GET', headers: {} }
+      })
+    }
+    const list = async () =>
+      (await devtools.run({ kind: 'networkList' })) as {
+        requests: Array<{ requestId: string; sequence: number }>
+        cursor: number
+        dropped: number
+      }
+    const { requests } = await list()
+    const response = { url, status: 200, mimeType: '🧪"\\\n', headers: {} }
+    const atLimit = [
+      ...requests.slice(0, -1),
+      {
+        ...requests.at(-1),
+        sequence: 9,
+        status: response.status,
+        mimeType: response.mimeType,
+        responseHeaders: response.headers
+      }
+    ]
+    response.mimeType += 'a'.repeat(48 * 1024 - Buffer.byteLength(JSON.stringify(atLimit)))
+    event('Network.responseReceived', { requestId: 'r8', timestamp: 2, response })
+
+    const full = await list()
+    expect(full.requests.map((request) => request.requestId)).toEqual(requestIds)
+    expect(full).toMatchObject({ cursor: 9, dropped: 0 })
+    expect(Buffer.byteLength(JSON.stringify(full.requests))).toBe(48 * 1024)
+
+    // A response without a payload grows the sequence by a digit but defers pruning.
+    event('Network.responseReceived', { requestId: 'r2', timestamp: 2 })
+    const over = await list()
+    expect(over.requests.map((request) => request.requestId)).toEqual(requestIds)
+    expect(over).toMatchObject({ cursor: 10, dropped: 0 })
+    expect(Buffer.byteLength(JSON.stringify(over.requests))).toBe(48 * 1024 + 1)
+
+    // Offset r8's extra sequence digit so only the previous event contributes to the overflow.
+    response.mimeType = response.mimeType.slice(0, -1)
+    event('Network.responseReceived', { requestId: 'r8', timestamp: 2, response })
+    const pruned = await list()
+    expect(pruned.requests.map((request) => request.requestId)).toEqual(requestIds.slice(1))
+    expect(pruned).toMatchObject({ cursor: 11, dropped: 1 })
+    await expect(devtools.run({ kind: 'networkGet', requestId: 'r1' })).rejects.toThrow(
+      'Network request is not retained'
+    )
+    devtools.dispose()
+  })
+
   it.each([0, 1])(
     'keeps the longest request header prefix at 8192 plus %i bytes',
     async (extra) => {
