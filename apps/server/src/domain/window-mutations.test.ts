@@ -509,6 +509,116 @@ it.each([
 })
 
 it.each([
+  { source: 'with a remaining tab', keepSource: true },
+  { source: 'with only the moved tab', keepSource: false }
+])('splits an existing selected tab from a source pane $source', ({ keepSource }) => {
+  const { state, windowId } = fixture()
+  const { id: workspaceId, selectedPaneId: targetPaneId, panes } = state.workspaces[0]!
+  const source = {
+    paneId: randomUUID(),
+    splitId: randomUUID(),
+    tabId: randomUUID(),
+    browserSessionId: randomUUID()
+  }
+  const split = splitPane(
+    state,
+    {
+      workspaceId,
+      targetPaneId,
+      axis: 'horizontal',
+      ratio: 0.5,
+      placement: 'after',
+      content: { kind: 'newTerminal', launch: { cwd: '/tmp', rows: 24, cols: 80 } }
+    },
+    source,
+    2
+  )
+  const tabId = keepSource ? randomUUID() : source.tabId
+  const input = keepSource
+    ? openBrowserTab(
+        split,
+        { workspaceId, paneId: source.paneId, metadata: { url: 'https://example.com/' } },
+        tabId,
+        randomUUID(),
+        3
+      )
+    : split
+  const before = structuredClone(input)
+  expect(before.workspaces[0]!.selectedPaneId).toBe(source.paneId)
+  expect(before.workspaces[0]!.panes[source.paneId]!.selectedTabId).toBe(tabId)
+  const destination = {
+    paneId: randomUUID(),
+    splitId: randomUUID(),
+    tabId: randomUUID(),
+    browserSessionId: randomUUID()
+  }
+
+  const next = splitPane(
+    input,
+    {
+      workspaceId,
+      targetPaneId,
+      axis: 'vertical',
+      ratio: 0.6,
+      placement: 'before',
+      content: { kind: 'existingTab', tabId }
+    },
+    destination,
+    4
+  )
+
+  const workspace = next.workspaces[0]!
+  const newSplit = {
+    kind: 'split',
+    splitId: destination.splitId,
+    axis: 'vertical',
+    ratio: 0.6,
+    first: { kind: 'leaf', paneId: destination.paneId },
+    second: { kind: 'leaf', paneId: targetPaneId }
+  }
+  expect(workspace.layout).toEqual(
+    keepSource
+      ? {
+          kind: 'split',
+          splitId: source.splitId,
+          axis: 'horizontal',
+          ratio: 0.5,
+          first: newSplit,
+          second: { kind: 'leaf', paneId: source.paneId }
+        }
+      : newSplit
+  )
+  expect(workspace.panes[targetPaneId]).toEqual(panes[targetPaneId])
+  expect(workspace.panes[source.paneId]).toEqual(
+    keepSource
+      ? { id: source.paneId, tabs: [source.tabId], selectedTabId: source.tabId, title: null }
+      : undefined
+  )
+  expect(workspace.panes[destination.paneId]).toMatchObject({
+    tabs: [tabId],
+    selectedTabId: tabId
+  })
+  expect(workspace.tabs[tabId]).toEqual({
+    ...before.workspaces[0]!.tabs[tabId],
+    paneId: destination.paneId
+  })
+  expect(workspace.selectedPaneId).toBe(destination.paneId)
+  expect(next.focusHistory.entries[next.focusHistory.cursor]).toEqual({
+    windowId,
+    workspaceId,
+    paneId: destination.paneId,
+    tabId
+  })
+  expect(next.focusHistory.entries).not.toContainEqual({
+    windowId,
+    workspaceId,
+    paneId: source.paneId,
+    tabId
+  })
+  expect(input).toEqual(before)
+})
+
+it.each([
   { operation: 'closeTab', focus: 'selected' },
   { operation: 'closePane', focus: 'selected' },
   { operation: 'closeTab', focus: 'background' },
