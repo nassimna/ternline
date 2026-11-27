@@ -109,11 +109,12 @@ function targetExists(
 function fold(
   state: DurableApplicationState,
   workspaceId: string,
-  slots: WorkspaceCardSlotsSnapshot | undefined
+  slots: WorkspaceCardSlotsSnapshot | undefined,
+  notifications = state.notifications
 ): WorkspaceAttentionSnapshot {
   let unreadCount = 0
   let winner: DurableApplicationState['notifications'][number] | undefined
-  for (const notification of state.notifications) {
+  for (const notification of notifications) {
     if (
       notification.workspaceId !== workspaceId ||
       notification.readAt !== null ||
@@ -353,10 +354,25 @@ export class CardSlotAttentionService {
     if (state.revision < this.lastApplicationRevision) return
     const previousRevision = this.lastApplicationRevision
     this.prune(state)
+    const notificationsByWorkspace =
+      state.workspaces.length > 1
+        ? new Map<string, DurableApplicationState['notifications']>()
+        : undefined
+    if (notificationsByWorkspace) {
+      for (const notification of state.notifications) {
+        const id = notification.workspaceId
+        const notifications = notificationsByWorkspace.get(id)
+        if (notifications) notifications.push(notification)
+        else notificationsByWorkspace.set(id, [notification])
+      }
+    }
     const events: AttentionEvent[] = []
     for (const workspace of state.workspaces) {
       const id = workspace.id
-      const projected = fold(state, id, this.v1.get(id))
+      const notifications = notificationsByWorkspace
+        ? (notificationsByWorkspace.get(id) ?? [])
+        : state.notifications
+      const projected = fold(state, id, this.v1.get(id), notifications)
       const previous = this.attention.get(id)
       const next = { ...projected, revision: previous?.revision ?? 0 }
       if (previous && !same({ ...previous, revision: 0 }, projected)) {
