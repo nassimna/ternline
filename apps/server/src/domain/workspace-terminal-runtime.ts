@@ -600,6 +600,15 @@ export class WorkspaceTerminalRuntime {
     })
   }
 
+  private closeReplayResult<T extends { replacementTabId: string | null }>(result: T) {
+    return {
+      ...result,
+      replacementTerminalId: result.replacementTabId
+        ? (this.sessionForTab(result.replacementTabId) ?? null)
+        : null
+    }
+  }
+
   /** Replaces the final pane before commit, then retires sessions removed by the pane close. */
   public closePane(
     store: ApplicationStateStore,
@@ -610,14 +619,7 @@ export class WorkspaceTerminalRuntime {
       const replacementTabId = randomUUID()
       const updatedAt = this.now()
       const replay = store.preflightPaneClose(request, replacementTabId, updatedAt)
-      if (replay) {
-        return {
-          ...replay,
-          replacementTerminalId: replay.replacementTabId
-            ? (this.sessionForTab(replay.replacementTabId) ?? null)
-            : null
-        }
-      }
+      if (replay) return this.closeReplayResult(replay)
 
       const before = store.readSnapshot()
       const workspace = before.workspaces.find((item) => item.id === request.workspaceId)!
@@ -655,12 +657,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
-        return {
-          ...result,
-          replacementTerminalId: result.replacementTabId
-            ? (this.sessionForTab(result.replacementTabId) ?? null)
-            : null
-        }
+        return this.closeReplayResult(result)
       }
       if (replacementSessionId) this.sessions.set(replacementTabId, replacementSessionId)
       for (const tabId of closingTabIds) {
@@ -691,14 +688,7 @@ export class WorkspaceTerminalRuntime {
       }
       const createdAt = this.now()
       const replay = store.preflightWorkspaceClose(request, replacementIds, createdAt)
-      if (replay) {
-        return {
-          ...replay,
-          replacementTerminalId: replay.replacementTabId
-            ? (this.sessionForTab(replay.replacementTabId) ?? null)
-            : null
-        }
-      }
+      if (replay) return this.closeReplayResult(replay)
 
       const before = store.readSnapshot()
       const closing = before.workspaces.find((item) => item.id === request.workspaceId)!
@@ -728,12 +718,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
-        return {
-          ...result,
-          replacementTerminalId: result.replacementTabId
-            ? (this.sessionForTab(result.replacementTabId) ?? null)
-            : null
-        }
+        return this.closeReplayResult(result)
       }
       if (replacementSessionId) this.sessions.set(replacementIds.tabId, replacementSessionId)
       this.retireWorkspaceTerminals(Object.values(closing.tabs))
@@ -786,14 +771,7 @@ export class WorkspaceTerminalRuntime {
       const ids = { workspaceId: randomUUID(), paneId: randomUUID(), tabId: randomUUID() }
       const createdAt = this.now()
       const replay = store.preflightWorkspaceBatchClose(request, ids, createdAt)
-      if (replay) {
-        return {
-          ...replay,
-          replacementTerminalId: replay.replacementTabId
-            ? (this.sessionForTab(replay.replacementTabId) ?? null)
-            : null
-        }
-      }
+      if (replay) return this.closeReplayResult(replay)
 
       const before = store.readSnapshot()
       const closing = new Set(before.workspaceSelection)
@@ -823,12 +801,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
-        return {
-          ...result,
-          replacementTerminalId: result.replacementTabId
-            ? (this.sessionForTab(result.replacementTabId) ?? null)
-            : null
-        }
+        return this.closeReplayResult(result)
       }
       if (replacementSessionId) this.sessions.set(ids.tabId, replacementSessionId)
       for (const workspace of before.workspaces) {
@@ -856,14 +829,7 @@ export class WorkspaceTerminalRuntime {
       const replacementTabId = randomUUID()
       const now = this.now()
       const replay = store.preflightTabClose(request, closedItemId, replacementTabId, now)
-      if (replay) {
-        return {
-          ...replay,
-          replacementTerminalId: replay.replacementTabId
-            ? (this.sessionForTab(replay.replacementTabId) ?? null)
-            : null
-        }
-      }
+      if (replay) return this.closeReplayResult(replay)
 
       const before = store.readSnapshot()
       const closing = before.workspaces.find((item) => item.id === request.workspaceId)!
@@ -901,12 +867,7 @@ export class WorkspaceTerminalRuntime {
       }
       if (result.replayed) {
         if (replacementSessionId) this.terminals.close(replacementSessionId)
-        return {
-          ...result,
-          replacementTerminalId: result.replacementTabId
-            ? (this.sessionForTab(result.replacementTabId) ?? null)
-            : null
-        }
+        return this.closeReplayResult(result)
       }
       if (replacementSessionId) this.sessions.set(replacementTabId, replacementSessionId)
       if (closingTab.content.kind === 'terminal') {
