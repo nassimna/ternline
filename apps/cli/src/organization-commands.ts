@@ -1,14 +1,6 @@
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
-import {
-  groupAssignRequestSchema,
-  groupCollapseRequestSchema,
-  groupCreateRequestSchema,
-  groupDeleteRequestSchema,
-  groupMoveRequestSchema,
-  groupRenameRequestSchema,
-  workspaceSelectionReplaceRequestSchema
-} from '@agent-workspace/contracts'
 
+import { runJsonMutation } from './json-mutations'
 import { flags, mutationIdentity, nonnegativeInteger, required, workspaceIdFlags } from './options'
 
 type Operation =
@@ -74,35 +66,34 @@ export function parseOrganizationCommand(
   }
 }
 
-export function organizationRequest(parsed: OrganizationCommand, idempotencyEpoch: string) {
+export function runOrganizationCommand(
+  client: AgentWorkspaceClient,
+  parsed: OrganizationCommand,
+  idempotencyEpoch: string
+): Promise<unknown> {
   const { values, operation } = parsed
   const identity = mutationIdentity(values, idempotencyEpoch)
   switch (operation) {
     case 'workspace.selectMany':
-      return workspaceSelectionReplaceRequestSchema.parse({
+      return runJsonMutation(client, operation, {
         selection: parsed.selection,
         focusedWorkspaceId: required(values, '--focused-workspace-id'),
         ...identity
       })
     case 'group.create':
-      return groupCreateRequestSchema.parse({
-        groupId: required(values, '--group-id'),
-        name: required(values, '--name'),
-        ...identity
-      })
     case 'group.rename':
-      return groupRenameRequestSchema.parse({
+      return runJsonMutation(client, operation, {
         groupId: required(values, '--group-id'),
         name: required(values, '--name'),
         ...identity
       })
     case 'group.delete':
-      return groupDeleteRequestSchema.parse({
+      return runJsonMutation(client, operation, {
         groupId: required(values, '--group-id'),
         ...identity
       })
     case 'group.move':
-      return groupMoveRequestSchema.parse({
+      return runJsonMutation(client, operation, {
         groupId: required(values, '--group-id'),
         destinationIndex: nonnegativeInteger(
           required(values, '--destination-index'),
@@ -111,7 +102,7 @@ export function organizationRequest(parsed: OrganizationCommand, idempotencyEpoc
         ...identity
       })
     case 'group.assign':
-      return groupAssignRequestSchema.parse({
+      return runJsonMutation(client, operation, {
         workspaceId: required(values, '--workspace-id'),
         ...(values.has('--group-id') ? { groupId: values.get('--group-id') } : {}),
         ...identity
@@ -121,35 +112,11 @@ export function organizationRequest(parsed: OrganizationCommand, idempotencyEpoc
       if (value !== 'true' && value !== 'false') {
         throw new Error('--collapsed must be true or false')
       }
-      return groupCollapseRequestSchema.parse({
+      return runJsonMutation(client, operation, {
         groupId: required(values, '--group-id'),
         collapsed: value === 'true',
         ...identity
       })
     }
-  }
-}
-
-export function runOrganizationCommand(
-  client: AgentWorkspaceClient,
-  parsed: OrganizationCommand,
-  idempotencyEpoch: string
-): Promise<unknown> {
-  const request = organizationRequest(parsed, idempotencyEpoch)
-  switch (parsed.operation) {
-    case 'workspace.selectMany':
-      return client.selectWorkspaces(workspaceSelectionReplaceRequestSchema.parse(request))
-    case 'group.create':
-      return client.createGroup(groupCreateRequestSchema.parse(request))
-    case 'group.rename':
-      return client.renameGroup(groupRenameRequestSchema.parse(request))
-    case 'group.delete':
-      return client.deleteGroup(groupDeleteRequestSchema.parse(request))
-    case 'group.move':
-      return client.moveGroup(groupMoveRequestSchema.parse(request))
-    case 'group.assign':
-      return client.assignGroup(groupAssignRequestSchema.parse(request))
-    case 'group.collapse':
-      return client.collapseGroup(groupCollapseRequestSchema.parse(request))
   }
 }

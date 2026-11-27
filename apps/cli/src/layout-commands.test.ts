@@ -6,14 +6,27 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import type { AgentWorkspaceClient } from '@agent-workspace/client-runtime'
+import type { GroupDeleteRequest } from '@agent-workspace/contracts'
 import { layoutRequest, parseLayoutCommand, runLayoutCommand } from './layout-commands'
-import { organizationRequest, parseOrganizationCommand } from './organization-commands'
+import { parseOrganizationCommand, runOrganizationCommand } from './organization-commands'
 
 const epoch = randomUUID()
 const layoutId = randomUUID()
 const first = randomUUID()
 const second = randomUUID()
 const key = randomUUID()
+
+function groupDeleteRequest(...options: string[]) {
+  const command = parseOrganizationCommand(
+    ['group', 'delete', '--group-id', first, ...options],
+    '/private/session'
+  )
+  assert.ok(command)
+  const client = {
+    deleteGroup: (request: GroupDeleteRequest) => Promise.resolve(request)
+  } as unknown as AgentWorkspaceClient
+  return runOrganizationCommand(client, command, epoch) as Promise<GroupDeleteRequest>
+}
 
 await test('layout and organization revisions preserve integer boundaries and exact errors', async () => {
   for (const request of [
@@ -22,14 +35,7 @@ await test('layout and organization revisions preserve integer boundaries and ex
         parse(['layout', 'delete', '--layout-id', layoutId, '--expected-revision', value]),
         epoch
       ),
-    (value: string) =>
-      organizationRequest(
-        parseOrganizationCommand(
-          ['group', 'delete', '--group-id', first, '--expected-revision', value],
-          '/private/session'
-        )!,
-        epoch
-      )
+    (value: string) => groupDeleteRequest('--expected-revision', value)
   ]) {
     for (const value of ['0', '1', '9007199254740991']) {
       assert.equal((await request(value)).expectedRevision, Number(value))
@@ -76,14 +82,7 @@ await test('layout and group deletes preserve explicit keys and generate fresh m
         ]),
         epoch
       ),
-    (...options: string[]) =>
-      organizationRequest(
-        parseOrganizationCommand(
-          ['group', 'delete', '--group-id', first, '--expected-revision', '4', ...options],
-          '/private/session'
-        )!,
-        epoch
-      )
+    (...options: string[]) => groupDeleteRequest('--expected-revision', '4', ...options)
   ]) {
     assert.equal((await request('--idempotency-key', key)).idempotencyKey, key)
     for (const result of [await request(), await request()]) {
