@@ -170,13 +170,15 @@ describe('process-local card slots and attention', () => {
     })
   })
 
-  it('projects interleaved notifications and emits changes in workspace order', () => {
+  it('projects interleaved notifications and acknowledgements in their own workspaces', () => {
     const state = fixture()
     const otherWorkspaceId = '60000000-0000-4000-8000-000000000006'
     const otherNotificationId = '70000000-0000-4000-8000-000000000007'
     const missingTargetId = '80000000-0000-4000-8000-000000000008'
     const otherPaneId = '90000000-0000-4000-8000-000000000009'
     const otherTabId = 'a0000000-0000-4000-8000-00000000000a'
+    const wrongPaneId = '10000000-0000-4000-8000-000000000010'
+    const secondaryTabId = '10000000-0000-4000-8000-000000000011'
     state.workspaces.push({
       ...state.workspaces[0]!,
       id: otherWorkspaceId,
@@ -187,10 +189,21 @@ describe('process-local card slots and attention', () => {
           id: otherPaneId,
           tabs: [otherTabId],
           selectedTabId: otherTabId
+        },
+        [wrongPaneId]: {
+          ...state.workspaces[0]!.panes[paneId]!,
+          id: wrongPaneId,
+          tabs: [secondaryTabId],
+          selectedTabId: secondaryTabId
         }
       },
       tabs: {
-        [otherTabId]: { ...state.workspaces[0]!.tabs[tabId]!, id: otherTabId, paneId: otherPaneId }
+        [otherTabId]: { ...state.workspaces[0]!.tabs[tabId]!, id: otherTabId, paneId: otherPaneId },
+        [secondaryTabId]: {
+          ...state.workspaces[0]!.tabs[tabId]!,
+          id: secondaryTabId,
+          paneId: wrongPaneId
+        }
       }
     })
     const info = state.notifications[0]!
@@ -199,8 +212,14 @@ describe('process-local card slots and attention', () => {
       ...error,
       id: otherNotificationId,
       workspaceId: otherWorkspaceId,
-      paneId: otherPaneId,
+      paneId: null,
       tabId: otherTabId
+    }
+    const otherWarning = {
+      ...otherNotification,
+      id: 'e0000000-0000-4000-8000-00000000000e',
+      level: 'warning' as const,
+      createdAt: 3
     }
     state.notifications = [
       otherNotification,
@@ -213,11 +232,18 @@ describe('process-local card slots and attention', () => {
         createdAt: 3
       },
       error,
+      otherWarning,
       {
         ...otherNotification,
         id: 'c0000000-0000-4000-8000-00000000000c',
         tabId: missingTargetId,
         createdAt: 4
+      },
+      {
+        ...otherNotification,
+        id: 'f0000000-0000-4000-8000-00000000000f',
+        paneId: wrongPaneId,
+        createdAt: 5
       },
       { ...error, id: 'd0000000-0000-4000-8000-00000000000d', createdAt: 5, readAt: 6 }
     ]
@@ -232,16 +258,39 @@ describe('process-local card slots and attention', () => {
     })
     expect(service.getAttention({ workspaceId: otherWorkspaceId })).toMatchObject({
       revision: 0,
-      unreadCount: 1,
+      reason: 'notificationError',
+      unreadCount: 2,
       notificationId: otherNotificationId,
       paneId: otherPaneId,
       tabId: otherTabId
+    })
+
+    const candidate = {
+      ...state,
+      revision: state.revision + 1,
+      notifications: state.notifications.map((notification) =>
+        notification.id === otherNotificationId ? { ...notification, readAt: 7 } : notification
+      )
+    }
+    expect(service.projectAcknowledged(candidate, otherWorkspaceId)).toEqual({
+      revision: 1,
+      attention: {
+        workspaceId: otherWorkspaceId,
+        revision: 1,
+        state: 'informational',
+        reason: 'notificationWarning',
+        unreadCount: 1,
+        notificationId: otherWarning.id,
+        paneId: otherPaneId,
+        tabId: otherTabId
+      }
     })
 
     const events: CardSlotAttentionEvent[] = []
     service.subscribe((event) => events.push(event))
     error.readAt = 7
     otherNotification.readAt = 7
+    otherWarning.readAt = 7
     state.revision += 1
     service.refreshAttention()
 
@@ -296,6 +345,7 @@ describe('process-local card slots and attention', () => {
 
   it('checks exact focus and attention revision for an acknowledgement', () => {
     const state = fixture()
+    state.notifications[1]!.paneId = null
     const service = new CardSlotAttentionService(() => state)
     const params = {
       notificationId: errorId,
