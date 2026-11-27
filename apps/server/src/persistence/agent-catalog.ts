@@ -256,6 +256,7 @@ export class AgentCatalog {
     const memberMap = new Map(members.map((row) => [row.member_id, row]))
     const memberSessions = new Set<string>()
     const teamCounts = new Map<string, number>()
+    const verifiedChains = new Set<string>()
     for (const row of members) {
       const target = sessionMap.get(row.target_agent_session_id)
       if (
@@ -276,13 +277,15 @@ export class AgentCatalog {
       while (cursor) {
         if (seen.has(cursor))
           throw new AgentCatalogError('invalid_catalog', 'Agent team has a cycle')
-        seen.add(cursor)
         const current: MemberRow | undefined = memberMap.get(cursor)
         if (!current || current.team_id !== row.team_id) {
           throw new AgentCatalogError('invalid_catalog', 'Agent team parent is invalid')
         }
+        if (verifiedChains.has(cursor)) break
+        seen.add(cursor)
         cursor = current.parent_member_id
       }
+      for (const memberId of seen) verifiedChains.add(memberId)
     }
     for (const row of attention) {
       const target = sessionMap.get(row.agent_session_id)
