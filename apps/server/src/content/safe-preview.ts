@@ -64,7 +64,7 @@ function inlineNodes(value: string): SafeMarkdownNode[] {
 /** The same deliberately small, bounded Markdown grammar as workspace-content. */
 export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
   const nodes: SafeMarkdownNode[] = []
-  const lines = previewLines(source)
+  const lines = previewLines(source.replace(/^\uFEFF/u, ''))
   let remainingNodes = 4096
   for (let index = 0; index < lines.length && remainingNodes > 0; index++) {
     const line = lines[index]!
