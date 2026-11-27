@@ -405,6 +405,42 @@ describe('BrowserAutomationDevtools', () => {
     devtools.dispose()
   })
 
+  it.each([
+    { name: 'escaped oversized string', value: '"\\\n\u0000'.repeat(1024), truncated: true },
+    { name: 'surrogate pair split in output', value: 'x'.repeat(2046) + '🧪xx', truncated: true },
+    {
+      name: 'surrogate pair split by input slice',
+      value: 'x'.repeat(2047) + '🧪xx',
+      truncated: true
+    },
+    { name: 'string at 2048 UTF-8 bytes', value: 'é'.repeat(1023), truncated: false },
+    { name: 'string at 2049 UTF-8 bytes', value: 'é'.repeat(1023) + 'x', truncated: true },
+    { name: 'small object', value: { nested: [true, null, 7] }, truncated: false },
+    { name: 'oversized object', value: { text: 'x'.repeat(2048) }, truncated: true }
+  ])('preserves the console argument JSON boundary for $name', async ({ value, truncated }) => {
+    const { devtools, event } = fixture()
+    await devtools.initialize()
+    const type = typeof value
+    event('Runtime.consoleAPICalled', {
+      type: 'log',
+      timestamp: 1,
+      args: [{ type, preview: value, value }]
+    })
+
+    const expected = truncated ? JSON.stringify(value).slice(0, 2048) : value
+    expect(devtools.diagnostics('console', false)).toMatchObject({
+      entries: [
+        {
+          args: [{ type, preview: expected, value: expected }],
+          message: typeof expected === 'string' ? expected : JSON.stringify(expected)
+        }
+      ],
+      cursor: 1,
+      dropped: 0
+    })
+    devtools.dispose()
+  })
+
   it.each([0, 1])('enforces the JSON byte cap with %i bytes over the limit', async (over) => {
     const { devtools, event } = fixture()
     await devtools.initialize()
