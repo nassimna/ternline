@@ -70,7 +70,7 @@ export function parseSafeMarkdown(source: string): SafeMarkdownNode[] {
     if (line.startsWith('```')) {
       const language = line.slice(3).trim()
       const rows: string[] = []
-      while (++index < lines.length && lines[index] !== '```') {
+      while (++index < lines.length && !/^```[ \t]*$/u.test(lines[index]!)) {
         rows.push(takeCharacters(lines[index]!, 16_384))
       }
       nodes.push({
