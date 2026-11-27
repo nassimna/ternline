@@ -53,6 +53,24 @@ void test('terminal read joins decoded chunks before decoding UTF8, strips contr
   )
 })
 
+void test('terminal read appends tolerant base64 chunks by their decoded lengths', async () => {
+  const client = {
+    attach: () =>
+      Promise.resolve({
+        output: [
+          { sequence: 1, data: ' YQ==ignored', byteLength: 10 },
+          { sequence: 2, data: '', byteLength: 0 },
+          { sequence: 3, data: 'Pj4-Cg', byteLength: 1 }
+        ],
+        reconstructionComplete: false
+      })
+  } as unknown as AgentWorkspaceClient
+  assert.deepEqual(await readTerminalText(client, randomUUID()), {
+    text: 'a>>>\n',
+    reconstructionComplete: false
+  })
+})
+
 void test('terminal read preserves empty rows and final newlines when tailing', async () => {
   const cases = [
     ['', 1, ''],
