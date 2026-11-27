@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { durableApplicationStateSchema } from '@agent-workspace/contracts'
 import { expect, it } from 'vitest'
 
+import { duplicateTabExact } from './advanced-tab-duplicate'
 import { moveExactTab } from './advanced-tab-move'
 
-it('moves a live tab identity across windows while keeping a valid source workspace', () => {
+function twoWindowFixture() {
   const sourceWindow = randomUUID()
   const targetWindow = randomUUID()
   const sourceWorkspace = randomUUID()
@@ -140,6 +141,102 @@ it('moves a live tab identity across windows while keeping a valid source worksp
       expectedWindowRevision: 3
     }
   }
+  return { state, request, remainingTab, targetTab }
+}
+
+it.each([
+  { operation: 'move', targetMessage: 'Target workspace is not hosted' },
+  { operation: 'duplicate', targetMessage: 'Target workspace is not hosted in its window' }
+])('$operation validates exact window placements in order', ({ operation, targetMessage }) => {
+  const { state, request } = twoWindowFixture()
+  const { source, target } = request
+  const wrongSource = { ...source, workspaceId: target.workspaceId }
+  const wrongTarget = { ...target, workspaceId: source.workspaceId }
+  const unhostedTarget = { ...state.windowPlacements[1]!, hostingState: 'unhosted' as const }
+  const ids = { tabId: randomUUID(), browserSessionId: randomUUID() }
+
+  const cases = [
+    {
+      placements: [],
+      source,
+      target,
+      code: 'source_not_found',
+      message: 'Source window is unavailable'
+    },
+    {
+      placements: state.windowPlacements.slice(0, 1),
+      source: { ...source, expectedWindowRevision: 1 },
+      target,
+      code: 'target_not_found',
+      message: 'Target window is unavailable'
+    },
+    {
+      placements: state.windowPlacements,
+      source: { ...wrongSource, expectedWindowRevision: 1 },
+      target,
+      code: 'stale_window_revision',
+      message: 'Window placement changed'
+    },
+    {
+      placements: state.windowPlacements,
+      source: wrongSource,
+      target: { ...target, expectedWindowRevision: 2 },
+      code: 'stale_window_revision',
+      message: 'Window placement changed'
+    },
+    {
+      placements: state.windowPlacements,
+      source: wrongSource,
+      target: wrongTarget,
+      code: 'source_not_found',
+      message: 'Source workspace is not in its window'
+    },
+    {
+      placements: state.windowPlacements,
+      source,
+      target: wrongTarget,
+      code: 'target_not_found',
+      message: targetMessage
+    },
+    {
+      placements: [state.windowPlacements[0]!, unhostedTarget],
+      source,
+      target,
+      code: 'target_not_found',
+      message: targetMessage
+    }
+  ]
+
+  for (const entry of cases) {
+    const input = { ...request, source: entry.source, target: entry.target }
+    const initial = { ...state, windowPlacements: entry.placements }
+    expect(() =>
+      operation === 'move'
+        ? moveExactTab(initial, input, 5)
+        : duplicateTabExact(initial, input, ids, 5)
+    ).toThrow(
+      expect.objectContaining({
+        name: 'WindowMutationError',
+        code: entry.code,
+        message: entry.message
+      })
+    )
+  }
+})
+
+it('moves a live tab identity across windows while keeping a valid source workspace', () => {
+  const { state, request, remainingTab, targetTab } = twoWindowFixture()
+  const {
+    windowId: sourceWindow,
+    workspaceId: sourceWorkspace,
+    paneId: sourcePane,
+    tabId: movedTab
+  } = request.source
+  const {
+    windowId: targetWindow,
+    workspaceId: targetWorkspace,
+    paneId: targetPane
+  } = request.target
   const originalHistory = structuredClone(state.focusHistory)
   const moved = moveExactTab(state, request, 5)
   expect(moved.workspaces[0]?.panes[sourcePane]?.tabs).toEqual([remainingTab])
@@ -163,10 +260,6 @@ it('moves a live tab identity across windows while keeping a valid source worksp
   })
   expect(state.focusHistory).toEqual(originalHistory)
   expect(durableApplicationStateSchema.safeParse(moved).success).toBe(true)
-  expect(() =>
-    moveExactTab(state, { ...request, source: { ...request.source, expectedWindowRevision: 1 } }, 5)
-  ).toThrow('Window placement changed')
-
   const reordered = moveExactTab(
     state,
     {
