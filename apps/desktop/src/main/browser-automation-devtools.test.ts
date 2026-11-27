@@ -166,6 +166,65 @@ describe('BrowserAutomationDevtools', () => {
     expect(debuggerApi.detach).toHaveBeenCalledOnce()
   })
 
+  it('evicts the oldest request when a retained update exceeds the JSON byte cap', async () => {
+    const { devtools, event } = fixture()
+    await devtools.initialize()
+    await devtools.run({ kind: 'networkStart' })
+
+    const url = 'https://example.test/api'
+    const requestIds = Array.from({ length: 8 }, (_, index) => `r${index + 1}`)
+    for (const requestId of requestIds) {
+      event('Network.requestWillBeSent', {
+        requestId,
+        timestamp: 1,
+        request: { url, method: 'GET', headers: {} }
+      })
+    }
+    const list = async () =>
+      (await devtools.run({ kind: 'networkList' })) as {
+        requests: Array<{ requestId: string; sequence: number }>
+        cursor: number
+        dropped: number
+      }
+    const { requests } = await list()
+    const response = { url, status: 200, mimeType: '🧪"\\\n', headers: {} }
+    const atLimit = [
+      ...requests.slice(0, -1),
+      {
+        ...requests.at(-1),
+        sequence: 9,
+        status: response.status,
+        mimeType: response.mimeType,
+        responseHeaders: response.headers
+      }
+    ]
+    response.mimeType += 'a'.repeat(48 * 1024 - Buffer.byteLength(JSON.stringify(atLimit)))
+    event('Network.responseReceived', { requestId: 'r8', timestamp: 2, response })
+
+    const full = await list()
+    expect(full.requests.map((request) => request.requestId)).toEqual(requestIds)
+    expect(full).toMatchObject({ cursor: 9, dropped: 0 })
+    expect(Buffer.byteLength(JSON.stringify(full.requests))).toBe(48 * 1024)
+
+    // A response without a payload grows the sequence by a digit but defers pruning.
+    event('Network.responseReceived', { requestId: 'r2', timestamp: 2 })
+    const over = await list()
+    expect(over.requests.map((request) => request.requestId)).toEqual(requestIds)
+    expect(over).toMatchObject({ cursor: 10, dropped: 0 })
+    expect(Buffer.byteLength(JSON.stringify(over.requests))).toBe(48 * 1024 + 1)
+
+    // Offset r8's extra sequence digit so only the previous event contributes to the overflow.
+    response.mimeType = response.mimeType.slice(0, -1)
+    event('Network.responseReceived', { requestId: 'r8', timestamp: 2, response })
+    const pruned = await list()
+    expect(pruned.requests.map((request) => request.requestId)).toEqual(requestIds.slice(1))
+    expect(pruned).toMatchObject({ cursor: 11, dropped: 1 })
+    await expect(devtools.run({ kind: 'networkGet', requestId: 'r1' })).rejects.toThrow(
+      'Network request is not retained'
+    )
+    devtools.dispose()
+  })
+
   it.each([0, 1])(
     'keeps the longest request header prefix at 8192 plus %i bytes',
     async (extra) => {
@@ -255,6 +314,80 @@ describe('BrowserAutomationDevtools', () => {
       line: 4
     })
     expect(devtools.diagnostics('errors', false).entries).toEqual([])
+    devtools.dispose()
+  })
+
+  it.each([0, 1])('enforces the JSON byte cap with %i bytes over the limit', async (over) => {
+    const { devtools, event } = fixture()
+    await devtools.initialize()
+    const preview = 'é"\n'.repeat(330)
+    const args = Array.from({ length: 12 }, () => ({ type: 'object', preview }))
+    event('Runtime.consoleAPICalled', { type: 'log', timestamp: 1, args })
+    const [first] = devtools.diagnostics('console', false).entries
+    event('Runtime.consoleAPICalled', {
+      type: 'log',
+      timestamp: 1,
+      args: [...args, { type: 'object', preview: 'x'.repeat(505 + over) }]
+    })
+    const result = devtools.diagnostics('console', false)
+    expect(result.entries.map((entry) => entry.sequence)).toEqual(over ? [2] : [1, 2])
+    expect(result).toMatchObject({ cursor: 2, dropped: over })
+    expect(Buffer.byteLength(JSON.stringify([first, result.entries.at(-1)]))).toBe(48 * 1024 + over)
+
+    event('Runtime.consoleAPICalled', {
+      type: 'log',
+      timestamp: 1,
+      args: args.map((arg) => ({ ...arg, description: 'é'.repeat(2048) }))
+    })
+    expect(devtools.diagnostics('console', false, 1)).toEqual({
+      entries: [],
+      cursor: 3,
+      dropped: 2
+    })
+    devtools.dispose()
+  })
+
+  it('clears diagnostic bytes while preserving each stream’s cursor and dropped sequence', async () => {
+    const { devtools, event } = fixture()
+    await devtools.initialize()
+    const consoleEvent = {
+      type: 'log',
+      timestamp: 1,
+      args: Array.from({ length: 9 }, () => ({ type: 'object', description: 'é'.repeat(2048) }))
+    }
+    const errorEvent = {
+      timestamp: 1,
+      exceptionDetails: { text: '界'.repeat(4096), url: '界'.repeat(2048), lineNumber: 0 }
+    }
+    for (let index = 0; index < 3; index++) {
+      event('Runtime.consoleAPICalled', consoleEvent)
+      event('Runtime.exceptionThrown', errorEvent)
+    }
+
+    const clearedConsole = devtools.diagnostics('console', true)
+    expect(clearedConsole.entries.map((entry) => entry.sequence)).toEqual([3])
+    expect(clearedConsole).toMatchObject({ cursor: 3, dropped: 2 })
+    expect(devtools.diagnostics('console', false)).toEqual({ entries: [], cursor: 3, dropped: 2 })
+    expect(devtools.diagnostics('errors', false).entries.map((entry) => entry.sequence)).toEqual([
+      2, 3
+    ])
+    const clearedErrors = devtools.diagnostics('errors', true, 2)
+    expect(clearedErrors.entries.map((entry) => entry.sequence)).toEqual([3])
+    expect(clearedErrors).toMatchObject({ cursor: 3, dropped: 0 })
+    expect(devtools.diagnostics('errors', false)).toEqual({ entries: [], cursor: 3, dropped: 1 })
+
+    event('Runtime.consoleAPICalled', consoleEvent)
+    event('Runtime.exceptionThrown', errorEvent)
+    expect(devtools.diagnostics('console', false)).toEqual({
+      entries: [{ ...clearedConsole.entries[0], sequence: 4 }],
+      cursor: 4,
+      dropped: 2
+    })
+    expect(devtools.diagnostics('errors', false)).toEqual({
+      entries: [{ ...clearedErrors.entries[0], sequence: 4 }],
+      cursor: 4,
+      dropped: 1
+    })
     devtools.dispose()
   })
 

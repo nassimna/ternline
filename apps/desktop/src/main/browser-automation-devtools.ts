@@ -32,6 +32,11 @@ type Diagnostic = {
   args?: RemoteArgument[]
   stack?: string
 }
+type DiagnosticBuffer = {
+  entries: Array<{ entry: Diagnostic; bytes: number }>
+  bytes: number
+  dropped: number
+}
 type NetworkRequest = {
   requestId: string
   sequence: number
@@ -82,16 +87,16 @@ export class BrowserAutomationDevtoolsFailure extends Error {
 
 export class BrowserAutomationDevtools {
   readonly #contents: WebContents
-  readonly #console: Diagnostic[] = []
-  readonly #errors: Diagnostic[] = []
+  readonly #console: DiagnosticBuffer = { entries: [], bytes: 2, dropped: 0 }
+  readonly #errors: DiagnosticBuffer = { entries: [], bytes: 2, dropped: 0 }
   readonly #requests = new Map<string, NetworkRequest>()
+  readonly #requestSizes = new Map<string, number>()
   readonly #requestTimes = new Map<string, number>()
   readonly #pendingHeaders = new Map<string, Record<string, string>>()
   #consoleSequence = 0
   #errorsSequence = 0
   #networkSequence = 0
-  #consoleDropped = 0
-  #errorsDropped = 0
+  #networkBytes = 2 // Array brackets.
   #networkDropped = 0
   #owned = false
   #available = false
@@ -286,17 +291,19 @@ export class BrowserAutomationDevtools {
     if (!this.#available)
       throw new BrowserAutomationDevtoolsFailure('Browser instrumentation is unavailable')
     const buffer = kind === 'console' ? this.#console : this.#errors
-    const result = {
-      entries: buffer.filter(
-        (entry) => entry.sequence > after && (!level || entry.level === level)
-      ),
-      cursor: kind === 'console' ? this.#consoleSequence : this.#errorsSequence,
-      dropped: Math.max(
-        0,
-        (kind === 'console' ? this.#consoleDropped : this.#errorsDropped) - after
-      )
+    const entries: Diagnostic[] = []
+    for (const { entry } of buffer.entries) {
+      if (entry.sequence > after && (!level || entry.level === level)) entries.push(entry)
     }
-    if (clear) buffer.length = 0
+    const result = {
+      entries,
+      cursor: kind === 'console' ? this.#consoleSequence : this.#errorsSequence,
+      dropped: Math.max(0, buffer.dropped - after)
+    }
+    if (clear) {
+      buffer.entries.length = 0
+      buffer.bytes = 2
+    }
     return result
   }
 
@@ -433,14 +440,13 @@ export class BrowserAutomationDevtools {
 
   private appendDiagnostic(kind: 'console' | 'errors', entry: Diagnostic): void {
     const buffer = kind === 'console' ? this.#console : this.#errors
-    buffer.push(entry)
-    while (
-      buffer.length > MAX_ITEMS ||
-      Buffer.byteLength(JSON.stringify(buffer)) > MAX_BUFFER_BYTES
-    ) {
-      const dropped = buffer.shift()!
-      if (kind === 'console') this.#consoleDropped = dropped.sequence
-      else this.#errorsDropped = dropped.sequence
+    const bytes = Buffer.byteLength(JSON.stringify(entry))
+    buffer.bytes += bytes + (buffer.entries.length ? 1 : 0)
+    buffer.entries.push({ entry, bytes })
+    while (buffer.entries.length > MAX_ITEMS || buffer.bytes > MAX_BUFFER_BYTES) {
+      const dropped = buffer.entries.shift()!
+      buffer.bytes -= dropped.bytes + (buffer.entries.length ? 1 : 0)
+      buffer.dropped = dropped.entry.sequence
     }
   }
 
@@ -457,6 +463,7 @@ export class BrowserAutomationDevtools {
     )
       return
     let request = this.#requests.get(event.requestId)
+    let shouldPrune = true
     if (
       (method === 'Network.requestWillBeSentExtraInfo' ||
         method === 'Network.responseReceivedExtraInfo') &&
@@ -524,15 +531,22 @@ export class BrowserAutomationDevtools {
           request.encodedDataLength = event.encodedDataLength
         if (event.errorText) request.failure = event.errorText.slice(0, 2048)
         this.#requestTimes.delete(event.requestId)
-      } else return
+      } else shouldPrune = false
     } else return
-    while (
-      this.#requests.size > MAX_ITEMS ||
-      Buffer.byteLength(JSON.stringify(Array.from(this.#requests.values()))) > MAX_BUFFER_BYTES
-    ) {
+
+    const previousBytes = this.#requestSizes.get(event.requestId)
+    const bytes = Buffer.byteLength(JSON.stringify(request))
+    this.#requestSizes.set(event.requestId, bytes)
+    this.#networkBytes += bytes - (previousBytes ?? 0)
+    if (previousBytes === undefined && this.#requests.size > 1) this.#networkBytes++
+
+    if (!shouldPrune) return
+    while (this.#requests.size > MAX_ITEMS || this.#networkBytes > MAX_BUFFER_BYTES) {
       const oldest = this.#requests.keys().next().value
       if (!oldest) break
       this.#requests.delete(oldest)
+      this.#networkBytes -= this.#requestSizes.get(oldest)! + (this.#requests.size ? 1 : 0)
+      this.#requestSizes.delete(oldest)
       this.#requestTimes.delete(oldest)
       this.#networkDropped++
     }
