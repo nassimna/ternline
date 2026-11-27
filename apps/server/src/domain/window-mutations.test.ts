@@ -160,6 +160,55 @@ it('checks every focus target membership without changing the state', () => {
   expect(validFocus(state, target)).toBe(false)
 })
 
+it.each([
+  {
+    boundary: 'supplementary code point',
+    prefix: 'a'.repeat(159),
+    suffix: '😀 omitted',
+    expectedSuffix: '😀'
+  },
+  { boundary: 'space', prefix: 'a'.repeat(159), suffix: ' omitted', expectedSuffix: '' },
+  {
+    boundary: 'sidebar label limit',
+    prefix: `${'😀'.repeat(127)}a`,
+    suffix: '😀'.repeat(34),
+    expectedSuffix: ''
+  }
+])(
+  'closes a tab with a long custom title cut at the $boundary',
+  ({ prefix, suffix, expectedSuffix }) => {
+    const { state } = fixture()
+    const workspace = state.workspaces[0]!
+    const pane = workspace.panes[workspace.selectedPaneId]!
+    const tabId = pane.selectedTabId
+    workspace.tabs[tabId]!.customTitle = `${prefix}${suffix}`
+    const closedId = randomUUID()
+    const replacementId = randomUUID()
+
+    const closed = closeTab(
+      durableApplicationStateSchema.parse(state),
+      workspace.id,
+      tabId,
+      closedId,
+      replacementId,
+      2
+    )
+
+    expect(closed.workspaces[0]!.tabs[tabId]).toBeUndefined()
+    expect(closed.workspaces[0]!.panes[pane.id]!.tabs).toEqual([replacementId])
+    expect(closed.recentlyClosed).toMatchObject([
+      {
+        id: closedId,
+        itemKind: 'tab',
+        priorWorkspaceId: workspace.id,
+        priorTabId: tabId,
+        contentKind: 'terminal',
+        title: `${prefix}${expectedSuffix}`
+      }
+    ])
+  }
+)
+
 it('records restored tab focus after retaining earlier history', () => {
   const { state, windowId } = fixture()
   const workspace = state.workspaces[0]!
