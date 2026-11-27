@@ -6,7 +6,7 @@ import { tabMoveExactParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
 import { pruneHistory, recordFocus, WindowMutationError } from './window-mutations'
-import { collapsePane, type PaneLayout as Layout } from './workspace-mutations'
+import { removeTransferSourceTab } from './workspace-mutations'
 
 type Request = z.infer<typeof tabMoveExactParamsSchema>
 
@@ -83,17 +83,10 @@ export function moveExactTab(
   if (sourcePane === targetPane && sourceIndex === insertionIndex)
     throw new WindowMutationError('policy_denied', 'Tab is already at the target index')
 
-  sourcePane.tabs.splice(sourceIndex, 1)
-  if (sourcePane !== targetPane) {
-    if (sourcePane.tabs.length === 0) {
-      from.layout = collapsePane(from.layout as Layout, sourcePane.id)
-      delete from.panes[sourcePane.id]
-      if (from.selectedPaneId === sourcePane.id) {
-        from.selectedPaneId = Object.keys(from.panes)[0]!
-      }
-    } else if (sourcePane.selectedTabId === request.source.tabId) {
-      sourcePane.selectedTabId = sourcePane.tabs[Math.min(sourceIndex, sourcePane.tabs.length - 1)]!
-    }
+  if (sourcePane === targetPane) {
+    sourcePane.tabs.splice(sourceIndex, 1)
+  } else {
+    removeTransferSourceTab(from, sourcePane, request.source.tabId, sourceIndex)
     if (from !== to) {
       const moved = from.tabs[request.source.tabId]!
       delete from.tabs[request.source.tabId]

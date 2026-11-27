@@ -555,6 +555,24 @@ export function collapsePane(layout: PaneLayout, paneId: string): PaneLayout {
   return { ...layout, second: collapsePane(layout.second, paneId) }
 }
 
+export function removeTransferSourceTab(
+  workspace: Workspace,
+  pane: Workspace['panes'][string],
+  tabId: string,
+  index: number
+): void {
+  pane.tabs.splice(index, 1)
+  if (pane.tabs.length === 0) {
+    workspace.layout = collapsePane(workspace.layout as PaneLayout, pane.id)
+    delete workspace.panes[pane.id]
+    if (workspace.selectedPaneId === pane.id) {
+      workspace.selectedPaneId = Object.keys(workspace.panes)[0]!
+    }
+  } else if (pane.selectedTabId === tabId) {
+    pane.selectedTabId = pane.tabs[Math.min(index, pane.tabs.length - 1)]!
+  }
+}
+
 function firstLeaf(layout: PaneLayout): string {
   return layout.kind === 'leaf' ? layout.paneId : firstLeaf(layout.first)
 }
