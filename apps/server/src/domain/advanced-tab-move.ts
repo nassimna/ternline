@@ -5,7 +5,12 @@ import {
 import { tabMoveExactParamsSchema } from '@agent-workspace/protocol-client'
 import type { z } from 'zod'
 
-import { pruneHistory, recordFocus, WindowMutationError } from './window-mutations'
+import {
+  pruneHistory,
+  recordFocus,
+  requireExactTabWindows,
+  WindowMutationError
+} from './window-mutations'
 import { removeTransferSourceTab } from './workspace-mutations'
 
 type Request = z.infer<typeof tabMoveExactParamsSchema>
@@ -17,20 +22,7 @@ export function moveExactTab(
   now: number
 ): DurableApplicationState {
   const request = tabMoveExactParamsSchema.parse(input)
-  const sourceWindow = state.windowPlacements.find((item) => item.id === request.source.windowId)
-  const targetWindow = state.windowPlacements.find((item) => item.id === request.target.windowId)
-  if (!sourceWindow)
-    throw new WindowMutationError('source_not_found', 'Source window is unavailable')
-  if (!targetWindow)
-    throw new WindowMutationError('target_not_found', 'Target window is unavailable')
-  if (
-    sourceWindow.revision !== request.source.expectedWindowRevision ||
-    targetWindow.revision !== request.target.expectedWindowRevision
-  ) {
-    throw new WindowMutationError('stale_window_revision', 'Window placement changed')
-  }
-  if (!sourceWindow.workspaceIds.includes(request.source.workspaceId))
-    throw new WindowMutationError('source_not_found', 'Source workspace is not in its window')
+  const { sourceWindow, targetWindow } = requireExactTabWindows(state, request)
   if (
     !targetWindow.workspaceIds.includes(request.target.workspaceId) ||
     targetWindow.hostingState !== 'hosted'
